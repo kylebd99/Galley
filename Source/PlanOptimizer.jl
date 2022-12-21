@@ -1,0 +1,2 @@
+# This file defines a query optimizer. It takes in both a query plan and input data, and it outputs an optimized query plan.
+# It does this by gathering simple statistics about the data then doing a cost-based optimization based on equality saturation. 

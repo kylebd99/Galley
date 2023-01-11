@@ -6,7 +6,7 @@
 abstract type Expression end
 
 struct Tensor <: Expression
-    name::String
+    TensorID::String
     variables::Array{String}
 end
 
@@ -58,7 +58,7 @@ function printExpression(exp::Expression)
         end
         print(")")
     elseif isa(exp, Tensor)
-        print(exp.name, "(")
+        print(exp.TensorID, "(")
         prefix = ""
         for var in exp.variables
             print(prefix)

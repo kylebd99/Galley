@@ -3,47 +3,51 @@
 # Notably, this query struct does not describe how the query will be executed.
 #######################################################################################################################################
 
-abstract type Expression end
+# This defines the list of access protocols allowed by the Finch API
+@enum AccessProtocol t_walk = 1 t_fast_walk = 2 t_lead = 3 t_follow = 4 t_gallop = 5
 
-struct Tensor <: Expression
-    TensorID::String
+abstract type TensorExpression end
+TensorId = String
+
+struct TensorAccess <: TensorExpression
+    tensor_id::TensorId
     variables::Array{String}
+    protocols::Array{AccessProtocol}
 end
 
 # The aggregate struct refers to mathematical operations which operate over a dimension of the tensors.
 # These operations reduce the dimensionality of the result by removing that dimension.
-@enum supportedAggregates summation = 0 product = 1 maximumAggregate = 2 minimumAggregate = 3
-aggregateEnumToString::Dict{supportedAggregates, String} = Dict(summation => "Sum", product=>"Prod", 
-                                                                 maximumAggregate=>"MaxAgg",  minimumAggregate=>"MinAgg")
-struct AggregateExp <: Expression
-    aggregateType::supportedAggregates
-    subExpression::Expression
-    aggregateVariable::String
+@enum SupportedAggregates t_custom_agg = -1 t_sum = 0 t_prod = 1 t_max_agg = 2 t_min_agg = 3
+aggregateEnumToString::Dict{SupportedAggregates, String} = Dict(t_custom_agg=> "custom_agg", t_sum => "Sum", t_prod=>"Prod", 
+                                                                t_max_agg=>"MaxAgg",  t_min_agg=>"MinAgg")
+struct AggregateExp <: TensorExpression
+    op
+    aggregate_type::SupportedAggregates
+    aggregate_indices::Vector{String}
+    input::TensorExpression
 end
-function Sum(input, var) return AggregateExp(summation, input, var) end
-function Prod(input, var) return AggregateExp(product, input, var) end
-function MaxAgg(input, var) return AggregateExp(maximumAggregate, input, var) end
-function MinAgg(input, var) return AggregateExp(minimumAggregate, input, var) end
+function Sum(input::TensorExpression, indices) return AggregateExp(+, t_sum, indices, input) end
+function Prod(input::TensorExpression, indices) return AggregateExp(*, t_prod, indices, input) end
+function MaxAgg(input::TensorExpression, indices) return AggregateExp(max, t_max_agg, indices, input) end
+function MinAgg(input::TensorExpression, indices) return AggregateExp(min, t_min_agg, indices, input) end
+function CustomAggregate(op, input, indices) return AggregateExp(op, t_custom_agg, indices, input) end
 
 # The operator struct refers to mathematical operations with a (generally small) number of inputs which does not rely on
 # the size of domains, e.g. max(A[i],B[i],C[j]) or A[i]*B[i].
-@enum supportedOperators addition = 0 multiplication = 1 maximum = 2 minimum = 3
-operatorEnumToString::Dict{supportedOperators, String} = Dict(addition => "Add", multiplication=>"Mult", maximum=>"Max", minimum=>"Min")
-struct OperatorExp <: Expression
-    operatorType::supportedOperators
-    inputs::Array{Expression}  # Should we disallow aggregates within operators
+@enum SupportedOperators t_custom_op = -1 t_add = 0 t_mult = 1 t_max = 2 t_min = 3 
+operatorEnumToString::Dict{SupportedOperators, String} = Dict(t_custom_op=>"custom_op", t_add => "Add", t_mult=>"Mult", t_max=>"Max", t_min=>"Min")
+struct OperatorExp <: TensorExpression
+    op
+    operator_type::SupportedOperators
+    inputs::Vector{TensorExpression}  # Should we disallow aggregates within operators
 end
-function Add(input) return OperatorExp(addition, input) end
-function Mult(input) return OperatorExp(multiplication, input) end
-function Max(input) return OperatorExp(maximum, input) end
-function Min(input) return OperatorExp(minimum, input) end
+function Add(inputs::Vector{<:TensorExpression}) return OperatorExp(+, t_add, inputs) end
+function Mult(inputs::Vector{<:TensorExpression}) return OperatorExp(*, t_mult, inputs) end
+function Max(inputs::Vector{<:TensorExpression}) return OperatorExp(max, t_max, inputs) end
+function Min(inputs::Vector{<:TensorExpression}) return OperatorExp(min, t_min, inputs) end
+function CustomOperator(op, inputs::Vector{<:TensorExpression}) return OperatorExp(op, t_custom_op, inputs) end
 
-struct Query
-    headName::String
-    rightHandSide::Expression
-end
-
-function printExpression(exp::Expression)
+function printExpression(exp::TensorExpression)
     if isa(exp, AggregateExp)
         print(aggregateEnumToString[exp.aggregateType],"(")
         printExpression(exp.subExpression)
@@ -67,15 +71,4 @@ function printExpression(exp::Expression)
         end
         print(")")
     end
-end
-
-function printQuery(query::Query)
-    print(query.headName, "=")
-    printExpression(query.rightHandSide)
-end
-
-# Check if a query is supported by our engine.
-function queryIsSupported(query::Query)
-    println("queryIsSupported Not Implemented")
-    return true
 end

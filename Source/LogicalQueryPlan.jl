@@ -5,7 +5,7 @@
 abstract type LogicalPlanNode end
 
 mutable struct TensorStats
-    active_indices::Set{String}
+    indices::Set{String}
     dim_size::Dict{String, Int}
     cardinality::Float64
     default_value::Any
@@ -29,10 +29,11 @@ end
 
 mutable struct InputTensor <: LogicalPlanNode
     tensor_id::String
+    index_order::Vector{String}
     stats::TensorStats
     parent::Any
 end
-InputTensor(tensor_id::String, stats::TensorStats) = InputTensor(tensor_id, stats, nothing)
+InputTensor(tensor_id::String, index_order::Vector{String}, stats::TensorStats) = InputTensor(tensor_id, index_order, stats, nothing)
 
 mutable struct Scalar <: LogicalPlanNode
     value::Any

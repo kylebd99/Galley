@@ -170,7 +170,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
         return reduceTensorStats(op, indices, rstats)
     end
-    println(n)
+    println("Warning! The following Tensor Kernel returned a `TensorStatsAnalysis` of `nothing`: ", n)
     return nothing
 end
 

@@ -1,8 +1,19 @@
+# This file defines the physical plan language. This language should fully define the 
+# execution plan without any ambiguity.
+
 abstract type TensorExpression end
 TensorId = String
 
-struct InputTensorKernel <: TensorExpression
+# This defines the list of access protocols allowed by the Finch API
+@enum AccessProtocol t_walk = 1 t_fast_walk = 2 t_lead = 3 t_follow = 4 t_gallop = 5
+
+# The set of allowed level formats provided by the Finch API
+@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
+
+struct InputExpr <: TensorExpression
     tensor_id::TensorId
+    input_indices::Vector{String}
+    input_protocols::Vector{AccessProtocol}
     stats::TensorStats
 end
 
@@ -64,11 +75,6 @@ function printExpression(exp::TensorExpression)
     end
 end
 
-# This defines the list of access protocols allowed by the Finch API
-@enum AccessProtocol t_walk = 1 t_fast_walk = 2 t_lead = 3 t_follow = 4 t_gallop = 5
-
-# The set of allowed level formats provided by the Finch API
-@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
 
 # The struct containing all information needed to compute a small tensor kernel using the finch compiler.
 # This will be the output of the kernel optimizer
@@ -76,8 +82,6 @@ struct TensorKernel
     kernel_root::TensorExpression
     stats::TensorStats
     input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}} 
-    input_indices::Dict{TensorId, Vector{String}}
-    input_protocols::Dict{TensorId, Vector{AccessProtocol}}
     
     output_indices::Vector{String}
     output_formats::Vector{LevelFormat}

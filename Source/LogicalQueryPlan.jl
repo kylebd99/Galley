@@ -47,7 +47,7 @@ function e_graph_to_expr_tree(g::EGraph)
     return e_class_to_expr_node(g, g[g.root])
 end
 
-function e_class_to_expr_node(g::EGraph, e::EClass)
+function e_class_to_expr_node(g::EGraph, e::EClass; verbose=0)
     n = e[1]
     stats = getdata(e, :TensorStatsAnalysis)
     children = []

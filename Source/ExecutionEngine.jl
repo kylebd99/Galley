@@ -46,23 +46,23 @@ function determine_default_value(kernel::TensorKernel)
     default_value = nothing
     for node_id in reverse(range(0, length(keys(node_dict))-1))
         node, child_node_ids = node_dict[node_id]
-        if typeof(node) == InputTensorKernel
+        if node isa InputExpr
             if kernel.input_tensors[node.tensor_id] isa Number
                 node_dict[node_id] = kernel.input_tensors[node.tensor_id]
             else
                 node_dict[node_id] = Finch.default(kernel.input_tensors[node.tensor_id])
             end
-        elseif typeof(node) == OperatorExpr
+        elseif node isa OperatorExpr
             child_vals = [node_dict[x] for x in child_node_ids]
             node_dict[node_id] = node.op(child_vals...)
         end
         if node_id == 0
-            if typeof(node) == AggregateExpr
+            if node isa AggregateExpr
                 default_value = node_dict[child_node_ids[1]]
             else
                 default_value = node_dict[node_id]
             end
-        elseif typeof(node) == AggregateExpr
+        elseif node isa AggregateExpr
             throw(ArgumentError("Cannot have an aggregate in the middle of a tensor kernel. They must always occur as the outermost operator."))
         end
     end
@@ -100,30 +100,6 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         end
     end
     verbose >= 2 && println(lvl)
-    loop_order = [Finch.FinchNotation.index_instance(Symbol(i)) for i in kernel.loop_order]
-    output_indices = [Finch.FinchNotation.index_instance(Symbol(i)) for i in kernel.output_indices]
-    output_dimensions = Vector{Int64}()
-    for index in kernel.output_indices
-        for tensor_id in keys(kernel.input_indices)
-            input_dim_number = findfirst(==(index), kernel.input_indices[tensor_id])
-            if isa(input_dim_number, Int64)
-                push!(output_dimensions, size(kernel.input_tensors[tensor_id])[input_dim_number])
-                break
-            end
-        end
-    end
-    output_default = determine_default_value(kernel)
-    output_tensor = initialize_tensor(kernel.output_formats, output_dimensions, output_default)
-
-    tensor_accesses = Dict()
-    for tensor_id in keys(kernel.input_tensors)
-        if kernel.input_tensors[tensor_id] isa Number
-            tensor_accesses[tensor_id] =  Finch.FinchNotation.literal_instance(kernel.input_tensors[tensor_id])
-            continue
-        end
-        kernel.input_tensors[tensor_id] = kernel.input_tensors[tensor_id]
-        tensor_accesses[tensor_id] = initialize_access(tensor_id, kernel.input_tensors[tensor_id], kernel.input_indices[tensor_id], kernel.input_protocols[tensor_id])
-    end
 
     nodes_to_visit = Queue{Tuple{TensorExpression, Int64}}()
     node_dict = Dict()
@@ -146,28 +122,51 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         node_dict[cur_node_id] = (cur_node, child_node_ids)
     end
 
+    index_dims = Dict()
     agg_op = nothing
     kernel_prgm = nothing
     for node_id in reverse(range(0, length(keys(node_dict))-1))
         node, child_node_ids = node_dict[node_id]
-        if typeof(node) == InputTensorKernel
-            node_dict[node_id] = tensor_accesses[node.tensor_id]
-        elseif typeof(node) == OperatorExpr
+        if node isa InputExpr
+            tensor_id = node.tensor_id
+            if kernel.input_tensors[tensor_id] isa Number
+                node_dict[node_id] = Finch.FinchNotation.literal_instance(kernel.input_tensors[tensor_id])
+            else
+                for idx in node.input_indices
+                    if idx in keys(index_dims) && index_dims[idx] != node.stats.dim_size[idx]
+                        throw(ArgumentError("Error: Tensors cannot be joined on indices with different dimension sizes."))
+                    end
+                    index_dims[idx] = node.stats.dim_size[idx]
+                end
+                node_dict[node_id] = initialize_access(tensor_id, kernel.input_tensors[tensor_id], node.input_indices, node.input_protocols)
+            end
+        elseif node isa OperatorExpr
             child_prgms = [node_dict[x] for x in child_node_ids]
             op = node.op
             node_dict[node_id] = @finch_program_instance op(child_prgms...)
         end
         if node_id == 0
-            if typeof(node) == AggregateExpr
+            if node isa AggregateExpr
                 kernel_prgm = node_dict[child_node_ids[1]]
                 agg_op = node.op
             else
                 kernel_prgm = node_dict[node_id]
             end
-        elseif typeof(node) == AggregateExpr
+        elseif node isa AggregateExpr
             throw(ArgumentError("Cannot have an aggregate in the middle of a tensor kernel. They must always occur as the outermost operator."))
         end
     end
+
+    loop_order = [Finch.FinchNotation.index_instance(Symbol(i)) for i in kernel.loop_order]
+    output_indices = [Finch.FinchNotation.index_instance(Symbol(i)) for i in kernel.output_indices]
+    output_dimensions = Vector{Int64}()
+    for idx in kernel.output_indices
+        push!(output_dimensions, index_dims[idx])
+               
+    end
+    output_default = determine_default_value(kernel)
+    output_tensor = initialize_tensor(kernel.output_formats, output_dimensions, output_default)
+
     if agg_op === nothing
         default_value = Finch.FinchNotation.literal_instance(output_default)
         full_prgm = @finch_program_instance (output_tensor .= $default_value; @loop loop_order... output_tensor[output_indices...] = $kernel_prgm)
@@ -181,6 +180,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             kernel.input_tensors[tensor_id] = nothing
         end
     end
+
     output_tensor = Finch.execute(full_prgm).output_tensor
     verbose >= 2 && println("Kernel: ", kernel.kernel_root)
     if verbose >= 1

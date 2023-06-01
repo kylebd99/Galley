@@ -32,36 +32,49 @@ struct OperatorExpr <: TensorExpression
     inputs::Vector{<:TensorExpression}
 end
 
+
+# The reorder struct inserts a blocking operation which changes the input's 
+# layout/order of its indices.
+struct ReorderExpr <: TensorExpression
+    index_order::Vector{String}
+    input::TensorExpression
+end
+
 function printExpression(exp::TensorExpression)
-    if isa(exp, AggregateExpr)
+    if exp isa AggregateExpr
         print(exp.op,"(")
-        printExpression(exp.subExpression)
-        print(";", exp.aggregateVariable, ")")
-    elseif isa(exp, OperatorExpr)
+        printExpression(exp.input)
+        print(";", exp.aggregate_indices, ")")
+    elseif exp isa OperatorExpr
         prefix = ""
         print(exp.op,"(")
-        for subExp in exp.inputs
+        for input in exp.inputs
             print(prefix)
-            printExpression(subExp)
+            printExpression(input)
             prefix = ","
         end
         print(")")
-    elseif isa(exp, Tensor)
-        print(exp.TensorID, "(")
+    elseif exp isa ReorderExpr
         prefix = ""
-        for var in exp.variables
+        print("Reorder(", exp.index_order)
+        printExpression(exp.input)
+        print(")")
+    elseif exp isa InputExpr
+        print(exp.tensor_id, "[")
+        prefix = ""
+        for i in 1:length(exp.input_indices)
             print(prefix)
-            print(var)
+            print(exp.input_indices[i], "::", exp.input_protocols[i])
             prefix = ","
         end
-        print(")")
+        print("]")
     end
 end
 
 
 # The struct containing all information needed to compute a small tensor kernel using the finch compiler.
 # This will be the output of the kernel optimizer
-struct TensorKernel 
+struct TensorKernel
     kernel_root::TensorExpression
     stats::TensorStats
     input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}} 

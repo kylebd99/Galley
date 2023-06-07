@@ -4,6 +4,7 @@ using Metatheory
 using Metatheory.EGraphs
 using TermInterface
 using PrettyPrinting
+using AutoHashEquals
 include("LogicalQueryPlan.jl")
 
 
@@ -35,8 +36,8 @@ function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector)
     return issorted(indexin(indices, index_order))
 end
 
-function needsReorder(expr, global_index_order)
-    return expr isa InputTensor && !isSortedWRTIndexOrder(expr.stats.indices, global_index_order)
+function needsReorder(expr, index_order)
+    return expr isa InputTensor && !isSortedWRTIndexOrder(expr.stats.indices, index_order)
 end
 
 function needsGlobalOrder(expr)
@@ -56,8 +57,8 @@ function insertInputReorders(expr, global_index_order)
 end
 
 
-function removeUnecessaryReorders(expr, global_index_order)
-    remove_reorder_rule = @rule Reorder(~x, ~global_index_order) => ~x where !needsReorder(x, global_index_order)
+function removeUnecessaryReorders(expr)
+    remove_reorder_rule = @rule Reorder(~x, ~index_order) => ~x where !needsReorder(x, index_order)
     remove_reorder_rule = Metatheory.Postwalk(Metatheory.PassThrough(remove_reorder_rule))
     return remove_reorder_rule(expr)
 end
@@ -73,13 +74,13 @@ function mergeAggregates(expr)
     end
 end
 
-function EGraphs.isequal(x::TensorStats, y::TensorStats)
-    if x.indices == y.indices && x.dim_size==y.dim_size && x.default_value == y.default_value
-        return true
-    else 
-        return false
-    end
-end
+#function EGraphs.isequal(x::TensorStats, y::TensorStats)
+#    if x.indices == y.indices && x.dim_size==y.dim_size && x.default_value == y.default_value
+#        return true
+#    else 
+#        return false
+#    end
+#end
 
 
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)    
@@ -164,7 +165,7 @@ end
 function reduceTensorStats(op, indexStats, stats::TensorStats)
     indices = relativeSort(intersect(stats.indices, indexStats.indices), stats.index_order)
     new_default_value = nothing
-    if identity_dict[:($op)] == stats.default_value
+    if haskey(identity_dict, :($op)) && identity_dict[:($op)] == stats.default_value
         new_default_value = stats.default_value 
     elseif op == +
         new_default_value = stats.default_value * prod([stats.dim_size[x] for x in indices])
@@ -287,7 +288,7 @@ simple_cardinality_cost_function(n::ENodeLiteral, g::EGraph) = 0
 doesntShareIndices(is, a) = false
 
 function doesntShareIndices(is::Vector, a::EClass)
-    return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0
+    return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0 
 end
 
 function doesntShareIndices(is::Vector, a::InputTensor) 
@@ -295,6 +296,9 @@ function doesntShareIndices(is::Vector, a::InputTensor)
 end
 
 function doesntShareIndices(a::EClass, b::EClass) 
+    if length(getdata(a, :TensorStatsAnalysis, nothing).indices) == 0 || length(getdata(b, :TensorStatsAnalysis, nothing).indices) == 0
+        return false
+    end
     return length(intersect(getdata(a, :TensorStatsAnalysis, nothing).indices, getdata(b, :TensorStatsAnalysis, nothing).indices)) == 0
 end
 
@@ -336,10 +340,11 @@ basic_rewrites = @theory a b c d f is js begin
 
     # Handling Simple Duplicates
     MapJoin(+, a, a) == MapJoin(*, a, 2)
-    
+
+    Reorder(~x, ~index_order) => ~x where IsSortedWRTIndexOrder(getdata(x, :TensorStatsAnalysis, nothing).indices, index_order)
+
     # Reduction removal, need a dimension->size dict
     #ReduceDim(+, is::Set, a) => :(MapJoin(*, a, dim(is)))
-    #ReduceDim(+, is::Set, MapJoin(*, a, b)) => :(ReduceDim($+,  $(intersect(is, getdata(a, :IndexAnalysis, nothing))), MapJoin($*, $a, ReduceDim($+, $(setdiff(is, getdata(a, :IndexAnalysis, nothing))), $b))))
 end
 
 function e_graph_to_expr_tree(g::EGraph, index_order)

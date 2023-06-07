@@ -23,7 +23,6 @@ function spartan(expr; optimize=true, verbose=2, global_index_order=[])
     end
     expr = insertInputReorders(expr, global_index_order)
     expr = insertGlobalOrders(expr, global_index_order)
-    expr = removeUnecessaryReorders(expr, global_index_order)
     if optimize
         g = EGraph(expr)
         analyze!(g, :TensorStatsAnalysis)
@@ -42,8 +41,8 @@ function spartan(expr; optimize=true, verbose=2, global_index_order=[])
         pprintln(expr)
     end
     g = EGraph(expr)
-
     analyze!(g, :TensorStatsAnalysis)
+
     expr_tree = label_expr_parents!(nothing, e_graph_to_expr_tree(g, global_index_order))
     tensor_kernel = expr_to_kernel(expr_tree, global_index_order, verbose = verbose)
 

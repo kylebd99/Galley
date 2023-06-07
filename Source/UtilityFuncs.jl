@@ -17,12 +17,17 @@ function initialize_tensor(formats::Vector{LevelFormat}, dims::Vector{Int64}, de
 end
 
 
-function uniform_fiber(shape, sparsity; formats = [], default_value = 0)
+
+
+function uniform_fiber(shape, sparsity; formats = [], default_value = 0, non_default_value = 1)
     if formats == []
         formats = [t_sparse_list for _ in 1:length(shape)]
     end
     fiber = initialize_tensor(formats, shape, default_value)
-    copyto!(fiber, fsprand(Bool, Tuple(shape), sparsity))
+    I = Finch.fsprand_helper(Random.default_rng(), Tuple(shape), sparsity)
+    V = [non_default_value for _ in 1:length(I[1])]
+    data  = Fiber(SparseCOO{length(I), Tuple{map(eltype, I)...}}(Element{default_value}(V), Tuple(shape), I, [1, length(V) + 1]))
+    copyto!(fiber, data)
     return fiber
 end
 

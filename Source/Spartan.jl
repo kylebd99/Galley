@@ -6,15 +6,13 @@ include("LogicalOptimizer.jl")
 include("ExecutionEngine.jl")
 
 function get_index_order(expr)
-    g = EGraph(expr)
-    analyze!(g, :TensorStatsAnalysis)
-    all_indices = Set()
-    for class in values(g.classes)
-        for idx in getdata(class, :TensorStatsAnalysis).indices
-            push!(all_indices, idx)
-        end
+    if expr isa Vector{String}
+        return expr
+    elseif expr isa LogicalPlanNode
+        return sort(union([get_index_order(child) for child in expr.args]...))
+    else
+        return []
     end
-    return sort(collect(all_indices))
 end
 
 function spartan(expr; optimize=true, verbose=2, global_index_order=[])
@@ -24,8 +22,10 @@ function spartan(expr; optimize=true, verbose=2, global_index_order=[])
     expr = insertInputReorders(expr, global_index_order)
     expr = insertGlobalOrders(expr, global_index_order)
     expr = removeUnecessaryReorders(expr, global_index_order)
+
     if optimize
         g = EGraph(expr)
+        settermtype!(g, LogicalPlanNode)
         analyze!(g, :TensorStatsAnalysis)
         params = SaturationParams(timeout=100, eclasslimit=4000)
         saturation_report = saturate!(g, basic_rewrites, params);
@@ -42,9 +42,10 @@ function spartan(expr; optimize=true, verbose=2, global_index_order=[])
         pprintln(expr)
     end
     g = EGraph(expr)
-
+    settermtype!(g, LogicalPlanNode)
     analyze!(g, :TensorStatsAnalysis)
-    expr_tree = label_expr_parents!(nothing, e_graph_to_expr_tree(g, global_index_order))
+
+    expr_tree = e_graph_to_expr_tree(g, global_index_order)
     tensor_kernel = expr_to_kernel(expr_tree, global_index_order, verbose = verbose)
 
     result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)

@@ -35,11 +35,6 @@ function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector)
     return issorted(indexin(indices, index_order))
 end
 
-needsReorder(expr, index_order) = false
-function needsReorder(expr::LogicalPlanNode, index_order)
-    return expr.head == InputTensor && !isSortedWRTIndexOrder(expr.args[2], index_order)
-end
-
 function addGlobalOrder(x::LogicalPlanNode, global_index_order)
     return LogicalPlanNode(x.head, [x.args..., global_index_order], nothing)
 end
@@ -48,6 +43,11 @@ function insertGlobalOrders(expr, global_index_order)
     global_order_rule = @rule ~x => addGlobalOrder(x, global_index_order) where (x isa LogicalPlanNode && x.head == InputTensor)
     global_order_rule = Metatheory.Postwalk(Metatheory.PassThrough(global_order_rule))
     return global_order_rule(expr)
+end
+
+needsReorder(expr, index_order) = false
+function needsReorder(expr::LogicalPlanNode, index_order)
+    return expr.head == InputTensor && !isSortedWRTIndexOrder(expr.args[1], index_order)
 end
 
 function insertInputReorders(expr, global_index_order)
@@ -235,10 +235,9 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
                             stats.cardinality, stats.default_value, index_order)
     elseif exprhead(n) == :call && operation(n) == InputTensor
         child_eclasses = arguments(n)
-        tensor_id = g[child_eclasses[1]][1].value
-        indices = g[child_eclasses[2]][1].value
-        fiber = g[child_eclasses[3]][1].value
-        index_order = g[child_eclasses[4]][1].value
+        indices = g[child_eclasses[1]][1].value
+        fiber = g[child_eclasses[2]][1].value
+        index_order = g[child_eclasses[3]][1].value
         return TensorStats(indices, fiber, index_order)
     end
 

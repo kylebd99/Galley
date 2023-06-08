@@ -38,7 +38,7 @@ end
 ReduceDim(op, indices, input) = LogicalPlanNode(ReduceDim, [op, indices, input], nothing)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
-InputTensor(tensor_id::String, indices::Vector{String}, fiber::Fiber)  = LogicalPlanNode(InputTensor, [tensor_id, indices, fiber], nothing)
+InputTensor(indices::Vector{String}, fiber::Fiber)  = LogicalPlanNode(InputTensor, [indices, fiber], nothing)
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
 

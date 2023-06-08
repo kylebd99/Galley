@@ -2,7 +2,6 @@
 # It does this by gathering simple statistics about the data then doing a cost-based optimization based on equality saturation. 
 using Metatheory
 using Metatheory.EGraphs
-using TermInterface
 using PrettyPrinting
 using AutoHashEquals
 include("LogicalQueryPlan.jl")
@@ -32,39 +31,40 @@ function relativeSort(indices, index_order; rev=false)
     end
 end
 
-function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector)
+function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector{String})
     return issorted(indexin(indices, index_order))
 end
 
-function needsReorder(expr, index_order)
-    return expr isa InputTensor && !isSortedWRTIndexOrder(expr.stats.indices, index_order)
+needsReorder(expr, index_order) = false
+function needsReorder(expr::LogicalPlanNode, index_order)
+    return expr.head == InputTensor && !isSortedWRTIndexOrder(expr.args[2], index_order)
 end
 
-function needsGlobalOrder(expr)
-    return expr isa InputTensor
+function addGlobalOrder(x::LogicalPlanNode, global_index_order)
+    return LogicalPlanNode(x.head, [x.args..., global_index_order], nothing)
 end
 
 function insertGlobalOrders(expr, global_index_order)
-    global_order_rule = @rule ~x => :($(InputTensor(x.tensor_id, x.fiber, TensorStats(x.stats.indices, x.stats.dim_size, x.stats.cardinality, x.stats.default_value, global_index_order)))) where needsGlobalOrder(x)
+    global_order_rule = @rule ~x => addGlobalOrder(x, global_index_order) where (x isa LogicalPlanNode && x.head == InputTensor)
     global_order_rule = Metatheory.Postwalk(Metatheory.PassThrough(global_order_rule))
     return global_order_rule(expr)
 end
 
 function insertInputReorders(expr, global_index_order)
-    reorder_rule = @rule ~x => :(Reorder($x, $global_index_order)) where needsReorder(x, global_index_order)
+    reorder_rule = @rule ~x => Reorder(x, global_index_order) where (needsReorder(x, global_index_order))
     reorder_rule = Metatheory.Postwalk(Metatheory.PassThrough(reorder_rule))
     return reorder_rule(expr)
 end
 
-
-function removeUnecessaryReorders(expr)
-    remove_reorder_rule = @rule Reorder(~x, ~index_order) => ~x where !needsReorder(x, index_order)
-    remove_reorder_rule = Metatheory.Postwalk(Metatheory.PassThrough(remove_reorder_rule))
-    return remove_reorder_rule(expr)
+function removeUnecessaryReorders(expr, global_index_order)
+    if expr.head == Reorder && isSortedWRTIndexOrder(expr.args[2], global_index_order) 
+        return expr.args[1]
+    end
+    return expr
 end
 
 function mergeAggregates(expr)
-    merge_rule = @rule op idx_1 idx_2 x  ReduceDim(op, idx_1, ReduceDim(op, idx_2, x)) => :(ReduceDim($op, $(union(idx_1, idx_2)), $x))
+    merge_rule = @rule op idx_1 idx_2 x  ReduceDim(op, idx_1, ReduceDim(op, idx_2, x)) => ReduceDim(op, union(idx_1, idx_2), x)
     merge_rule = Metatheory.Postwalk(Metatheory.PassThrough(merge_rule))
     new_expr = merge_rule(expr)
     if new_expr === nothing
@@ -74,19 +74,9 @@ function mergeAggregates(expr)
     end
 end
 
-#function EGraphs.isequal(x::TensorStats, y::TensorStats)
-#    if x.indices == y.indices && x.dim_size==y.dim_size && x.default_value == y.default_value
-#        return true
-#    else 
-#        return false
-#    end
-#end
-
 
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)    
-    if n.value isa InputTensor
-        return n.value.stats
-    elseif n.value isa Set 
+    if n.value isa Set 
         return TensorStats(collect(n.value), Dict(), 0, nothing)
     elseif n.value isa Vector 
         return TensorStats(n.value, Dict(), 0, nothing)
@@ -119,7 +109,6 @@ function mergeTensorStatsJoin(op, lstats::TensorStats, rstats::TensorStats)
     l_prob_non_default = (lstats.cardinality/l_dim_space_size) 
     r_prob_non_default = (rstats.cardinality/r_dim_space_size)
     new_cardinality = l_prob_non_default * r_prob_non_default * new_dim_space_size
-
     return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
 end
 
@@ -144,7 +133,6 @@ function mergeTensorStatsUnion(op, lstats::TensorStats, rstats::TensorStats)
     l_prob_default = (1 - lstats.cardinality/l_dim_space_size) 
     r_prob_default = (1 - rstats.cardinality/r_dim_space_size) 
     new_cardinality = (1 - l_prob_default * r_prob_default) * new_dim_space_size
-
     return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
 end
 
@@ -202,14 +190,12 @@ end
 
 # This analysis function could support general statistics merging
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
-
-    if exprhead(n) == :call && operation(n) == :MapJoin
+    if exprhead(n) == :call && operation(n) == MapJoin
         # Get the left and right child eclasses
         child_eclasses = arguments(n)
         op = g[child_eclasses[1]][1].value
         l = g[child_eclasses[2]]
         r = g[child_eclasses[3]]
-        
         lstats = getdata(l, :TensorStatsAnalysis, nothing)
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
         # If one of the arguments is a scalar, return the other argument's stats,
@@ -221,7 +207,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         else
             return mergeTensorStats(op, lstats, rstats)
         end
-    elseif exprhead(n) == :call && operation(n) == :ReduceDim
+    elseif exprhead(n) == :call && operation(n) == ReduceDim
         op = operation(n)
         # Get the left and right child eclasses
         child_eclasses = arguments(n)
@@ -234,7 +220,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
         return reduceTensorStats(op, indices, rstats)
     
-    elseif exprhead(n) == :call && operation(n) == :Reorder
+    elseif exprhead(n) == :call && operation(n) == Reorder
         op = operation(n)
         # Get the left and right child eclasses
         child_eclasses = arguments(n)
@@ -247,8 +233,19 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         sorted_indices = relativeSort(stats.indices, index_order)
         return TensorStats(sorted_indices, stats.dim_size, 
                             stats.cardinality, stats.default_value, index_order)
+    elseif exprhead(n) == :call && operation(n) == InputTensor
+        child_eclasses = arguments(n)
+        tensor_id = g[child_eclasses[1]][1].value
+        indices = g[child_eclasses[2]][1].value
+        fiber = g[child_eclasses[3]][1].value
+        index_order = g[child_eclasses[4]][1].value
+        return TensorStats(indices, fiber, index_order)
     end
+
     println("Warning! The following Tensor Kernel returned a `TensorStatsAnalysis` of `nothing`: ", n)
+    println(exprhead(n))
+    println(exprhead(n) == :call)
+    println(typeof(operation(n)), "   ", typeof(:MapJoin))
     return nothing
 end
 
@@ -282,17 +279,13 @@ function simple_cardinality_cost_function(n::ENodeTerm, g::EGraph)
     return cost
 end
 
-# All literal expressions (e.g `a`, 123, 0.42, "hello") have cost 1
+# All literal expressions have cost 0
 simple_cardinality_cost_function(n::ENodeLiteral, g::EGraph) = 0
 
 doesntShareIndices(is, a) = false
 
 function doesntShareIndices(is::Vector, a::EClass)
     return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0 
-end
-
-function doesntShareIndices(is::Vector, a::InputTensor) 
-    return length(intersect(is, a.stats.indices)) == 0
 end
 
 function doesntShareIndices(a::EClass, b::EClass) 
@@ -308,10 +301,10 @@ end
 # Additionally, it doesn't allow cross-products to reduce the search space.
 basic_rewrites = @theory a b c d f is js begin
     # Fuse reductions
-    ReduceDim(f, is, ReduceDim(f, js, a)) => :(ReduceDim($f, $(union(is, js)), $a))
+    ReduceDim(f, is, ReduceDim(f, js, a)) => ReduceDim(f, union(is, js), a)
 
     # UnFuse reductions
-    ReduceDim(f, is, a) => :(ReduceDim($f, $([first(is)]), ReduceDim($f, $(setdiff(is, [first(is)])), $a))) where (length(is) > 1)
+    ReduceDim(f, is, a) => ReduceDim(f, is[1:1], ReduceDim(f, is[2:length(is)], a)) where (length(is) > 1)
 
     # Reorder Reductions
     ReduceDim(f, is, ReduceDim(f, js, a)) == ReduceDim(f, js, ReduceDim(f, is, a))
@@ -322,26 +315,24 @@ basic_rewrites = @theory a b c d f is js begin
     ReduceDim(+, is, MapJoin(+, a, b)) == MapJoin(+, ReduceDim(+, is, a), ReduceDim(+, is, b))
 
     # Associativity
-    MapJoin(+, a, MapJoin(+, b, c)) =>  :(MapJoin($+, MapJoin($+, $a, $b), $c)) where (!doesntShareIndices(b, a))
-    MapJoin(*, a, MapJoin(*, b, c)) => :(MapJoin($*, MapJoin($*, $a, $b), $c)) where (!doesntShareIndices(b, a))
+    MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesntShareIndices(b, a))
+    MapJoin(*, a, MapJoin(*, b, c)) => MapJoin(*, MapJoin(*, a, b), c) where (!doesntShareIndices(b, a))
     
     # Distributivity
     MapJoin(*, a, MapJoin(+, b, c)) == MapJoin(+, MapJoin(*, a, b), MapJoin(*, a, c))
 
     # Reduction PushUp
-    MapJoin(*, a, ReduceDim(+, is::Set, b)) => :(ReduceDim($+, $is, MapJoin($*, $a, $b))) where (doesntShareIndices(is, a))
+    MapJoin(*, a, ReduceDim(+, is::Set, b)) => ReduceDim(+, is, MapJoin(*, a, b)) where (doesntShareIndices(is, a))
 
     # Reduction PushDown
-    ReduceDim(+, is, MapJoin(*, a, b)) => :(MapJoin($*, $a, ReduceDim($+, $is, $b))) where (doesntShareIndices(is, a))
+    ReduceDim(+, is, MapJoin(*, a, b)) => MapJoin(*, a, ReduceDim(+, is, b)) where (doesntShareIndices(is, a))
 
     # Handling Squares
     MapJoin(^, a, 2) == MapJoin(*, a, a)
-    MapJoin(^, MapJoin(^, a, c), d) => :(MapJoin($^, $a, $(c*d))) where (c isa Number && d isa Number)
+    MapJoin(^, MapJoin(^, a, c), d) => MapJoin(^, a, (c*d)) where (c isa Number && d isa Number)
 
     # Handling Simple Duplicates
     MapJoin(+, a, a) == MapJoin(*, a, 2)
-
-    Reorder(~x, ~index_order) => ~x where IsSortedWRTIndexOrder(getdata(x, :TensorStatsAnalysis, nothing).indices, index_order)
 
     # Reduction removal, need a dimension->size dict
     #ReduceDim(+, is::Set, a) => :(MapJoin(*, a, dim(is)))
@@ -359,8 +350,6 @@ function e_class_to_expr_node(g::EGraph, e::EClass, index_order; verbose=0)
         for c in arguments(n)
             if g[c][1] isa ENodeTerm
                 push!(children, e_class_to_expr_node(g, g[c], index_order))
-            elseif g[c][1].value isa InputTensor
-                push!(children, g[c][1].value)
             elseif g[c][1].value isa Number
                 push!(children, Scalar(g[c][1].value, getdata(g[c], :TensorStatsAnalysis)))            
             else
@@ -368,23 +357,6 @@ function e_class_to_expr_node(g::EGraph, e::EClass, index_order; verbose=0)
             end
         end
     end
-    nodeType = eval(operation(n))
-    return nodeType(children..., stats, nothing)
-end
 
-function label_expr_parents!(parent, cur_node::LogicalPlanNode)
-    cur_node.parent = parent
-    if cur_node isa ReduceDim && cur_node.input isa LogicalPlanNode
-            label_expr_parents!(cur_node, cur_node.input)
-    elseif cur_node isa Reorder && cur_node.input isa LogicalPlanNode
-            label_expr_parents!(cur_node, cur_node.input)
-    elseif cur_node isa MapJoin
-        if cur_node.left_input isa LogicalPlanNode
-            label_expr_parents!(cur_node, cur_node.left_input)
-        end
-        if cur_node.right_input isa LogicalPlanNode
-            label_expr_parents!(cur_node, cur_node.right_input)
-        end
-    end
-    return cur_node
+    return LogicalPlanNode(operation(n), children, stats)
 end

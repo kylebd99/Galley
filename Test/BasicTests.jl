@@ -15,7 +15,7 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["i", "j"], b_fiber)
-        spartan_matrix = spartan(:(MapJoin($*, $a, $b)), optimize=false, verbose=verbose)
+        spartan_matrix = spartan(MapJoin(*, a, b), optimize=false, verbose=verbose)
         correct_matrix = a_matrix .* b_matrix
         @test spartan_matrix == correct_matrix
     end
@@ -29,7 +29,7 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["i", "j"], b_fiber)
-        spartan_matrix = spartan(:(MapJoin($+, $a, $b)), optimize=false, verbose=verbose)
+        spartan_matrix = spartan(MapJoin(+, a, b), optimize=false, verbose=verbose)
         correct_matrix = a_matrix .+ b_matrix
         @test spartan_matrix == correct_matrix
     end
@@ -44,7 +44,7 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["i", "j"], b_fiber)
-        spartan_matrix = spartan(:(MapJoin($f, $a, $b)), optimize=false, verbose=verbose)
+        spartan_matrix = spartan(MapJoin(f, a, b), optimize=false, verbose=verbose)
         correct_matrix = [0 0; 0 0]
         @test spartan_matrix == correct_matrix
     end
@@ -58,7 +58,7 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["j", "i"], b_fiber)
-        spartan_matrix = spartan(:(MapJoin($*, $a, $b)), optimize=false, verbose=verbose)
+        spartan_matrix = spartan(MapJoin(*, a, b), optimize=false, verbose=verbose)
         correct_matrix = a_matrix .* (b_matrix')
         @test spartan_matrix == correct_matrix
     end
@@ -72,7 +72,7 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["i", "j"], b_fiber)
-        spartan_matrix = spartan(:(Reorder(MapJoin($*, $a, $b), $["j", "i"])), optimize=false, verbose=verbose)
+        spartan_matrix = spartan(Reorder(MapJoin(*, a, b), ["j", "i"]), optimize=false, verbose=verbose)
         correct_matrix = [1 0; 1 0]
         @test spartan_matrix == correct_matrix
     end
@@ -86,7 +86,7 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["j", "k"], b_fiber)
-        spartan_matrix = spartan(:(ReduceDim($+, $(["j"]), MapJoin($*, $a, $b))), optimize=false, verbose=2)
+        spartan_matrix = spartan(ReduceDim(+, ["j"], MapJoin(*, a, b)), optimize=false, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
         @test spartan_matrix == correct_matrix
     end
@@ -102,9 +102,8 @@ verbose = 0
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b = InputTensor("b", ["j", "k"], b_fiber)
-        spartan_matrix = spartan(:(ReduceDim($f, $(["j"]), MapJoin($*, $a, $b))), optimize=false, verbose=2)
+        spartan_matrix = spartan(ReduceDim(f, ["j"], MapJoin(*, a, b)), optimize=false, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
         @test spartan_matrix == correct_matrix
     end
-
 end

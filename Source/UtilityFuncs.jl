@@ -1,4 +1,5 @@
 using Finch
+using Random
 
 function initialize_tensor(formats::Vector{LevelFormat}, dims::Vector{Int64}, default_value)
     B = Element(default_value)

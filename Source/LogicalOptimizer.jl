@@ -31,7 +31,7 @@ function relativeSort(indices, index_order; rev=false)
     end
 end
 
-function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector{String})
+function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector)
     return issorted(indexin(indices, index_order))
 end
 

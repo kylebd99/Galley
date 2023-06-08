@@ -42,6 +42,16 @@ InputTensor(tensor_id::String, indices::Vector{String}, fiber::Fiber)  = Logical
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
 
+function declare_binary_operator(f)
+    @eval (::typeof($f))(l::LogicalPlanNode, r::LogicalPlanNode) = MapJoin($f, l, r)
+    @eval (::typeof($f))(l::LogicalPlanNode, r) = MapJoin($f, l, r)
+    @eval (::typeof($f))(l, r::LogicalPlanNode) = MapJoin($f, l, r)
+end
+declare_binary_operator(*)
+declare_binary_operator(+)
+declare_binary_operator(min)
+declare_binary_operator(max)
+
 TermInterface.istree(::LogicalPlanNode) = true
 TermInterface.operation(node::LogicalPlanNode) = node.head
 TermInterface.arguments(node::LogicalPlanNode) = node.args
@@ -55,39 +65,42 @@ function EGraphs.egraph_reconstruct_expression(::Type{LogicalPlanNode}, op, args
     return LogicalPlanNode(op, args, metadata)
 end
 
-function pprintLogicalPlan(io::IO, n::LogicalPlanNode, depth::Int64)
-    print(io, "\n")
+function logicalPlanToString(n::LogicalPlanNode, depth::Int64)
+    output = ""
+    if depth > 0
+        output = "\n"
+    end
     left_space = ""
     for _ in 1:depth
         left_space *= "   "
     end
-    print(io, left_space)
+    output *= left_space
     if n.head == InputTensor
-        print(io, "InputTensor(")
+        output *= "InputTensor("
     elseif n.head == ReduceDim 
-        print(io, "ReduceDim(")
+        output *= "ReduceDim("
     elseif n.head == MapJoin 
-        print(io, "MapJoin(")
+        output *= "MapJoin("
     elseif n.head == Reorder 
-        print(io, "Reorder(")
+        output *= "Reorder("
     elseif n.head == Scalar
-        print(io, "Scalar(")
+        output *= "Scalar("
     end
     prefix = ""
     for arg in n.args
-        print(io, prefix)
+        output *= prefix
         if arg isa LogicalPlanNode
-            pprintLogicalPlan(io, arg, depth + 1)
+            output *= logicalPlanToString(arg, depth + 1)
         elseif arg isa Fiber
-            print(io, "FIBER")
+            output *= "FIBER"
         else
-            print(io, arg)
+            output *= string(arg)
         end
         prefix =","
     end
-    print(io, ")")
+    output *= ")"
 end
 
 function Base.show(io::IO, input::LogicalPlanNode) 
-    pprintLogicalPlan(io, input, 0)
+    print(io, logicalPlanToString(input, 0))
 end 

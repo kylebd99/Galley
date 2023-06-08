@@ -37,9 +37,9 @@ function spartan(expr; optimize=true, verbose=2, global_index_order=[])
     expr = mergeAggregates(expr)
 
     if verbose >= 1
-        optimize && println("Optimized Expression: ")
-        !optimize && println("Expression: ")
-        pprintln(expr)
+        optimize && print("Optimized Expression: ")
+        !optimize && print("Expression: ")
+        println(expr)
     end
     g = EGraph(expr)
     settermtype!(g, LogicalPlanNode)

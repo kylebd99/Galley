@@ -14,7 +14,7 @@ using TermInterface
 end
 
 TensorStats(indices, dim_size, cardinality, default_value) = TensorStats(indices, dim_size, cardinality, default_value, nothing)
-function TensorStats(indices::Vector{String}, fiber::Fiber, global_index_order)
+function TensorStats(indices::Vector, fiber::Fiber, global_index_order)
     shape_tuple = size(fiber)
     dim_size = Dict()
     for i in 1:length(indices)
@@ -29,7 +29,7 @@ end
 # Here, we define the internal expression type that we use to describe logical query plans.
 # This is the expression type that we will optimize using Metatheory.jl, so it has to conform to 
 # the TermInterface specs.
-struct LogicalPlanNode
+mutable struct LogicalPlanNode
     head::Any
     args::Vector{Any}
     stats::Any
@@ -38,9 +38,12 @@ end
 ReduceDim(op, indices, input) = LogicalPlanNode(ReduceDim, [op, indices, input], nothing)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
-InputTensor(indices::Vector{String}, fiber::Fiber)  = LogicalPlanNode(InputTensor, [indices, fiber], nothing)
+InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [[""], fiber], nothing)
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
+OutTensor() = LogicalPlanNode(OutTensor, [], nothing)
+# This plan node generally occurs when an intermediate is re-used and new indices are applied. 
+RenameIndices(input, indices) = LogicalPlanNode(RenameIndices, [input, indices], nothing) 
 
 function declare_binary_operator(f)
     @eval (::typeof($f))(l::LogicalPlanNode, r::LogicalPlanNode) = MapJoin($f, l, r)
@@ -51,6 +54,20 @@ declare_binary_operator(*)
 declare_binary_operator(+)
 declare_binary_operator(min)
 declare_binary_operator(max)
+
+function Base.getindex(input::LogicalPlanNode, indices...)
+    if input.head == InputTensor
+        return LogicalPlanNode(InputTensor, [collect(indices), input.args[2]], input.stats)
+    else
+        return LogicalPlanNode(RenameIndices, [input, collect(indices)], input.stats)
+    end
+end
+
+function Base.setindex!(output::LogicalPlanNode, input::LogicalPlanNode, indices...)
+    output.head = Reorder
+    output.args = [input, collect(indices)]
+end
+
 
 TermInterface.istree(::LogicalPlanNode) = true
 TermInterface.operation(node::LogicalPlanNode) = node.head
@@ -85,7 +102,10 @@ function logicalPlanToString(n::LogicalPlanNode, depth::Int64)
         output *= "Reorder("
     elseif n.head == Scalar
         output *= "Scalar("
+    elseif n.head == RenameIndices
+        output *= "RenameIndices("
     end
+
     prefix = ""
     for arg in n.args
         output *= prefix

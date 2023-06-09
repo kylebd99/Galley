@@ -7,12 +7,12 @@ using AutoHashEquals
 include("LogicalQueryPlan.jl")
 
 
-function relativeSort(indices, index_order; rev=false)
+function relativeSort(indices::Vector{String}, index_order; rev=false)
     if index_order === nothing
         return indices
     end
-    if rev == false
-        sorted_indices = []
+    sorted_indices::Vector{String} = []
+    if rev == false        
         for idx in index_order
             if idx in indices
                 push!(sorted_indices, idx)
@@ -20,14 +20,12 @@ function relativeSort(indices, index_order; rev=false)
         end
         return sorted_indices
     else
-        sorted_indices = []
         for idx in reverse(index_order)
             if idx in indices
                 push!(sorted_indices, idx)
             end
         end
         return sorted_indices
-
     end
 end
 
@@ -73,6 +71,83 @@ function mergeAggregates(expr)
         return new_expr
     end
 end
+
+
+function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, context_counter, drop_stats, drop_index_order)
+    if expr.head == RenameIndices
+        expr_index_lookup = Dict()
+        renamed_indices::Vector{String} = expr.args[2]
+        for i in 1:length(expr.stats.indices)
+            new_index = renamed_indices[i]
+            if new_index in keys(index_lookup)
+                new_index = index_lookup[new_index]
+            end
+            expr_index_lookup[expr.args[1].stats.indices[i]] = expr.args[2][i] 
+        end
+        context_counter[1] += 1
+        context = context_counter[1]
+        return recursive_rename(expr.args[1], expr_index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order)
+    elseif expr.head == InputTensor
+        indices = Vector{String}()
+        for index in expr.stats.indices
+            if index in keys(index_lookup)
+                push!(indices, index_lookup[index])
+            elseif context > 0
+                push!(indices, index * "_" * string(context))
+            else
+                push!(indices, index)
+            end
+        end
+        new_args = [indices, expr.args[2]]
+        !drop_index_order && push!(new_args, expr.args[3])
+        if drop_stats
+            return LogicalPlanNode(InputTensor, new_args, nothing)
+        else
+            return LogicalPlanNode(InputTensor, new_args, expr.stats)
+        end
+    elseif expr.head == Reorder
+
+        if depth > 0
+            return recursive_rename(expr.args[1], index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order)
+        end
+        
+        new_args = [recursive_rename(expr.args[1], index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order), expr.args[2]]
+        if drop_stats
+            return LogicalPlanNode(Reorder, new_args, nothing)
+        else
+            return LogicalPlanNode(Reorder, new_args, expr.stats)
+        end
+    end
+
+    new_args = []
+    for arg in expr.args
+        if arg isa LogicalPlanNode
+            push!(new_args, recursive_rename(arg, index_lookup, depth + 1, context, context_counter, drop_stats, drop_index_order))
+        elseif arg isa Vector{String}
+            new_indices = Vector{String}()
+            for index in arg
+                if index in keys(index_lookup)
+                    push!(new_indices, index_lookup[index])
+                elseif context > 0
+                    push!(new_indices, index * "_" * string(context))
+                else
+                    push!(new_indices, index)
+                end
+            end
+            push!(new_args, new_indices)
+        else
+            push!(new_args, arg)
+        end
+    end
+
+    if drop_stats
+        return LogicalPlanNode(expr.head, new_args, nothing)
+    else
+        return LogicalPlanNode(expr.head, new_args, expr.stats)
+    end
+end
+
+
 
 
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)    
@@ -233,6 +308,13 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         sorted_indices = relativeSort(stats.indices, index_order)
         return TensorStats(sorted_indices, stats.dim_size, 
                             stats.cardinality, stats.default_value, index_order)
+    elseif exprhead(n) == :call && operation(n) == RenameIndices
+        op = operation(n)
+        child_eclasses = arguments(n)
+        stats = getdata(g[child_eclasses[1]], :TensorStatsAnalysis, nothing)
+        output_indices = g[child_eclasses[2]][1].value
+        return TensorStats(output_indices, Dict(x => 0 for x in output_indices), 
+                            stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == InputTensor
         child_eclasses = arguments(n)
         indices = g[child_eclasses[1]][1].value

@@ -53,7 +53,7 @@ function expr_to_kernel(n, global_index_order; verbose = 0)
         loop_order =  relativeSort(n.stats.indices, index_order, rev=true)
         return TensorKernel(kernel_root, n.stats, input_tensors, output_indices, output_formats, loop_order)
     elseif n.head == InputTensor
-        return n.args[3]
+        return n.args[2]
     elseif n.head == Scalar
         return n.args[1]
     end

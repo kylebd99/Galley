@@ -97,7 +97,7 @@ verbose = 0
         copyto!(b_fiber, b_matrix)
         b = InputTensor(b_fiber)
         c = OutTensor()
-        c["i", "j"] = ReduceDim(+, ["j"], a["i","j"] * b["j", "k"])
+        c["i", "j"] = ∑(["j"], a["i","j"] * b["j", "k"])
         spartan_matrix = spartan(c, optimize=false, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
         @test spartan_matrix == correct_matrix
@@ -115,7 +115,7 @@ verbose = 0
         copyto!(b_fiber, b_matrix)
         b = InputTensor(b_fiber)
         c = OutTensor()
-        c["i", "j"] = ReduceDim(f, ["j"], a["i","j"] * b["j", "k"])
+        c["i", "j"] = Agg(f, ["j"], a["i","j"] * b["j", "k"])
         spartan_matrix = spartan(c, optimize=false, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
         @test spartan_matrix == correct_matrix

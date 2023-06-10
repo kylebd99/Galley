@@ -62,7 +62,7 @@ function removeUnecessaryReorders(expr, global_index_order)
 end
 
 function mergeAggregates(expr)
-    merge_rule = @rule op idx_1 idx_2 x  ReduceDim(op, idx_1, ReduceDim(op, idx_2, x)) => ReduceDim(op, union(idx_1, idx_2), x)
+    merge_rule = @rule op idx_1 idx_2 x  Aggregate(op, idx_1, Aggregate(op, idx_2, x)) => Aggregate(op, union(idx_1, idx_2), x)
     merge_rule = Metatheory.Postwalk(Metatheory.PassThrough(merge_rule))
     new_expr = merge_rule(expr)
     if new_expr === nothing
@@ -282,7 +282,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         else
             return mergeTensorStats(op, lstats, rstats)
         end
-    elseif exprhead(n) == :call && operation(n) == ReduceDim
+    elseif exprhead(n) == :call && operation(n) == Aggregate
         op = operation(n)
         # Get the left and right child eclasses
         child_eclasses = arguments(n)
@@ -382,18 +382,18 @@ end
 # Additionally, it doesn't allow cross-products to reduce the search space.
 basic_rewrites = @theory a b c d f is js begin
     # Fuse reductions
-    ReduceDim(f, is, ReduceDim(f, js, a)) => ReduceDim(f, union(is, js), a)
+    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, union(is, js), a)
 
     # UnFuse reductions
-    ReduceDim(f, is, a) => ReduceDim(f, is[1:1], ReduceDim(f, is[2:length(is)], a)) where (length(is) > 1)
+    Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, is[2:length(is)], a)) where (length(is) > 1)
 
     # Reorder Reductions
-    ReduceDim(f, is, ReduceDim(f, js, a)) == ReduceDim(f, js, ReduceDim(f, is, a))
+    Aggregate(f, is, Aggregate(f, js, a)) == Aggregate(f, js, Aggregate(f, is, a))
 
     # Commutativity
     MapJoin(+, a, b) == MapJoin(+, b, a)
     MapJoin(*, a, b) == MapJoin(*, b, a)
-    ReduceDim(+, is, MapJoin(+, a, b)) == MapJoin(+, ReduceDim(+, is, a), ReduceDim(+, is, b))
+    Aggregate(+, is, MapJoin(+, a, b)) == MapJoin(+, Aggregate(+, is, a), Aggregate(+, is, b))
 
     # Associativity
     MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesntShareIndices(b, a))
@@ -403,10 +403,10 @@ basic_rewrites = @theory a b c d f is js begin
     MapJoin(*, a, MapJoin(+, b, c)) == MapJoin(+, MapJoin(*, a, b), MapJoin(*, a, c))
 
     # Reduction PushUp
-    MapJoin(*, a, ReduceDim(+, is::Set, b)) => ReduceDim(+, is, MapJoin(*, a, b)) where (doesntShareIndices(is, a))
+    MapJoin(*, a, Aggregate(+, is::Set, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesntShareIndices(is, a))
 
     # Reduction PushDown
-    ReduceDim(+, is, MapJoin(*, a, b)) => MapJoin(*, a, ReduceDim(+, is, b)) where (doesntShareIndices(is, a))
+    Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesntShareIndices(is, a))
 
     # Handling Squares
     MapJoin(^, a, 2) == MapJoin(*, a, a)
@@ -416,7 +416,7 @@ basic_rewrites = @theory a b c d f is js begin
     MapJoin(+, a, a) == MapJoin(*, a, 2)
 
     # Reduction removal, need a dimension->size dict
-    #ReduceDim(+, is::Set, a) => :(MapJoin(*, a, dim(is)))
+    #Aggregate(+, is::Set, a) => :(MapJoin(*, a, dim(is)))
 end
 
 function e_graph_to_expr_tree(g::EGraph, index_order)

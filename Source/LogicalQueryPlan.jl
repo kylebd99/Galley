@@ -35,7 +35,9 @@ mutable struct LogicalPlanNode
     stats::Any
 end
 
-ReduceDim(op, indices, input) = LogicalPlanNode(ReduceDim, [op, indices, input], nothing)
+Aggregate(op, indices::Vector, input) = LogicalPlanNode(Aggregate, [op, indices, input], nothing)
+Aggregate(op, index::String, input) = LogicalPlanNode(Aggregate, [op, [index], input], nothing)
+Agg(op, indices, input) = Aggregate(op, indices, input)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
 InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [[""], fiber], nothing)
@@ -54,6 +56,10 @@ declare_binary_operator(*)
 declare_binary_operator(+)
 declare_binary_operator(min)
 declare_binary_operator(max)
+
+∑(indices, input) = Aggregate(+, indices, input)
+∏(indices, input) = Aggregate(*, indices, input)
+
 
 function Base.getindex(input::LogicalPlanNode, indices...)
     if input.head == InputTensor
@@ -94,8 +100,8 @@ function logicalPlanToString(n::LogicalPlanNode, depth::Int64)
     output *= left_space
     if n.head == InputTensor
         output *= "InputTensor("
-    elseif n.head == ReduceDim 
-        output *= "ReduceDim("
+    elseif n.head == Aggregate 
+        output *= "Aggregate("
     elseif n.head == MapJoin 
         output *= "MapJoin("
     elseif n.head == Reorder 

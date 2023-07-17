@@ -1,4 +1,4 @@
 using Test
 
 # run subtests
-include("BasicTests.jl")
+include("basic-tests.jl")

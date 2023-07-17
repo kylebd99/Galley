@@ -2,7 +2,7 @@ using Test
 using Finch
 using SparseArrays
 
-include("../Source/Spartan.jl")
+include("../src/Galley.jl")
 verbose = 0
 
 
@@ -156,7 +156,7 @@ verbose = 0
         correct_matrix = a_matrix * b_matrix * c_matrix
         @test spartan_matrix == correct_matrix
     end
-    
+
     @testset "100x100 matrices, multi-line, reuse, matrix mult" begin
         a_matrix = sprand(Bool, 100, 100, .1)
         a_fiber = Fiber(SparseList(SparseList(Element(0), 100), 100))

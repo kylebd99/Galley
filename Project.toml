@@ -2,7 +2,6 @@ name = "Galley"
 uuid = "0b99cc74-af0a-4786-be99-594ac14242a4"
 authors = ["Kyle Deeds <kdeeds@cs.washington.edu >"]
 version = "0.1.0"
-julia_version = "1.9.2"
 
 [deps]
 Finch = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"

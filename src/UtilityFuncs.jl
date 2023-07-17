@@ -19,7 +19,6 @@ end
 
 
 
-
 function uniform_fiber(shape, sparsity; formats = [], default_value = 0, non_default_value = 1)
     if formats == []
         formats = [t_sparse_list for _ in 1:length(shape)]
@@ -31,4 +30,8 @@ function uniform_fiber(shape, sparsity; formats = [], default_value = 0, non_def
     copyto!(fiber, data)
     return fiber
 end
+
+# Call fsparse when constructing
+
+
 

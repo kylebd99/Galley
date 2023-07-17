@@ -28,13 +28,13 @@ function fill_in_stats(expr, global_index_order)
 end
 
 
-function spartan(expr; optimize=true, verbose=2, global_index_order=1)
+function galley(expr; optimize=true, verbose=2, global_index_order=1)
     verbose >= 3 && println("Before Rename Pass: ", expr)
     dummy_index_order = get_index_order(expr)
     expr = insertGlobalOrders(expr, dummy_index_order)
     expr = fill_in_stats(expr, dummy_index_order)
     expr = recursive_rename(expr, Dict(), 0, 0, [0], true, true)
-    
+
     verbose >= 3 && println("After Rename Pass: ", expr)
 
     global_index_order = get_index_order(expr, global_index_order)

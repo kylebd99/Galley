@@ -63,7 +63,6 @@ function spartan(expr; optimize=true, verbose=2, global_index_order=1)
 
     expr = fill_in_stats(expr, global_index_order)
     tensor_kernel = expr_to_kernel(expr, global_index_order, verbose = verbose)
-
     result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
 
     verbose >= 1 && println("Time to Execute: ", result.time)

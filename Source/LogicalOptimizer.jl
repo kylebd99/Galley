@@ -29,7 +29,7 @@ function relativeSort(indices::Vector{String}, index_order; rev=false)
     end
 end
 
-function isSortedWRTIndexOrder(indices::Vector{String}, index_order::Vector)
+function isSortedWRTIndexOrder(indices::Vector, index_order::Vector)
     return issorted(indexin(indices, index_order))
 end
 
@@ -303,11 +303,11 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         r = g[child_eclasses[2]]
 
         # Return the union of the index sets for MapJoin operators
-        index_order = getdata(r, :TensorStatsAnalysis, nothing).indices
         stats = getdata(l, :TensorStatsAnalysis, nothing)
-        sorted_indices = relativeSort(stats.indices, index_order)
+        output_order = r[1].value
+        sorted_indices = relativeSort(stats.indices, output_order)
         return TensorStats(sorted_indices, stats.dim_size, 
-                            stats.cardinality, stats.default_value, index_order)
+                            stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == RenameIndices
         op = operation(n)
         child_eclasses = arguments(n)
@@ -321,6 +321,8 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         fiber = g[child_eclasses[2]][1].value
         index_order = g[child_eclasses[3]][1].value
         return TensorStats(indices, fiber, index_order)
+    elseif exprhead(n) == :call && operation(n) == Scalar
+        return TensorStats([], Dict(), 1, n.args[1], [])
     end
 
     println("Warning! The following Tensor Kernel returned a `TensorStatsAnalysis` of `nothing`: ", n)
@@ -356,7 +358,6 @@ function simple_cardinality_cost_function(n::ENodeTerm, g::EGraph)
             cost += input_tensor_stats.cardinality
         end
     end
-#    println(n, " Cost: ", cost)
     return cost
 end
 
@@ -409,8 +410,8 @@ basic_rewrites = @theory a b c d f is js begin
     Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesntShareIndices(is, a))
 
     # Handling Squares
-    MapJoin(^, a, 2) == MapJoin(*, a, a)
-    MapJoin(^, MapJoin(^, a, c), d) => MapJoin(^, a, (c*d)) where (c isa Number && d isa Number)
+    MapJoin(^, a, Scalar(2)) == MapJoin(*, a, a)
+    MapJoin(^, MapJoin(^, a, c), d) == MapJoin(^, a, MapJoin(*, c, d))
 
     # Handling Simple Duplicates
     MapJoin(+, a, a) == MapJoin(*, a, 2)
@@ -431,7 +432,7 @@ function e_class_to_expr_node(g::EGraph, e::EClass, index_order; verbose=0)
         for c in arguments(n)
             if g[c][1] isa ENodeTerm
                 push!(children, e_class_to_expr_node(g, g[c], index_order))
-            elseif g[c][1].value isa Number
+            elseif g[c][1].value isa Number && operation(n) != Scalar
                 push!(children, Scalar(g[c][1].value, getdata(g[c], :TensorStatsAnalysis)))            
             else
                 push!(children, g[c][1].value)

@@ -4,6 +4,7 @@ authors = ["Kyle Deeds <kdeeds@cs.washington.edu >"]
 version = "0.1.0"
 
 [deps]
+Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 Finch = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"
 Metatheory = "e9d8d322-4543-424a-9be4-0cc815abe26c"
 PrettyPrinting = "54e16d92-306c-5ea0-a30b-337be88ac337"

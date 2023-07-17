@@ -1,4 +1,6 @@
 module Galley
+    export galley, InputTensor, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
+
     # This file defines a prototype front-end which allows users to define tensor expressions and get their results.
     using Metatheory
     using Metatheory.EGraphs

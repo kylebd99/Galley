@@ -1,8 +1,8 @@
 using Test
 using Finch
 using SparseArrays
+using Galley
 
-include("../src/Galley.jl")
 verbose = 0
 
 

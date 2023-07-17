@@ -18,9 +18,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["i","j"] = a["i","j"] * b["i","j"]
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = a_matrix .* b_matrix
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
     @testset "2x2 matrices, element-wise add" begin
@@ -34,9 +34,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["i","j"] = a["i","j"] + b["i","j"]
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = a_matrix .+ b_matrix
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
     @testset "2x2 matrices, element-wise custom" begin
@@ -51,9 +51,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["i","j"] = f(a["i","j"], b["i","j"])
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = [0 0; 0 0]
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
     @testset "2x2 matrices, element-wise mult, reverse input" begin
@@ -67,9 +67,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["i","j"] = a["i","j"] * b["j","i"]
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = a_matrix .* (b_matrix')
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
     @testset "100x100 matrices, element-wise mult, reverse output" begin
@@ -83,9 +83,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["j","i"] = a["i","j"] * b["i","j"]
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = (a_matrix.*b_matrix)'
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
     @testset "100x100 matrices, matrix mult" begin
@@ -99,9 +99,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["i", "k"] = ∑(["j"], a["i","j"] * b["j", "k"])
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
 
@@ -117,9 +117,9 @@ verbose = 0
         b = InputTensor(b_fiber)
         c = OutTensor()
         c["i", "k"] = Agg(f, ["j"], a["i","j"] * b["j", "k"])
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
 
@@ -130,9 +130,9 @@ verbose = 0
         a = InputTensor(a_fiber)
         c = OutTensor()
         c[] = ∑(["i", "j"], a["i","j"])
-        spartan_matrix = spartan(c, optimize=true, verbose=verbose)
+        galley_matrix = galley(c, optimize=true, verbose=verbose)
         correct_matrix = sum(a_matrix)
-        @test spartan_matrix() == correct_matrix
+        @test galley_matrix() == correct_matrix
     end
 
     @testset "100x100 matrices, multi-line, matrix mult" begin
@@ -152,9 +152,9 @@ verbose = 0
         e = OutTensor()
         d["i", "k"] = ∑("j", a["i","j"] * b["j", "k"])
         e["i", "l"] = ∑("k", d["i","k"] * c["k", "l"])
-        spartan_matrix = spartan(e, optimize=true, verbose=verbose)
+        galley_matrix = galley(e, optimize=true, verbose=verbose)
         correct_matrix = a_matrix * b_matrix * c_matrix
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
     @testset "100x100 matrices, multi-line, reuse, matrix mult" begin
@@ -170,10 +170,10 @@ verbose = 0
         e = OutTensor()
         d["i", "k"] = ∑("j", a["i","j"] * b["j", "k"])
         e["i", "l"] = ∑("k", d["i","k"] * d["k", "l"])
-        spartan_matrix = spartan(e, optimize=true, verbose=verbose)
+        galley_matrix = galley(e, optimize=true, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * d_matrix
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 
 
@@ -188,12 +188,12 @@ verbose = 0
         b = InputTensor(b_fiber)
         d = OutTensor()
         d["i"] =  a["i","i"] * b["i", "i"]
-        spartan_matrix = spartan(d, optimize = true, verbose=verbose)
+        galley_matrix = galley(d, optimize = true, verbose=verbose)
         correct_matrix = spzeros(100)
         for i in 1:100
             correct_matrix[i] = a_matrix[i,i] * b_matrix[i,i]
         end
-        @test spartan_matrix == correct_matrix
+        @test galley_matrix == correct_matrix
     end
 end
 

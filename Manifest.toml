@@ -2,7 +2,7 @@
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "113cfb912486ca8160676561222b1273a9e4ecb8"
+project_hash = "e5af1d6759239f4410e00b1925ebc17ec6e9d0e5"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -132,6 +132,11 @@ deps = ["TOML"]
 git-tree-sha1 = "7eb1686b4f04b82f96ed7a4ea5890a4f0c7a09f1"
 uuid = "21216c6a-2e73-6563-6e65-726566657250"
 version = "1.4.0"
+
+[[deps.PrettyPrinting]]
+git-tree-sha1 = "22a601b04a154ca38867b991d5017469dc75f2db"
+uuid = "54e16d92-306c-5ea0-a30b-337be88ac337"
+version = "0.4.1"
 
 [[deps.Printf]]
 deps = ["Unicode"]

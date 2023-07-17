@@ -1,9 +1,9 @@
-# This file performs the actual execution of an ExtendedFreeJoin plan. 
+# This file performs the actual execution of an ExtendedFreeJoin plan.
 using DataStructures
 using PrettyPrinting
 using Finch: @finch_program_instance, SparseHashLevel
-include("PhysicalOptimizer.jl")
-include("UtilityFuncs.jl")
+include("physical-optimizer.jl")
+include("utility-funcs.jl")
 
 
 function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{String}, protocols::Vector{AccessProtocol})
@@ -51,7 +51,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                 enqueue!(nodes_to_visit, (child_node, node_id_counter))
                 push!(child_node_ids, node_id_counter)
             end
-        elseif cur_node isa AggregateExpr || cur_node isa ReorderExpr 
+        elseif cur_node isa AggregateExpr || cur_node isa ReorderExpr
             node_id_counter += 1
             enqueue!(nodes_to_visit, (cur_node.input, node_id_counter))
             push!(child_node_ids, node_id_counter)

@@ -3,8 +3,8 @@ using Metatheory
 using Metatheory.EGraphs
 using PrettyPrinting
 using Combinatorics
-include("LogicalOptimizer.jl")
-include("ExecutionEngine.jl")
+include("logical-optimizer.jl")
+include("execution-engine.jl")
 
 function get_index_order(expr, perm_choice=-1)
     if expr isa Vector{String}

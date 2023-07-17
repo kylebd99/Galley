@@ -1,6 +1,6 @@
 using Metatheory
 using Metatheory.EGraphs
-include("PhysicalQueryPlan.jl")
+include("physical-query-plan.jl")
 
 # A recursive function which converts our logical expression tree to a phsyical plan composed of kernels.
 # List of assumptions/limitations
@@ -13,7 +13,7 @@ function expr_to_kernel(n, global_index_order; verbose = 0)
         reduce_indices = n.args[2]
         sub_expr = n.args[3]
         kernel_root = AggregateExpr(op, reduce_indices, InputExpr("A",
-                                                                    sub_expr.stats.indices, 
+                                                                    sub_expr.stats.indices,
                                                                     [t_walk for _ in sub_expr.stats.indices],
                                                                     sub_expr.stats))
         input_tensors = Dict("A" => expr_to_kernel(sub_expr, global_index_order))
@@ -26,11 +26,11 @@ function expr_to_kernel(n, global_index_order; verbose = 0)
         op = n.args[1]
         left_expr = n.args[2]
         right_expr = n.args[3]
-        kernel_root = OperatorExpr(op, [InputExpr("A", 
-                                            left_expr.stats.indices, 
+        kernel_root = OperatorExpr(op, [InputExpr("A",
+                                            left_expr.stats.indices,
                                                         [t_walk for _ in left_expr.stats.indices],
                                                         left_expr.stats),
-                                            InputExpr("B", 
+                                            InputExpr("B",
                                                 right_expr.stats.indices,
                                                         [t_walk for _ in right_expr.stats.indices],
                                                         right_expr.stats)])
@@ -44,7 +44,7 @@ function expr_to_kernel(n, global_index_order; verbose = 0)
         sub_expr = n.args[1]
         index_order = n.args[2]
         kernel_root = ReorderExpr(index_order, InputExpr("A",
-                                                        sub_expr.stats.indices, 
+                                                        sub_expr.stats.indices,
                                                         [t_walk for _ in sub_expr.stats.indices],
                                                         sub_expr.stats))
         input_tensors = Dict("A" => expr_to_kernel(sub_expr, global_index_order))
@@ -58,5 +58,3 @@ function expr_to_kernel(n, global_index_order; verbose = 0)
         return n.args[1]
     end
 end
-
-

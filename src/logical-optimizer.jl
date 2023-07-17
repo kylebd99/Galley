@@ -1,10 +1,10 @@
 # This file defines a query optimizer. It takes in both a query plan and input data, and it outputs an optimized query plan.
-# It does this by gathering simple statistics about the data then doing a cost-based optimization based on equality saturation. 
+# It does this by gathering simple statistics about the data then doing a cost-based optimization based on equality saturation.
 using Metatheory
 using Metatheory.EGraphs
 using PrettyPrinting
 using AutoHashEquals
-include("LogicalQueryPlan.jl")
+include("logical-query-plan.jl")
 
 
 function relativeSort(indices::Vector{String}, index_order; rev=false)
@@ -12,7 +12,7 @@ function relativeSort(indices::Vector{String}, index_order; rev=false)
         return indices
     end
     sorted_indices::Vector{String} = []
-    if rev == false        
+    if rev == false
         for idx in index_order
             if idx in indices
                 push!(sorted_indices, idx)
@@ -55,7 +55,7 @@ function insertInputReorders(expr, global_index_order)
 end
 
 function removeUnecessaryReorders(expr, global_index_order)
-    if expr.head == Reorder && isSortedWRTIndexOrder(expr.args[2], global_index_order) 
+    if expr.head == Reorder && isSortedWRTIndexOrder(expr.args[2], global_index_order)
         return expr.args[1]
     end
     return expr
@@ -82,7 +82,7 @@ function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, c
             if new_index in keys(index_lookup)
                 new_index = index_lookup[new_index]
             end
-            expr_index_lookup[expr.args[1].stats.indices[i]] = expr.args[2][i] 
+            expr_index_lookup[expr.args[1].stats.indices[i]] = expr.args[2][i]
         end
         context_counter[1] += 1
         context = context_counter[1]
@@ -110,7 +110,7 @@ function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, c
         if depth > 0
             return recursive_rename(expr.args[1], index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order)
         end
-        
+
         new_args = [recursive_rename(expr.args[1], index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order), expr.args[2]]
         if drop_stats
             return LogicalPlanNode(Reorder, new_args, nothing)
@@ -150,12 +150,12 @@ end
 
 
 
-function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)    
-    if n.value isa Set 
+function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)
+    if n.value isa Set
         return TensorStats(collect(n.value), Dict(), 0, nothing)
-    elseif n.value isa Vector 
+    elseif n.value isa Vector
         return TensorStats(n.value, Dict(), 0, nothing)
-    else 
+    else
         return  TensorStats([], Dict(), 0, n.value)
     end
 end
@@ -181,7 +181,7 @@ function mergeTensorStatsJoin(op, lstats::TensorStats, rstats::TensorStats)
     new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
     l_dim_space_size = prod([lstats.dim_size[x] for x in lstats.indices])
     r_dim_space_size = prod([rstats.dim_size[x] for x in rstats.indices])
-    l_prob_non_default = (lstats.cardinality/l_dim_space_size) 
+    l_prob_non_default = (lstats.cardinality/l_dim_space_size)
     r_prob_non_default = (rstats.cardinality/r_dim_space_size)
     new_cardinality = l_prob_non_default * r_prob_non_default * new_dim_space_size
     return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
@@ -201,12 +201,12 @@ function mergeTensorStatsUnion(op, lstats::TensorStats, rstats::TensorStats)
             new_dim_size[index] = lstats.dim_size[index]
         end
     end
-    
+
     new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
     l_dim_space_size = prod([lstats.dim_size[x] for x in lstats.indices])
     r_dim_space_size = prod([rstats.dim_size[x] for x in rstats.indices])
-    l_prob_default = (1 - lstats.cardinality/l_dim_space_size) 
-    r_prob_default = (1 - rstats.cardinality/r_dim_space_size) 
+    l_prob_default = (1 - lstats.cardinality/l_dim_space_size)
+    r_prob_default = (1 - rstats.cardinality/r_dim_space_size)
     new_cardinality = (1 - l_prob_default * r_prob_default) * new_dim_space_size
     return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
 end
@@ -229,7 +229,7 @@ function reduceTensorStats(op, indexStats, stats::TensorStats)
     indices = relativeSort(intersect(stats.indices, indexStats.indices), stats.index_order)
     new_default_value = nothing
     if haskey(identity_dict, :($op)) && identity_dict[:($op)] == stats.default_value
-        new_default_value = stats.default_value 
+        new_default_value = stats.default_value
     elseif op == +
         new_default_value = stats.default_value * prod([stats.dim_size[x] for x in indices])
     elseif op == *
@@ -239,7 +239,7 @@ function reduceTensorStats(op, indexStats, stats::TensorStats)
         # Depending on the semantics of reductions, we might be able to do this faster.
         println("Warning: A reduction can take place over a tensor whose default value is not the reduction operator's identity. \\
                          This can result in a large slowdown as the new default is calculated.")
-        new_default_value = op([stats.default_value for _ in prod([stats.dim_size[x] for x in indices])]...) 
+        new_default_value = op([stats.default_value for _ in prod([stats.dim_size[x] for x in indices])]...)
     end
 
     new_indices = relativeSort(setdiff(stats.indices, indices), stats.index_order)
@@ -250,11 +250,11 @@ function reduceTensorStats(op, indexStats, stats::TensorStats)
 
 
     new_dim_space_size = 1
-    if length(new_indices) > 0 
+    if length(new_indices) > 0
         new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
     end
     old_dim_space_size = 1
-    if length(stats.indices) > 0 
+    if length(stats.indices) > 0
         old_dim_space_size = prod([stats.dim_size[x] for x in stats.indices])
     end
     prob_default_value = 1 - stats.cardinality/old_dim_space_size
@@ -294,7 +294,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         indices = getdata(l, :TensorStatsAnalysis, nothing)
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
         return reduceTensorStats(op, indices, rstats)
-    
+
     elseif exprhead(n) == :call && operation(n) == Reorder
         op = operation(n)
         # Get the left and right child eclasses
@@ -306,14 +306,14 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         stats = getdata(l, :TensorStatsAnalysis, nothing)
         output_order = r[1].value
         sorted_indices = relativeSort(stats.indices, output_order)
-        return TensorStats(sorted_indices, stats.dim_size, 
+        return TensorStats(sorted_indices, stats.dim_size,
                             stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == RenameIndices
         op = operation(n)
         child_eclasses = arguments(n)
         stats = getdata(g[child_eclasses[1]], :TensorStatsAnalysis, nothing)
         output_indices = g[child_eclasses[2]][1].value
-        return TensorStats(output_indices, Dict(x => 0 for x in output_indices), 
+        return TensorStats(output_indices, Dict(x => 0 for x in output_indices),
                             stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == InputTensor
         child_eclasses = arguments(n)
@@ -340,7 +340,7 @@ function EGraphs.join(::Val{:TensorStatsAnalysis}, a, b)
     else
         println(a, "  ", b)
         println("EGraph Error: E-Nodes within an E-Class should never have different tensor types!")
-        return nothing 
+        return nothing
     end
 end
 
@@ -367,10 +367,10 @@ simple_cardinality_cost_function(n::ENodeLiteral, g::EGraph) = 0
 doesntShareIndices(is, a) = false
 
 function doesntShareIndices(is::Vector, a::EClass)
-    return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0 
+    return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0
 end
 
-function doesntShareIndices(a::EClass, b::EClass) 
+function doesntShareIndices(a::EClass, b::EClass)
     if length(getdata(a, :TensorStatsAnalysis, nothing).indices) == 0 || length(getdata(b, :TensorStatsAnalysis, nothing).indices) == 0
         return false
     end
@@ -378,7 +378,7 @@ function doesntShareIndices(a::EClass, b::EClass)
 end
 
 
-# This theory has the 6/7 of the RA rules from SPORES. Currently, it's missing the 
+# This theory has the 6/7 of the RA rules from SPORES. Currently, it's missing the
 # reduction removal one because it requires knowing the dimensionality which isn't available in the local context.
 # Additionally, it doesn't allow cross-products to reduce the search space.
 basic_rewrites = @theory a b c d f is js begin
@@ -399,7 +399,7 @@ basic_rewrites = @theory a b c d f is js begin
     # Associativity
     MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesntShareIndices(b, a))
     MapJoin(*, a, MapJoin(*, b, c)) => MapJoin(*, MapJoin(*, a, b), c) where (!doesntShareIndices(b, a))
-    
+
     # Distributivity
     MapJoin(*, a, MapJoin(+, b, c)) == MapJoin(+, MapJoin(*, a, b), MapJoin(*, a, c))
 
@@ -433,7 +433,7 @@ function e_class_to_expr_node(g::EGraph, e::EClass, index_order; verbose=0)
             if g[c][1] isa ENodeTerm
                 push!(children, e_class_to_expr_node(g, g[c], index_order))
             elseif g[c][1].value isa Number && operation(n) != Scalar
-                push!(children, Scalar(g[c][1].value, getdata(g[c], :TensorStatsAnalysis)))            
+                push!(children, Scalar(g[c][1].value, getdata(g[c], :TensorStatsAnalysis)))
             else
                 push!(children, g[c][1].value)
             end

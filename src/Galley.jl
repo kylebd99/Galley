@@ -1,13 +1,23 @@
 module Galley
     export galley, InputTensor, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
+    export uniform_fiber, declare_binary_operator
 
     # This file defines a prototype front-end which allows users to define tensor expressions and get their results.
     using Metatheory
     using Metatheory.EGraphs
     using PrettyPrinting
     using Combinatorics
-    include("logical-optimizer.jl")
-    include("execution-engine.jl")
+
+
+    include("utility-funcs.jl")
+    include("LogicalOptimizer/logical-optimizer-utils.jl")
+    include("LogicalOptimizer/logical-query-plan.jl")
+    include("LogicalOptimizer/normalizer.jl")
+    include("LogicalOptimizer/cost-based-optimizer.jl")
+    include("PhysicalOptimizer/physical-query-plan.jl")
+    include("PhysicalOptimizer/physical-optimizer.jl")
+    include("ExecutionEngine/execution-engine.jl")
+
 
     function get_index_order(expr, perm_choice=-1)
         if expr isa Vector{String}
@@ -34,17 +44,16 @@ module Galley
     function galley(expr; optimize=true, verbose=2, global_index_order=1)
         verbose >= 3 && println("Before Rename Pass: ", expr)
         dummy_index_order = get_index_order(expr)
-        expr = insertGlobalOrders(expr, dummy_index_order)
+        expr = insert_global_orders(expr, dummy_index_order)
         expr = fill_in_stats(expr, dummy_index_order)
         expr = recursive_rename(expr, Dict(), 0, 0, [0], true, true)
 
         verbose >= 3 && println("After Rename Pass: ", expr)
 
         global_index_order = get_index_order(expr, global_index_order)
-        expr = insertInputReorders(expr, global_index_order)
-        expr = insertGlobalOrders(expr, global_index_order)
-        expr = removeUnecessaryReorders(expr, global_index_order)
-
+        expr = insert_input_reorders(expr, global_index_order)
+        expr = insert_global_orders(expr, global_index_order)
+        expr = remove_uneccessary_reorders(expr, global_index_order)
         if optimize
             g = EGraph(expr)
             settermtype!(g, LogicalPlanNode)
@@ -56,7 +65,7 @@ module Galley
             end
             expr = extract!(g, simple_cardinality_cost_function)
         end
-        expr = mergeAggregates(expr)
+        expr = merge_aggregates(expr)
 
         if verbose >= 1
             optimize && print("Optimized Expression: ")

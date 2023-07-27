@@ -1,7 +1,7 @@
-using Finch
+using Finch: Element, SparseList, Dense, SparseHashLevel, SparseCOO
 using Random
 
-function initialize_tensor(formats::Vector{LevelFormat}, dims::Vector{Int64}, default_value)
+function initialize_tensor(formats, dims::Vector{Int64}, default_value)
     B = Element(default_value)
     for i in range(1, length(dims))
         if formats[i] == t_sparse_list
@@ -18,7 +18,7 @@ function initialize_tensor(formats::Vector{LevelFormat}, dims::Vector{Int64}, de
 end
 
 
-
+# Generates a fiber whose non-default entries are distributed uniformly randomly throughout.
 function uniform_fiber(shape, sparsity; formats = [], default_value = 0, non_default_value = 1)
     if formats == []
         formats = [t_sparse_list for _ in 1:length(shape)]
@@ -32,6 +32,3 @@ function uniform_fiber(shape, sparsity; formats = [], default_value = 0, non_def
 end
 
 # Call fsparse when constructing
-
-
-

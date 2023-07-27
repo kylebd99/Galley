@@ -5,7 +5,6 @@ using Galley
 
 verbose = 0
 
-
 @testset "matrix operations" begin
     @testset "2x2 matrices, element-wise mult" begin
         a_matrix = [1 0; 0 1]

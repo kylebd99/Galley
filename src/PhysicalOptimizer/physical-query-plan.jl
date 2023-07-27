@@ -1,4 +1,4 @@
-# This file defines the physical plan language. This language should fully define the 
+# This file defines the physical plan language. This language should fully define the
 # execution plan without any ambiguity.
 
 abstract type TensorExpression end
@@ -18,7 +18,8 @@ struct InputExpr <: TensorExpression
 end
 
 # The aggregate struct refers to mathematical operations which operate over a dimension of the tensors.
-# These operations reduce the dimensionality of the result by removing that dimension.
+# These operations reduce the dimensionality of the result by removing the dimensions of
+# `aggregate_indices`.
 struct AggregateExpr <: TensorExpression
     op::Any
     aggregate_indices::Vector{String}
@@ -33,7 +34,7 @@ struct OperatorExpr <: TensorExpression
 end
 
 
-# The reorder struct inserts a blocking operation which changes the input's 
+# The reorder struct inserts a blocking operation which changes the input's
 # layout/order of its indices.
 struct ReorderExpr <: TensorExpression
     index_order::Vector{String}
@@ -77,10 +78,10 @@ end
 struct TensorKernel
     kernel_root::TensorExpression
     stats::TensorStats
-    input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}} 
-    
+    input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}}
+
     output_indices::Vector{String}
     output_formats::Vector{LevelFormat}
-    
+
     loop_order::Vector{String}
 end

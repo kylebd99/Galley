@@ -4,151 +4,6 @@ using Metatheory
 using Metatheory.EGraphs
 using PrettyPrinting
 using AutoHashEquals
-include("logical-query-plan.jl")
-
-
-function relativeSort(indices::Vector{String}, index_order; rev=false)
-    if index_order === nothing
-        return indices
-    end
-    sorted_indices::Vector{String} = []
-    if rev == false
-        for idx in index_order
-            if idx in indices
-                push!(sorted_indices, idx)
-            end
-        end
-        return sorted_indices
-    else
-        for idx in reverse(index_order)
-            if idx in indices
-                push!(sorted_indices, idx)
-            end
-        end
-        return sorted_indices
-    end
-end
-
-function isSortedWRTIndexOrder(indices::Vector, index_order::Vector)
-    return issorted(indexin(indices, index_order))
-end
-
-function addGlobalOrder(x::LogicalPlanNode, global_index_order)
-    return LogicalPlanNode(x.head, [x.args..., global_index_order], nothing)
-end
-
-function insertGlobalOrders(expr, global_index_order)
-    global_order_rule = @rule ~x => addGlobalOrder(x, global_index_order) where (x isa LogicalPlanNode && x.head == InputTensor)
-    global_order_rule = Metatheory.Postwalk(Metatheory.PassThrough(global_order_rule))
-    return global_order_rule(expr)
-end
-
-needsReorder(expr, index_order) = false
-function needsReorder(expr::LogicalPlanNode, index_order)
-    return expr.head == InputTensor && !isSortedWRTIndexOrder(expr.args[1], index_order)
-end
-
-function insertInputReorders(expr, global_index_order)
-    reorder_rule = @rule ~x => Reorder(x, global_index_order) where (needsReorder(x, global_index_order))
-    reorder_rule = Metatheory.Postwalk(Metatheory.PassThrough(reorder_rule))
-    return reorder_rule(expr)
-end
-
-function removeUnecessaryReorders(expr, global_index_order)
-    if expr.head == Reorder && isSortedWRTIndexOrder(expr.args[2], global_index_order)
-        return expr.args[1]
-    end
-    return expr
-end
-
-function mergeAggregates(expr)
-    merge_rule = @rule op idx_1 idx_2 x  Aggregate(op, idx_1, Aggregate(op, idx_2, x)) => Aggregate(op, union(idx_1, idx_2), x)
-    merge_rule = Metatheory.Postwalk(Metatheory.PassThrough(merge_rule))
-    new_expr = merge_rule(expr)
-    if new_expr === nothing
-        return expr
-    else
-        return new_expr
-    end
-end
-
-
-function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, context_counter, drop_stats, drop_index_order)
-    if expr.head == RenameIndices
-        expr_index_lookup = Dict()
-        renamed_indices::Vector{String} = expr.args[2]
-        for i in 1:length(expr.stats.indices)
-            new_index = renamed_indices[i]
-            if new_index in keys(index_lookup)
-                new_index = index_lookup[new_index]
-            end
-            expr_index_lookup[expr.args[1].stats.indices[i]] = expr.args[2][i]
-        end
-        context_counter[1] += 1
-        context = context_counter[1]
-        return recursive_rename(expr.args[1], expr_index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order)
-    elseif expr.head == InputTensor
-        indices = Vector{String}()
-        for index in expr.stats.indices
-            if index in keys(index_lookup)
-                push!(indices, index_lookup[index])
-            elseif context > 0
-                push!(indices, index * "_" * string(context))
-            else
-                push!(indices, index)
-            end
-        end
-        new_args = [indices, expr.args[2]]
-        !drop_index_order && push!(new_args, expr.args[3])
-        if drop_stats
-            return LogicalPlanNode(InputTensor, new_args, nothing)
-        else
-            return LogicalPlanNode(InputTensor, new_args, expr.stats)
-        end
-    elseif expr.head == Reorder
-
-        if depth > 0
-            return recursive_rename(expr.args[1], index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order)
-        end
-
-        new_args = [recursive_rename(expr.args[1], index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order), expr.args[2]]
-        if drop_stats
-            return LogicalPlanNode(Reorder, new_args, nothing)
-        else
-            return LogicalPlanNode(Reorder, new_args, expr.stats)
-        end
-    end
-
-    new_args = []
-    for arg in expr.args
-        if arg isa LogicalPlanNode
-            push!(new_args, recursive_rename(arg, index_lookup, depth + 1, context, context_counter, drop_stats, drop_index_order))
-        elseif arg isa Vector{String}
-            new_indices = Vector{String}()
-            for index in arg
-                if index in keys(index_lookup)
-                    push!(new_indices, index_lookup[index])
-                elseif context > 0
-                    push!(new_indices, index * "_" * string(context))
-                else
-                    push!(new_indices, index)
-                end
-            end
-            push!(new_args, new_indices)
-        else
-            push!(new_args, arg)
-        end
-    end
-
-    if drop_stats
-        return LogicalPlanNode(expr.head, new_args, nothing)
-    else
-        return LogicalPlanNode(expr.head, new_args, expr.stats)
-    end
-end
-
-
-
 
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)
     if n.value isa Set
@@ -163,9 +18,9 @@ end
 annihilator_dict = Dict((*) => 0.0)
 identity_dict = Dict((*) => 1.0, (+) => 0.0)
 
-function mergeTensorStatsJoin(op, lstats::TensorStats, rstats::TensorStats)
+function merge_tensor_stats_join(op, lstats::TensorStats, rstats::TensorStats)
     new_default_value = op(lstats.default_value, rstats.default_value)
-    new_indices = relativeSort(union(lstats.indices, rstats.indices), lstats.index_order)
+    new_indices = relative_sort(union(lstats.indices, rstats.indices), lstats.index_order)
 
     new_dim_size = Dict()
     for index in new_indices
@@ -187,9 +42,9 @@ function mergeTensorStatsJoin(op, lstats::TensorStats, rstats::TensorStats)
     return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
 end
 
-function mergeTensorStatsUnion(op, lstats::TensorStats, rstats::TensorStats)
+function merge_tensor_stats_union(op, lstats::TensorStats, rstats::TensorStats)
     new_default_value = op(lstats.default_value, rstats.default_value)
-    new_indices = relativeSort(union(lstats.indices, rstats.indices), rstats.index_order)
+    new_indices = relative_sort(union(lstats.indices, rstats.indices), rstats.index_order)
 
     new_dim_size = Dict()
     for index in new_indices
@@ -212,21 +67,21 @@ function mergeTensorStatsUnion(op, lstats::TensorStats, rstats::TensorStats)
 end
 
 
-function mergeTensorStats(op, lstats::TensorStats, rstats::TensorStats)
+function merge_tensor_stats(op, lstats::TensorStats, rstats::TensorStats)
     if !haskey(annihilator_dict, :($op))
-        return mergeTensorStatsUnion(op, lstats, rstats)
+        return merge_tensor_stats_union(op, lstats, rstats)
     end
 
     annihilator_value = annihilator_dict[:($op)]
     if annihilator_value == lstats.default_value && annihilator_value == rstats.default_value
-        return mergeTensorStatsJoin(op, lstats, rstats)
+        return merge_tensor_stats_join(op, lstats, rstats)
     else
-        return mergeTensorStatsUnion(op, lstats, rstats)
+        return merge_tensor_stats_union(op, lstats, rstats)
     end
 end
 
-function reduceTensorStats(op, indexStats, stats::TensorStats)
-    indices = relativeSort(intersect(stats.indices, indexStats.indices), stats.index_order)
+function reduce_tensor_stats(op, indexStats, stats::TensorStats)
+    indices = relative_sort(intersect(stats.indices, indexStats.indices), stats.index_order)
     new_default_value = nothing
     if haskey(identity_dict, :($op)) && identity_dict[:($op)] == stats.default_value
         new_default_value = stats.default_value
@@ -242,7 +97,7 @@ function reduceTensorStats(op, indexStats, stats::TensorStats)
         new_default_value = op([stats.default_value for _ in prod([stats.dim_size[x] for x in indices])]...)
     end
 
-    new_indices = relativeSort(setdiff(stats.indices, indices), stats.index_order)
+    new_indices = relative_sort(setdiff(stats.indices, indices), stats.index_order)
     new_dim_size = Dict()
     for index in new_indices
         new_dim_size[index] = stats.dim_size[index]
@@ -280,7 +135,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         elseif length(rstats.dim_size) == 0
             return TensorStats(lstats.indices, lstats.dim_size, lstats.cardinality, op(lstats.default_value, rstats.default_value), lstats.index_order)
         else
-            return mergeTensorStats(op, lstats, rstats)
+            return merge_tensor_stats(op, lstats, rstats)
         end
     elseif exprhead(n) == :call && operation(n) == Aggregate
         op = operation(n)
@@ -293,7 +148,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         # Return the union of the index sets for MapJoin operators
         indices = getdata(l, :TensorStatsAnalysis, nothing)
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
-        return reduceTensorStats(op, indices, rstats)
+        return reduce_tensor_stats(op, indices, rstats)
 
     elseif exprhead(n) == :call && operation(n) == Reorder
         op = operation(n)
@@ -305,7 +160,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         # Return the union of the index sets for MapJoin operators
         stats = getdata(l, :TensorStatsAnalysis, nothing)
         output_order = r[1].value
-        sorted_indices = relativeSort(stats.indices, output_order)
+        sorted_indices = relative_sort(stats.indices, output_order)
         return TensorStats(sorted_indices, stats.dim_size,
                             stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == RenameIndices
@@ -328,7 +183,10 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
     println("Warning! The following Tensor Kernel returned a `TensorStatsAnalysis` of `nothing`: ", n)
     println(exprhead(n))
     println(exprhead(n) == :call)
-    println(typeof(operation(n)), "   ", typeof(:MapJoin))
+    println(typeof(operation(n)), "   ", typeof(MapJoin))
+    println(operation(n), "   ", MapJoin)
+    println(operation(n) == MapJoin)
+
     return nothing
 end
 
@@ -364,13 +222,13 @@ end
 # All literal expressions have cost 0
 simple_cardinality_cost_function(n::ENodeLiteral, g::EGraph) = 0
 
-doesntShareIndices(is, a) = false
+doesnt_share_indices(is, a) = false
 
-function doesntShareIndices(is::Vector, a::EClass)
+function doesnt_share_indices(is::Vector, a::EClass)
     return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0
 end
 
-function doesntShareIndices(a::EClass, b::EClass)
+function doesnt_share_indices(a::EClass, b::EClass)
     if length(getdata(a, :TensorStatsAnalysis, nothing).indices) == 0 || length(getdata(b, :TensorStatsAnalysis, nothing).indices) == 0
         return false
     end
@@ -397,17 +255,17 @@ basic_rewrites = @theory a b c d f is js begin
     Aggregate(+, is, MapJoin(+, a, b)) == MapJoin(+, Aggregate(+, is, a), Aggregate(+, is, b))
 
     # Associativity
-    MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesntShareIndices(b, a))
-    MapJoin(*, a, MapJoin(*, b, c)) => MapJoin(*, MapJoin(*, a, b), c) where (!doesntShareIndices(b, a))
+    MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesnt_share_indices(b, a))
+    MapJoin(*, a, MapJoin(*, b, c)) => MapJoin(*, MapJoin(*, a, b), c) where (!doesnt_share_indices(b, a))
 
     # Distributivity
     MapJoin(*, a, MapJoin(+, b, c)) == MapJoin(+, MapJoin(*, a, b), MapJoin(*, a, c))
 
     # Reduction PushUp
-    MapJoin(*, a, Aggregate(+, is::Set, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesntShareIndices(is, a))
+    MapJoin(*, a, Aggregate(+, is::Set, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesnt_share_indices(is, a))
 
     # Reduction PushDown
-    Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesntShareIndices(is, a))
+    Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesnt_share_indices(is, a))
 
     # Handling Squares
     MapJoin(^, a, Scalar(2)) == MapJoin(*, a, a)
@@ -420,6 +278,8 @@ basic_rewrites = @theory a b c d f is js begin
     #Aggregate(+, is::Set, a) => :(MapJoin(*, a, dim(is)))
 end
 
+# These functions unwrap an EGraph object which is returned from saturation into a
+# logical plan expression.
 function e_graph_to_expr_tree(g::EGraph, index_order)
     return e_class_to_expr_node(g, g[g.root], index_order)
 end

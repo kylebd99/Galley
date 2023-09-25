@@ -1,6 +1,3 @@
-using Metatheory
-using Metatheory.EGraphs
-
 # A recursive function which converts our logical expression tree to a phsyical plan composed of kernels.
 # List of assumptions/limitations
 #     - All input tensors are indexed in lexicographic order w.r.t. to index names

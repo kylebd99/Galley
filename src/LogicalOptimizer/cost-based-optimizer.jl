@@ -1,9 +1,5 @@
 # This file defines a query optimizer. It takes in both a query plan and input data, and it outputs an optimized query plan.
 # It does this by gathering simple statistics about the data then doing a cost-based optimization based on equality saturation.
-using Metatheory
-using Metatheory.EGraphs
-using PrettyPrinting
-using AutoHashEquals
 
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)
     if n.value isa Set
@@ -15,6 +11,7 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)
     end
 end
 
+# TODO: Replace these dictionaries with function definitions
 annihilator_dict = Dict((*) => 0.0)
 identity_dict = Dict((*) => 1.0, (+) => 0.0)
 
@@ -239,6 +236,13 @@ end
 # This theory has the 6/7 of the RA rules from SPORES. Currently, it's missing the
 # reduction removal one because it requires knowing the dimensionality which isn't available in the local context.
 # Additionally, it doesn't allow cross-products to reduce the search space.
+# TODO:
+# - Automatically produce this list of rewrites based on the operators present in the
+#      query and their properties. Some operators only become present after a transformation
+#      such as x*x => x^2, so we will need to have some kind of transitive closure over the
+#      rules.
+# - Find a way to express the full reduction when the inner expression doesn't include
+#    the reducing variables.
 basic_rewrites = @theory a b c d f is js begin
     # Fuse reductions
     Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, union(is, js), a)

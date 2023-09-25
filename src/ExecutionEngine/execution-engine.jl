@@ -1,8 +1,4 @@
-# This file performs the actual execution of an ExtendedFreeJoin plan.
-using DataStructures
-using PrettyPrinting
-using Finch: @finch_program_instance, SparseHashLevel
-
+# This file performs the actual execution of physical query plan.
 
 function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{String}, protocols::Vector{AccessProtocol})
     index_expressions = []

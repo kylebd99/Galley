@@ -1,13 +1,18 @@
+
+# This file defines a prototype front-end which allows users to define tensor expressions and get their results.
 module Galley
     export galley, InputTensor, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
     export uniform_fiber, declare_binary_operator
 
-    # This file defines a prototype front-end which allows users to define tensor expressions and get their results.
+    using AutoHashEquals
+    using Combinatorics
+    using DataStructures
+    using Finch
+    using Finch: @finch_program_instance, SparseHashLevel
     using Metatheory
     using Metatheory.EGraphs
     using PrettyPrinting
-    using Combinatorics
-
+    using TermInterface
 
     include("utility-funcs.jl")
     include("LogicalOptimizer/logical-optimizer-utils.jl")

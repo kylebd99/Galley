@@ -2,10 +2,8 @@
 # Each LQP is a tree of expressions where interior nodes refer to
 # function calls and leaf nodes refer to constants or input tensors.
 
-using Finch
-using AutoHashEquals
-using TermInterface
-
+# TODO: Change indices from strings to a struct so that we can capture interactions between
+# and on them in the query plan, e.g. slicing and convolution.
 @auto_hash_equals struct TensorStats
     indices::Vector{String}
     dim_size::Dict{String, Int}

@@ -1,6 +1,6 @@
 # This file performs the actual execution of physical query plan.
 
-function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{String}, protocols::Vector{AccessProtocol})
+function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{IndexExpr}, protocols::Vector{AccessProtocol})
     index_expressions = []
     for i in range(1, length(index_ids))
         index = Finch.FinchNotation.index_instance(Symbol(index_ids[i]))

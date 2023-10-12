@@ -169,6 +169,7 @@ verbose = 0
         e = OutTensor()
         d["i", "k"] = ∑("j", a["i","j"] * b["j", "k"])
         e["i", "l"] = ∑("k", d["i","k"] * d["k", "l"])
+        verbose= 3
         galley_matrix = galley(e, optimize=true, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * d_matrix

@@ -29,7 +29,6 @@ function merge_tensor_stats_join(op, lstats::TensorStats, rstats::TensorStats)
             new_dim_size[index] = lstats.dim_size[index]
         end
     end
-
     new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
     l_dim_space_size = prod([lstats.dim_size[x] for x in lstats.indices])
     r_dim_space_size = prod([rstats.dim_size[x] for x in rstats.indices])
@@ -62,7 +61,6 @@ function merge_tensor_stats_union(op, lstats::TensorStats, rstats::TensorStats)
     new_cardinality = (1 - l_prob_default * r_prob_default) * new_dim_space_size
     return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
 end
-
 
 function merge_tensor_stats(op, lstats::TensorStats, rstats::TensorStats)
     if !haskey(annihilator_dict, :($op))
@@ -221,7 +219,7 @@ simple_cardinality_cost_function(n::ENodeLiteral, g::EGraph) = 0
 
 doesnt_share_indices(is, a) = false
 
-function doesnt_share_indices(is::Vector, a::EClass)
+function doesnt_share_indices(is::Vector{IndexExpr}, a::EClass)
     return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0
 end
 
@@ -245,7 +243,7 @@ end
 #    the reducing variables.
 basic_rewrites = @theory a b c d f is js begin
     # Fuse reductions
-    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, union(is, js), a)
+    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, Vector{IndexExpr}(collect(Set(union(is, js)))), a)
 
     # UnFuse reductions
     Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, is[2:length(is)], a)) where (length(is) > 1)
@@ -266,7 +264,7 @@ basic_rewrites = @theory a b c d f is js begin
     MapJoin(*, a, MapJoin(+, b, c)) == MapJoin(+, MapJoin(*, a, b), MapJoin(*, a, c))
 
     # Reduction PushUp
-    MapJoin(*, a, Aggregate(+, is::Set, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesnt_share_indices(is, a))
+    MapJoin(*, a, Aggregate(+, is, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesnt_share_indices(is, a))
 
     # Reduction PushDown
     Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesnt_share_indices(is, a))

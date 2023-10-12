@@ -1,11 +1,11 @@
 # Return a copy of `indices` which is sorted with respect to `index_order`, e.g.
 # relativeSort([a, b, c], [d, c, b, a]) = [c, b, a]
 # Note: `index_order` should be a superset of `indices`
-function relative_sort(indices::Vector{String}, index_order; rev=false)
+function relative_sort(indices::Vector{IndexExpr}, index_order; rev=false)
     if index_order === nothing
         return indices
     end
-    sorted_indices::Vector{String} = []
+    sorted_indices::Vector{IndexExpr} = []
     if rev == false
         for idx in index_order
             if idx in indices

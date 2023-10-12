@@ -2,11 +2,24 @@
 # Each LQP is a tree of expressions where interior nodes refer to
 # function calls and leaf nodes refer to constants or input tensors.
 
-# TODO: Change indices from strings to a struct so that we can capture interactions between
-# and on them in the query plan, e.g. slicing and convolution.
+
+struct IndexExpr
+    id::UInt
+    name::String
+
+    function IndexExpr(name::String)
+        return new(hash(name), name)
+    end
+    function IndexExpr(id::UInt, name::String)
+        return new(id, name)
+    end
+end
+Base.convert(::Type{IndexExpr}, x::String) = IndexExpr(x)
+Base.isless(x::IndexExpr, y::IndexExpr) = x.id < y.id
+
 @auto_hash_equals struct TensorStats
-    indices::Vector{String}
-    dim_size::Dict{String, Int}
+    indices::Vector{IndexExpr}
+    dim_size::Dict{IndexExpr, Int}
     cardinality::Float64
     default_value::Any
     index_order::Any
@@ -33,12 +46,13 @@ mutable struct LogicalPlanNode
     stats::Any
 end
 
-Aggregate(op, indices::Vector, input) = LogicalPlanNode(Aggregate, [op, indices, input], nothing)
-Aggregate(op, index::String, input) = LogicalPlanNode(Aggregate, [op, [index], input], nothing)
+Aggregate(op, indices::Vector{String}, input) = LogicalPlanNode(Aggregate, [op, [IndexExpr(x) for x in indices], input], nothing)
+Aggregate(op, indices::Vector{IndexExpr}, input) = LogicalPlanNode(Aggregate, [op, indices, input], nothing)
+Aggregate(op, index::Union{IndexExpr, String}, input) = Aggregate(op, [index], input)
 Agg(op, indices, input) = Aggregate(op, indices, input)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
-InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [[""], fiber], nothing)
+InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [[], fiber], nothing)
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
 OutTensor() = LogicalPlanNode(OutTensor, [], nothing)
@@ -63,17 +77,19 @@ declare_binary_operator(max)
 
 # Indexing operator for tensors and expressions, e.g. A["i","j"]
 function Base.getindex(input::LogicalPlanNode, indices...)
+    index_vector = [x isa String ? IndexExpr(x) : x for x in collect(indices)]
     if input.head == InputTensor
-        return LogicalPlanNode(InputTensor, [collect(indices), input.args[2]], input.stats)
+        return LogicalPlanNode(InputTensor, [index_vector, input.args[2]], input.stats)
     else
-        return LogicalPlanNode(RenameIndices, [input, collect(indices)], input.stats)
+        return LogicalPlanNode(RenameIndices, [input, index_vector], input.stats)
     end
 end
 
 # Indexed assignment for tensors, e.g. C["i", "j"] = TensorExpression
 function Base.setindex!(output::LogicalPlanNode, input::LogicalPlanNode, indices...)
     output.head = Reorder
-    output.args = [input, collect(indices)]
+    index_vector = [x isa String ? IndexExpr(x) : x for x in collect(indices)]
+    output.args = [input, index_vector]
 end
 
 # In order to natively apply Metatheory to our query plans, we need to implement the
@@ -132,4 +148,8 @@ end
 
 function Base.show(io::IO, input::LogicalPlanNode)
     print(io, logicalPlanToString(input, 0))
+end
+
+function Base.show(io::IO, input::IndexExpr)
+    print(io, input.name)
 end

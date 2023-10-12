@@ -38,6 +38,10 @@ function merge_aggregates(expr)
     end
 end
 
+function rename_index(index::IndexExpr, context::Int)
+    return IndexExpr(index.id + context, index.name * "_" * string(context))
+end
+
 # This function handles the renaming of indices when expressions are re-used, e.g.
 # C[i,j] = A[i,j] * B[i,j]
 # D[m, n] = C[m, n] * C[n, m]
@@ -47,7 +51,7 @@ end
 function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, context_counter, drop_stats, drop_index_order)
     if expr.head == RenameIndices
         expr_index_lookup = Dict()
-        renamed_indices::Vector{String} = expr.args[2]
+        renamed_indices::Vector{IndexExpr} = expr.args[2]
         for i in 1:length(expr.stats.indices)
             new_index = renamed_indices[i]
             if new_index in keys(index_lookup)
@@ -59,12 +63,12 @@ function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, c
         context = context_counter[1]
         return recursive_rename(expr.args[1], expr_index_lookup, depth+1, context, context_counter, drop_stats, drop_index_order)
     elseif expr.head == InputTensor
-        indices = Vector{String}()
+        indices = Vector{IndexExpr}()
         for index in expr.stats.indices
             if index in keys(index_lookup)
                 push!(indices, index_lookup[index])
             elseif context > 0
-                push!(indices, index * "_" * string(context))
+                push!(indices, rename_index(index, context))
             else
                 push!(indices, index)
             end
@@ -94,13 +98,13 @@ function recursive_rename(expr::LogicalPlanNode, index_lookup, depth, context, c
     for arg in expr.args
         if arg isa LogicalPlanNode
             push!(new_args, recursive_rename(arg, index_lookup, depth + 1, context, context_counter, drop_stats, drop_index_order))
-        elseif arg isa Vector{String}
-            new_indices = Vector{String}()
+        elseif arg isa Vector{IndexExpr}
+            new_indices = Vector{IndexExpr}()
             for index in arg
                 if index in keys(index_lookup)
                     push!(new_indices, index_lookup[index])
                 elseif context > 0
-                    push!(new_indices, index * "_" * string(context))
+                    push!(new_indices, rename_index(index, context))
                 else
                     push!(new_indices, index)
                 end

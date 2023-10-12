@@ -1,7 +1,7 @@
 
 # This file defines a prototype front-end which allows users to define tensor expressions and get their results.
 module Galley
-    export galley, InputTensor, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
+    export galley, InputTensor, IndexExpr, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
     export uniform_fiber, declare_binary_operator
 
     using AutoHashEquals
@@ -14,18 +14,15 @@ module Galley
     using PrettyPrinting
     using TermInterface
 
+
     include("utility-funcs.jl")
-    include("LogicalOptimizer/logical-optimizer-utils.jl")
-    include("LogicalOptimizer/logical-query-plan.jl")
-    include("LogicalOptimizer/normalizer.jl")
-    include("LogicalOptimizer/cost-based-optimizer.jl")
-    include("PhysicalOptimizer/physical-query-plan.jl")
-    include("PhysicalOptimizer/physical-optimizer.jl")
-    include("ExecutionEngine/execution-engine.jl")
+    include("LogicalOptimizer/LogicalOptimizer.jl")
+    include("PhysicalOptimizer/PhysicalOptimizer.jl")
+    include("ExecutionEngine/ExecutionEngine.jl")
 
 
     function get_index_order(expr, perm_choice=-1)
-        if expr isa Vector{String}
+        if expr isa Vector{IndexExpr}
             return expr
         elseif expr isa LogicalPlanNode && perm_choice > 0
             return nthperm(sort(union([get_index_order(child) for child in expr.args]...)), perm_choice)
@@ -54,11 +51,11 @@ module Galley
         expr = recursive_rename(expr, Dict(), 0, 0, [0], true, true)
 
         verbose >= 3 && println("After Rename Pass: ", expr)
-
         global_index_order = get_index_order(expr, global_index_order)
         expr = insert_input_reorders(expr, global_index_order)
         expr = insert_global_orders(expr, global_index_order)
         expr = remove_uneccessary_reorders(expr, global_index_order)
+
         if optimize
             g = EGraph(expr)
             settermtype!(g, LogicalPlanNode)

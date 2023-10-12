@@ -12,7 +12,7 @@ TensorId = String
 
 struct InputExpr <: TensorExpression
     tensor_id::TensorId
-    input_indices::Vector{String}
+    input_indices::Vector{IndexExpr}
     input_protocols::Vector{AccessProtocol}
     stats::TensorStats
 end
@@ -22,7 +22,7 @@ end
 # `aggregate_indices`.
 struct AggregateExpr <: TensorExpression
     op::Any
-    aggregate_indices::Vector{String}
+    aggregate_indices::Vector{IndexExpr}
     input::TensorExpression
 end
 
@@ -37,7 +37,7 @@ end
 # The reorder struct inserts a blocking operation which changes the input's
 # layout/order of its indices.
 struct ReorderExpr <: TensorExpression
-    index_order::Vector{String}
+    index_order::Vector{IndexExpr}
     input::TensorExpression
 end
 
@@ -80,8 +80,8 @@ struct TensorKernel
     stats::TensorStats
     input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}}
 
-    output_indices::Vector{String}
+    output_indices::Vector{IndexExpr}
     output_formats::Vector{LevelFormat}
 
-    loop_order::Vector{String}
+    loop_order::Vector{IndexExpr}
 end

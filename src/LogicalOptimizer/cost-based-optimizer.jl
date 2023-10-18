@@ -75,8 +75,8 @@ function merge_tensor_stats(op, lstats::TensorStats, rstats::TensorStats)
     end
 end
 
-function reduce_tensor_stats(op, indexStats, stats::TensorStats)
-    indices = relative_sort(intersect(stats.indices, indexStats.indices), stats.index_order)
+function reduce_tensor_stats(op, reduce_indices::Vector{IndexExpr}, stats::TensorStats)
+    indices = relative_sort(intersect(stats.indices, reduce_indices), stats.index_order)
     new_default_value = nothing
     if haskey(identity_dict, :($op)) && identity_dict[:($op)] == stats.default_value
         new_default_value = stats.default_value
@@ -137,11 +137,10 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         # Get the left and right child eclasses
         child_eclasses = arguments(n)
         op = g[child_eclasses[1]][1].value
-        l = g[child_eclasses[2]]
+        indices = g[child_eclasses[2]][1].value
         r = g[child_eclasses[3]]
 
         # Return the union of the index sets for MapJoin operators
-        indices = getdata(l, :TensorStatsAnalysis, nothing)
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
         return reduce_tensor_stats(op, indices, rstats)
 
@@ -167,9 +166,9 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
                             stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == InputTensor
         child_eclasses = arguments(n)
-        indices = g[child_eclasses[1]][1].value
+        indices::Vector{IndexExpr} = g[child_eclasses[1]][1].value
         fiber = g[child_eclasses[2]][1].value
-        index_order = g[child_eclasses[3]][1].value
+        index_order::Vector{IndexExpr} = g[child_eclasses[3]][1].value
         return TensorStats(indices, fiber, index_order)
     elseif exprhead(n) == :call && operation(n) == Scalar
         return TensorStats([], Dict(), 1, n.args[1], [])
@@ -246,7 +245,7 @@ basic_rewrites = @theory a b c d f is js begin
     Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, Vector{IndexExpr}(collect(Set(union(is, js)))), a)
 
     # UnFuse reductions
-    Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, is[2:length(is)], a)) where (length(is) > 1)
+    Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, Vector{IndexExpr}(is[2:length(is)]), a)) where (length(is) > 1)
 
     # Reorder Reductions
     Aggregate(f, is, Aggregate(f, js, a)) == Aggregate(f, js, Aggregate(f, is, a))

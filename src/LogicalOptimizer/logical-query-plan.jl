@@ -22,11 +22,12 @@ Base.isless(x::IndexExpr, y::IndexExpr) = x.id < y.id
     dim_size::Dict{IndexExpr, Int}
     cardinality::Float64
     default_value::Any
-    index_order::Any
+    index_order::Union{Nothing, Vector{IndexExpr}}
 end
 
 TensorStats(indices, dim_size, cardinality, default_value) = TensorStats(indices, dim_size, cardinality, default_value, nothing)
-function TensorStats(indices::Vector, fiber::Fiber, global_index_order)
+function TensorStats(indices::Vector{IndexExpr}, fiber::Fiber,
+                        global_index_order::Union{Nothing, Vector{IndexExpr}})
     shape_tuple = size(fiber)
     dim_size = Dict()
     for i in 1:length(indices)
@@ -40,7 +41,7 @@ end
 # Here, we define the internal expression type that we use to describe logical query plans.
 # This is the expression type that we will optimize using Metatheory.jl, so it has to conform to
 # the TermInterface specs.
-mutable struct LogicalPlanNode
+@auto_hash_equals mutable struct LogicalPlanNode
     head::Any
     args::Vector{Any}
     stats::Any
@@ -48,11 +49,11 @@ end
 
 Aggregate(op, indices::Vector{String}, input) = LogicalPlanNode(Aggregate, [op, [IndexExpr(x) for x in indices], input], nothing)
 Aggregate(op, indices::Vector{IndexExpr}, input) = LogicalPlanNode(Aggregate, [op, indices, input], nothing)
-Aggregate(op, index::Union{IndexExpr, String}, input) = Aggregate(op, [index], input)
+Aggregate(op, index::Union{IndexExpr, String}, input) = Aggregate(op, IndexExpr[index], input)
 Agg(op, indices, input) = Aggregate(op, indices, input)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
-InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [[], fiber], nothing)
+InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], nothing)
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
 OutTensor() = LogicalPlanNode(OutTensor, [], nothing)

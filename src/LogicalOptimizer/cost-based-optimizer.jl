@@ -3,11 +3,11 @@
 
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeLiteral)
     if n.value isa Set
-        return TensorStats(collect(n.value), Dict(), 0, nothing)
+        return TensorStats(Vector{IndexExpr}(collect(n.value)), Dict(), 0, nothing)
     elseif n.value isa Vector
-        return TensorStats(n.value, Dict(), 0, nothing)
+        return TensorStats(Vector{IndexExpr}(n.value), Dict(), 0, nothing)
     else
-        return  TensorStats([], Dict(), 0, n.value)
+        return  TensorStats(Vector{IndexExpr}(), Dict(), 0, n.value)
     end
 end
 
@@ -248,7 +248,7 @@ basic_rewrites = @theory a b c d f is js begin
     Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, Vector{IndexExpr}(is[2:length(is)]), a)) where (length(is) > 1)
 
     # Reorder Reductions
-    Aggregate(f, is, Aggregate(f, js, a)) == Aggregate(f, js, Aggregate(f, is, a))
+    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f,  Vector{IndexExpr}(js), Aggregate(f,  Vector{IndexExpr}(is), a))
 
     # Commutativity
     MapJoin(+, a, b) == MapJoin(+, b, a)

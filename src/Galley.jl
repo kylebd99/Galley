@@ -17,6 +17,7 @@ module Galley
 
     include("utility-funcs.jl")
     include("LogicalOptimizer/LogicalOptimizer.jl")
+    include("FAQOptimizer/FAQOptimizer.jl")
     include("PhysicalOptimizer/PhysicalOptimizer.jl")
     include("ExecutionEngine/ExecutionEngine.jl")
 
@@ -43,7 +44,7 @@ module Galley
     end
 
 
-    function galley(expr; optimize=true, verbose=2, global_index_order=1)
+    function galley(expr::LogicalPlanNode; optimize=true, verbose=2, global_index_order=1)
         verbose >= 3 && println("Before Rename Pass: ", expr)
         dummy_index_order = get_index_order(expr)
         expr = insert_global_orders(expr, dummy_index_order)
@@ -83,4 +84,21 @@ module Galley
 
         return result.value
     end
+
+
+
+    function galley(faq_problem::FAQInstance; optimize=true, verbose=2, global_index_order=1)
+        verbose >= 3 && println("Before Rename Pass: ", expr)
+
+        htd = faq_to_htd(faq_problem)
+        expr = decomposition_to_logical_plan(htd)
+        global_index_order = get_index_order(expr, global_index_order)
+        expr = insert_global_orders(expr, global_index_order)
+        expr = fill_in_stats(expr, global_index_order)
+        tensor_kernel = expr_to_kernel(expr, global_index_order, verbose = verbose)
+        result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
+        verbose >= 1 && println("Time to Execute: ", result.time)
+        return result.value
+    end
+
 end

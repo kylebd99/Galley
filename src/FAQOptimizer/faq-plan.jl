@@ -25,11 +25,21 @@ struct FAQInstance
 end
 
 mutable struct Bag
-    parent::Union{Bag, Nothing}
     edge_covers::Vector{Factor}
     covered_indices::Set{IndexExpr}
     parent_indices::Set{IndexExpr}
     child_bags::Vector{Bag}
+
+    function Bag(edge_covers::Vector{Factor},
+                    covered_indices::Set{IndexExpr},
+                    parent_indices::Set{IndexExpr},
+                    child_bags::Vector{Bag})
+        return new(edge_covers, covered_indices, parent_indices, child_bags)
+    end
+
+    function Bag()
+        new(nothing, [], Set(), Set(), [])
+    end
 end
 
 mutable struct HyperTreeDecomposition
@@ -48,7 +58,7 @@ function _factor_to_plan_node(f::Factor)
 end
 
 function _recursive_bag_to_plan_node(b::Bag, mult_op::Function, sum_op::Function)
-    factor_plan_nodes = Vector{LogicalPlanNode}()
+    factor_plan_nodes = LogicalPlanNode[]
     for f in b.edge_covers
         push!(factor_plan_nodes, _factor_to_plan_node(f))
     end

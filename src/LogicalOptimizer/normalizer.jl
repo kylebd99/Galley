@@ -11,7 +11,7 @@ end
 
 needs_reorder(expr, index_order) = false
 function needs_reorder(expr::LogicalPlanNode, index_order)
-    return expr.head == InputTensor && is_sorted_wrt_index_order(expr.args[1], index_order)
+    return expr.head == InputTensor && !is_sorted_wrt_index_order(expr.args[1], index_order)
 end
 
 function insert_input_reorders(expr, global_index_order)

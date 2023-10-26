@@ -3,7 +3,7 @@
 function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{IndexExpr}, protocols::Vector{AccessProtocol})
     index_expressions = []
     for i in range(1, length(index_ids))
-        index = Finch.FinchNotation.index_instance(Symbol(index_ids[i]))
+        index = index_instance(Symbol(index_ids[i]))
         protocol = nothing
         if protocols[i] == t_walk
             protocol = walk
@@ -16,10 +16,12 @@ function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector
         elseif protocols[i] == t_gallop
             protocol = gallop
         end
-        push!(index_expressions, @finch_program_instance index::protocol)
-    end
-    tensor_var = Finch.FinchNotation.variable_instance(Symbol(tensor_id), tensor)
-    return @finch_program_instance $(tensor_var)[index_expressions...]
+#        push!(index_expressions, @finch_program_instance index::protocol)
+        push!(index_expressions, index)
+end
+    tensor_var = variable_instance(Symbol(tensor_id))
+    tensor_tag = tag_instance(tensor_var, tensor)
+    return @finch_program_instance $(tensor_tag)[index_expressions...]
 end
 
 
@@ -61,7 +63,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         if node isa InputExpr
             tensor_id = node.tensor_id
             if kernel.input_tensors[tensor_id] isa Number
-                node_dict[node_id] = Finch.FinchNotation.literal_instance(kernel.input_tensors[tensor_id])
+                node_dict[node_id] = literal_instance(kernel.input_tensors[tensor_id])
             else
                 for idx in node.input_indices
                     if idx in keys(index_dims) && index_dims[idx] != node.stats.dim_size[idx]
@@ -92,8 +94,8 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         end
     end
 
-    loop_order = [Finch.FinchNotation.index_instance(Symbol(i)) for i in kernel.loop_order]
-    output_indices = [Finch.FinchNotation.index_instance(Symbol(i)) for i in kernel.output_indices]
+    loop_order = [index_instance(Symbol(i)) for i in kernel.loop_order]
+    output_indices = [index_instance(Symbol(i)) for i in kernel.output_indices]
     output_dimensions = Vector{Int64}()
     for idx in kernel.output_indices
         push!(output_dimensions, index_dims[idx])
@@ -101,12 +103,15 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     output_default = kernel.stats.default_value
     output_tensor = initialize_tensor(kernel.output_formats, output_dimensions, output_default)
     if agg_op === nothing
-        default_value = Finch.FinchNotation.literal_instance(output_default)
-        full_prgm = @finch_program_instance (output_tensor .= $default_value; @loop loop_order... output_tensor[output_indices...] = $kernel_prgm)
+        full_prgm = @finch_program_instance output_tensor[output_indices...] = $kernel_prgm
     else
-        default_value = Finch.FinchNotation.literal_instance(output_default)
-        full_prgm = @finch_program_instance (output_tensor .= $default_value; @loop loop_order... output_tensor[output_indices...] <<agg_op>>=  $kernel_prgm)
+        full_prgm = @finch_program_instance output_tensor[output_indices...] <<agg_op>>=  $kernel_prgm
     end
+    default_value = literal_instance(output_default)
+    for index in reverse(loop_order)
+        full_prgm = @finch_program_instance (for $index = _; $full_prgm end)
+    end
+    full_prgm = @finch_program_instance (output_tensor .= $default_value; $full_prgm)
 
     for tensor_id in keys(kernel.input_tensors)
         if kernel.input_tensors[tensor_id] isa TensorKernel

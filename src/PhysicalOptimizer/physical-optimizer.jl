@@ -46,7 +46,7 @@ function expr_to_kernel(n, global_index_order; verbose = 0)
         input_tensors = Dict("A" => expr_to_kernel(sub_expr, global_index_order))
         output_indices = relative_sort(sub_expr.stats.indices, index_order)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        loop_order =  relative_sort(n.stats.indices, index_order, rev=true)
+        loop_order =  reverse(sub_expr.stats.indices) # We iterate in the input tensor's order for efficient reordering
         return TensorKernel(kernel_root, n.stats, input_tensors, output_indices, output_formats, loop_order)
     elseif n.head == InputTensor
         return n.args[2]

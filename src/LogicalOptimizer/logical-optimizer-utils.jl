@@ -23,6 +23,10 @@ function relative_sort(indices::Vector{IndexExpr}, index_order; rev=false)
     end
 end
 
-function is_sorted_wrt_index_order(indices::Vector, index_order::Vector)
-    return issorted(indexin(indices, index_order))
+function is_sorted_wrt_index_order(indices::Vector, index_order::Vector; loop_order=false)
+    if loop_order
+        return issorted(indexin(indices, index_order), rev=true)
+    else
+        return issorted(indexin(indices, index_order))
+    end
 end

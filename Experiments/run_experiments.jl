@@ -7,12 +7,12 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         queries = load_workload(experiment.workload)
         if experiment.warm_start
             for query in queries
-                galley(query.query)
+                galley(query.query; faq_optimizer = experiment.faq_optimizer)
             end
         end
         for query in queries
             println("Query Path: ", query.query_path)
-            result = @timed galley(query.query)
+            result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer)
             push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time)))
         end
         filename = "Experiments/Results/" * param_to_results_filename(experiment)

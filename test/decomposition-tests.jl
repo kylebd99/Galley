@@ -66,7 +66,7 @@ end
 
 @testset "FAQ to Output" begin
 
-    @testset "matrix multiplication" begin
+    @testset "matrix multiplication - naive" begin
         i = IndexExpr("i")
         j = IndexExpr("j")
         k = IndexExpr("k")
@@ -83,7 +83,7 @@ end
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber, nothing))
 
         faq = FAQInstance(*, +, Set([i,k]), Set([i,j,k]), [a_factor, b_factor])
-        galley_matrix = galley(faq, verbose = verbose)
+        galley_matrix = galley(faq; faq_optimizer = naive, verbose = verbose)
         correct_matrix = a_matrix * b_matrix
         @test galley_matrix == correct_matrix
     end

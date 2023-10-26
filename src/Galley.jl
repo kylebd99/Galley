@@ -3,6 +3,7 @@
 module Galley
     export galley, InputTensor, IndexExpr, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
     export uniform_fiber, declare_binary_operator, Factor, FAQInstance
+    export FAQ_OPTIMIZERS, naive, hypertree
 
     using AutoHashEquals
     using Combinatorics
@@ -65,10 +66,10 @@ module Galley
 
 
 
-    function galley(faq_problem::FAQInstance; optimize=true, verbose=2, global_index_order=1)
+    function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=2, global_index_order=1)
         verbose >= 3 && println("Input FAQ : ", faq_problem)
 
-        htd = faq_to_htd(faq_problem)
+        htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
         expr = decomposition_to_logical_plan(htd)
         verbose >= 1 && println("Plan: ", expr)
         global_index_order = get_index_order(expr, global_index_order)

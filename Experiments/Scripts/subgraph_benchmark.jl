@@ -2,11 +2,11 @@ include("../Experiments.jl")
 
 
 #datasets = instances(SUBGRAPH_DATASET)
-datasets = [human]
+datasets = [aids]
 
 experiments = ExperimentParams[]
 for dataset in datasets
-    push!(experiments, ExperimentParams(workload=dataset))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=hypertree))
 end
 
 run_experiments(experiments)

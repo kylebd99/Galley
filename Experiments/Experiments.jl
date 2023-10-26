@@ -3,7 +3,6 @@
 using SparseArrays
 using Finch
 using Galley
-using Galley: FAQ_OPTIMIZERS, naive, tree_decomp
 using DelimitedFiles
 using CSV, DataFrames
 using DelimitedFiles: writedlm

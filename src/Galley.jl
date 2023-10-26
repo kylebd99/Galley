@@ -22,28 +22,6 @@ module Galley
     include("ExecutionEngine/ExecutionEngine.jl")
 
 
-    function get_index_order(expr, perm_choice=-1)
-        if expr isa Vector{IndexExpr}
-            return expr
-        elseif expr isa LogicalPlanNode && perm_choice > 0
-            return nthperm(sort(union([get_index_order(child) for child in expr.args]...)), perm_choice)
-        elseif expr isa LogicalPlanNode
-            return sort(union([get_index_order(child) for child in expr.args]...))
-
-        else
-            return []
-        end
-    end
-
-    function fill_in_stats(expr, global_index_order)
-        g = EGraph(expr)
-        settermtype!(g, LogicalPlanNode)
-        analyze!(g, :TensorStatsAnalysis)
-        expr = e_graph_to_expr_tree(g, global_index_order)
-        return expr
-    end
-
-
     function galley(expr::LogicalPlanNode; optimize=true, verbose=2, global_index_order=1)
         verbose >= 3 && println("Before Rename Pass: ", expr)
         dummy_index_order = get_index_order(expr)

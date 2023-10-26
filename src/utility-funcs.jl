@@ -31,4 +31,24 @@ function uniform_fiber(shape, sparsity; formats = [], default_value = 0, non_def
     return fiber
 end
 
-# Call fsparse when constructing
+
+function get_index_order(expr, perm_choice=-1)
+    if expr isa Vector{IndexExpr}
+        return expr
+    elseif expr isa LogicalPlanNode && perm_choice > 0
+        return nthperm(sort(union([get_index_order(child) for child in expr.args]...)), perm_choice)
+    elseif expr isa LogicalPlanNode
+        return sort(union([get_index_order(child) for child in expr.args]...))
+
+    else
+        return []
+    end
+end
+
+function fill_in_stats(expr, global_index_order)
+    g = EGraph(expr)
+    settermtype!(g, LogicalPlanNode)
+    analyze!(g, :TensorStatsAnalysis)
+    expr = e_graph_to_expr_tree(g, global_index_order)
+    return expr
+end

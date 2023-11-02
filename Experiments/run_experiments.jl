@@ -7,6 +7,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         queries = load_workload(experiment.workload)
         if experiment.warm_start
             for query in queries
+                println("Warm Start Query Path: ", query.query_path)
                 galley(query.query; faq_optimizer = experiment.faq_optimizer)
             end
         end

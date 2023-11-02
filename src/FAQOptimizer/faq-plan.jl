@@ -8,7 +8,7 @@
 # its variables, called an indicator factor. In this case, we refer to it as ψ_i, and it is
 # either 0 or 1 depending on whether there exists a non-zero completion of the variables in φ_i.
 
-struct Factor
+@auto_hash_equals mutable struct Factor
     input::LogicalPlanNode
     active_indices::Set{IndexExpr}
     all_indices::Set{IndexExpr}
@@ -16,7 +16,7 @@ struct Factor
     stats::TensorStats
 end
 
-struct FAQInstance
+@auto_hash_equals mutable struct FAQInstance
     mult_op::Function
     sum_op::Function
     output_indices::Set{IndexExpr}
@@ -24,7 +24,7 @@ struct FAQInstance
     factors::Vector{Factor}
 end
 
-mutable struct Bag
+@auto_hash_equals mutable struct Bag
     edge_covers::Vector{Factor}
     covered_indices::Set{IndexExpr}
     parent_indices::Set{IndexExpr}
@@ -42,7 +42,7 @@ mutable struct Bag
     end
 end
 
-mutable struct HyperTreeDecomposition
+@auto_hash_equals mutable struct HyperTreeDecomposition
     mult_op::Function
     sum_op::Function
     output_indices::Set{IndexExpr}

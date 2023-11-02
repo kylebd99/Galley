@@ -15,7 +15,7 @@ struct ExperimentParams
     warm_start::Bool
     faq_optimizer::FAQ_OPTIMIZERS
 
-    function ExperimentParams(;workload=human, warm_start=true, faq_optimizer=naive)
+    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive)
         return new(workload, warm_start, faq_optimizer)
     end
 end

@@ -32,7 +32,6 @@ module Galley
 
         verbose >= 3 && println("After Rename Pass: ", expr)
         global_index_order = get_index_order(expr, global_index_order)
-        expr = insert_input_reorders(expr, global_index_order)
         expr = insert_global_orders(expr, global_index_order)
         expr = remove_uneccessary_reorders(expr, global_index_order)
 
@@ -72,7 +71,7 @@ module Galley
         htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
         expr = decomposition_to_logical_plan(htd)
         global_index_order = get_index_order(expr, global_index_order)
-        expr = insert_input_reorders(expr, global_index_order)
+#        expr = insert_input_reorders(expr, global_index_order)
         expr = insert_global_orders(expr, global_index_order)
         expr = fill_in_stats(expr, global_index_order)
         expr = merge_aggregates(expr)

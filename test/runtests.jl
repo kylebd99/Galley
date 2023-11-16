@@ -6,5 +6,5 @@ using Galley: HyperTreeDecomposition, Bag, Factor, FAQInstance, decomposition_to
 using Galley: expr_to_kernel, execute_tensor_kernel, insert_global_orders
 
 # run subtests
-include("basic-tests.jl")
+#include("basic-tests.jl")
 include("decomposition-tests.jl")

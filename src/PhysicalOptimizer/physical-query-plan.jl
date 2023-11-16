@@ -10,7 +10,7 @@ TensorId = String
 # The set of allowed level formats provided by the Finch API
 @enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
 
-struct InputExpr <: TensorExpression
+mutable struct InputExpr <: TensorExpression
     tensor_id::TensorId
     input_indices::Vector{IndexExpr}
     input_protocols::Vector{AccessProtocol}
@@ -20,7 +20,7 @@ end
 # The aggregate struct refers to mathematical operations which operate over a dimension of the tensors.
 # These operations reduce the dimensionality of the result by removing the dimensions of
 # `aggregate_indices`.
-struct AggregateExpr <: TensorExpression
+mutable struct AggregateExpr <: TensorExpression
     op::Any
     aggregate_indices::Vector{IndexExpr}
     input::TensorExpression
@@ -28,7 +28,7 @@ end
 
 # The operator struct refers to mathematical operations with a (generally small) number of inputs which does not rely on
 # the size of domains, e.g. max(A[i],B[i],C[j]) or A[i]*B[i].
-struct OperatorExpr <: TensorExpression
+mutable struct OperatorExpr <: TensorExpression
     op
     inputs::Vector{<:TensorExpression}
 end
@@ -36,7 +36,7 @@ end
 
 # The reorder struct inserts a blocking operation which changes the input's
 # layout/order of its indices.
-struct ReorderExpr <: TensorExpression
+mutable struct ReorderExpr <: TensorExpression
     index_order::Vector{IndexExpr}
     input::TensorExpression
 end
@@ -75,7 +75,7 @@ end
 
 # The struct containing all information needed to compute a small tensor kernel using the finch compiler.
 # This will be the output of the kernel optimizer
-struct TensorKernel
+mutable struct TensorKernel
     kernel_root::TensorExpression
     stats::TensorStats
     input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}}

@@ -111,4 +111,30 @@ end
         @test galley(faq; faq_optimizer = greedy) == correct_matrix
         @test galley(faq; faq_optimizer = hypertree_width) == correct_matrix
     end
+
+    @testset "element-wise matrix multiplication" begin
+        i = IndexExpr("i")
+        j = IndexExpr("j")
+
+        a_matrix = [0 2; 0 2]
+        a_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(a_fiber, a_matrix)
+        a_tensor = InputTensor(a_fiber)[i, j]
+        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], a_fiber))
+        b_matrix = [0 2; 0 2]
+        b_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(b_fiber, b_matrix)
+        b_tensor = InputTensor(b_fiber)[i, j]
+        b_factor = Factor(b_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], b_fiber))
+        c_matrix = [0 2; 0 2]
+        c_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(c_fiber, c_matrix)
+        c_tensor = InputTensor(c_fiber)[i, j]
+        c_factor = Factor(c_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], c_fiber))
+        faq = FAQInstance(*, +, Set([i, j]), Set([i,j]), Set([a_factor, b_factor, c_factor]), [i, j])
+        correct_matrix = a_matrix .* b_matrix .* c_matrix
+        @test galley(faq; faq_optimizer = naive) == correct_matrix
+        @test galley(faq; faq_optimizer = greedy) == correct_matrix
+        @test galley(faq; faq_optimizer = hypertree_width) == correct_matrix
+    end
 end

@@ -33,11 +33,11 @@ end
 
 
 function _get_cheapest_edge_cover(mult_op, sum_op, inputs::Vector{Union{Factor, Bag}}, output_indices::Set{IndexExpr})
-    all_indices = setdiff(union([input.stats.index_set for input in inputs]...), output_indices)
+    indices_to_aggregate = setdiff(union([input.stats.index_set for input in inputs]...), output_indices)
     min_cost = Inf64
     cheapest_index = IndexExpr("")
     cheapest_edge_cover = Int[]
-    for index in all_indices
+    for index in indices_to_aggregate
         cur_cost, edge_cover = _get_index_cost(mult_op, sum_op, index, inputs, output_indices)
         if cur_cost < min_cost
             min_cost = cur_cost
@@ -58,7 +58,8 @@ function greedy_decomposition(faq::FAQInstance)
     for factor in factors
         push!(inputs, factor)
     end
-    while length(inputs) > 1
+    all_indices = union([input.stats.index_set for input in inputs]...)
+    while all_indices != output_indices
         cheapest_edge_cover = _get_cheapest_edge_cover(mult_op, sum_op, inputs, output_indices)
         edge_cover = Set{Factor}()
         child_bags = Set{Bag}()
@@ -96,6 +97,7 @@ function greedy_decomposition(faq::FAQInstance)
         end
         push!(new_inputs, new_bag)
         inputs = new_inputs
+        all_indices = union([input.stats.index_set for input in inputs]...)
     end
     child_bags = Set{Bag}()
     edge_covers = Set{Factor}()

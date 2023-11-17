@@ -1,5 +1,4 @@
 # This file performs the actual execution of physical query plan.
-
 function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{IndexExpr}, protocols::Vector{AccessProtocol})
     index_expressions = []
     for i in range(1, length(index_ids))
@@ -16,7 +15,6 @@ function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector
         elseif protocols[i] == t_gallop
             protocol = gallop
         end
-#        push!(index_expressions, @finch_program_instance index::protocol)
         push!(index_expressions, index)
     end
     tensor_var = variable_instance(Symbol(tensor_id))
@@ -54,7 +52,6 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         node_dict[cur_node_id] = (cur_node, child_node_ids)
     end
 
-    index_dims = Dict()
     agg_op = nothing
     kernel_prgm = nothing
     for node_id in reverse(range(0, length(keys(node_dict))-1))
@@ -64,12 +61,6 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             if kernel.input_tensors[tensor_id] isa Number
                 node_dict[node_id] = literal_instance(kernel.input_tensors[tensor_id])
             else
-                for idx in node.input_indices
-                    if idx in keys(index_dims) && index_dims[idx] != node.stats.dim_size[idx]
-                        throw(ArgumentError("Error: Tensors cannot be joined on indices with different dimension sizes."))
-                    end
-                    index_dims[idx] = node.stats.dim_size[idx]
-                end
                 node_dict[node_id] = initialize_access(tensor_id, kernel.input_tensors[tensor_id], node.input_indices, node.input_protocols)
             end
         elseif node isa OperatorExpr
@@ -95,11 +86,8 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
 
     loop_order = [index_instance(Symbol(i)) for i in kernel.loop_order]
     output_indices = [index_instance(Symbol(i)) for i in kernel.output_indices]
-    output_dimensions = Vector{Int64}()
-    for idx in kernel.output_indices
-        push!(output_dimensions, index_dims[idx])
-    end
-    output_default = kernel.stats.default_value
+    output_dimensions = kernel.output_dims
+    output_default = kernel.output_default
     output_tensor = initialize_tensor(kernel.output_formats, output_dimensions, output_default)
     if agg_op === nothing
         full_prgm = @finch_program_instance output_tensor[output_indices...] = $kernel_prgm

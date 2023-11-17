@@ -10,7 +10,10 @@ function merge_tensor_stats_join(op, lstats::TensorStats, rstats::TensorStats)
     new_dim_size = Dict()
     for index in new_index_set
         if index in lstats.index_set && index in rstats.index_set
-            new_dim_size[index] = min(lstats.dim_size[index], rstats.dim_size[index])
+            # Here, we assume that indices can only be shared between tensors with the same
+            # dimensions.
+            @assert lstats.dim_size[index] == rstats.dim_size[index]
+            new_dim_size[index] = lstats.dim_size[index]
         elseif index in rstats.index_set
             new_dim_size[index] = rstats.dim_size[index]
         else
@@ -33,7 +36,10 @@ function merge_tensor_stats_union(op, lstats::TensorStats, rstats::TensorStats)
     new_dim_size = Dict()
     for index in new_index_set
         if index in lstats.index_set && index in rstats.index_set
-            new_dim_size[index] = max(lstats.dim_size[index], rstats.dim_size[index])
+            # Here, we assume that indices can only be shared between tensors with the same
+            # dimensions.
+            @assert lstats.dim_size[index] == rstats.dim_size[index]
+            new_dim_size[index] = lstats.dim_size[index]
         elseif index in rstats.index_set
             new_dim_size[index] = rstats.dim_size[index]
         else

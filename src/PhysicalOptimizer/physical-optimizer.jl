@@ -1,8 +1,6 @@
-# A recursive function which converts our logical expression tree to a phsyical plan composed of kernels.
-# List of assumptions/limitations
-#     - All internal results are stored in hash tables
-# `input_counter` is a vector with length 1, so that we can pass the counter by reference.
-# We use this counter to uniquely name the input tensors.
+# This function traverses the logical expression tree and converts it into a tensor expression
+# tree for use in a tensor kernel. In doing so, it decides the boundaries of each kernel as
+# well.
 function _recursive_get_kernel_root(n, loop_order, input_counter)
     kernel_root = nothing
     input_dict = Dict()
@@ -108,6 +106,8 @@ end
 # Currently, we decide the loop order entirely based on the structural properties of the
 # query. Later on, we will use statistics and cost-based optimization for these decisions.
 # Note, that we set the output order of the child to be the loop order of the parent.
+# TODO: In the future, we would like to actually execute the kernels here and decide whether
+# to re-optimize at this point based on the materialized children (e.g. their nnz count).
 function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
     kernel_root = nothing
     if n.head == Aggregate
@@ -160,7 +160,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
     elseif n.head == Reorder
         sub_expr = n.args[1]
         output_indices = n.args[2]
-        loop_order = reverse(sub_expr.stats.index_order) # We iterate in the input tensor's order for efficient reordering
+        loop_order = reverse(output_indices)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = ReorderExpr(output_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]

@@ -74,7 +74,7 @@ module Galley
         _recursive_insert_stats!(expr)
         expr = merge_aggregates(expr)
         verbose >= 1 && println("Plan: ", expr)
-        tensor_kernel = expr_to_kernel(expr, collect(expr.stats.index_set), verbose = verbose)
+        tensor_kernel = expr_to_kernel(expr, htd.output_index_order, verbose = verbose)
         result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
         verbose >= 1 && println("Time to Execute: ", result.time)
         return result.value

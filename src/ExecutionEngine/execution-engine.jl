@@ -61,6 +61,10 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             if kernel.input_tensors[tensor_id] isa Number
                 node_dict[node_id] = literal_instance(kernel.input_tensors[tensor_id])
             else
+                if verbose >= 3
+                    println("Expected Output Tensor Size: ", node.stats.cardinality)
+                    println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
+                end
                 node_dict[node_id] = initialize_access(tensor_id, kernel.input_tensors[tensor_id], node.input_indices, node.input_protocols)
             end
         elseif node isa OperatorExpr
@@ -109,9 +113,5 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     verbose >= 3 && println("Output Order: ", kernel.output_indices)
     verbose >= 3 && println("Loop Order: ", kernel.loop_order)
     output_tensor = Finch.execute(full_prgm).output_tensor
-    if verbose >= 3
-        println("Expected Output Tensor Size: ", kernel.stats.cardinality)
-        println("Output Tensor Size: ", countstored(output_tensor))
-    end
     return output_tensor
 end

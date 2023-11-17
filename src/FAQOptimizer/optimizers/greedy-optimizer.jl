@@ -1,7 +1,7 @@
 # This optimizer is meant to run in time quadratic w.r.t. the FAQInstance. The goal is to
 # aggressively pick one variable at a time, perform the associated joins & aggregate it
 # out. Each time the variable whose associated join is smallest is selected.
-function _get_index_cost(mult_op, index::IndexExpr, inputs::Vector{Union{Factor, Bag}})
+function _get_index_cost(mult_op, index::IndexExpr, inputs::Vector{Union{Factor, Bag}}, output_indices::Set{IndexExpr})
     edge_cover = Int[]
     edge_cover_stats = TensorStats[]
     for i in eachindex(inputs)
@@ -12,9 +12,10 @@ function _get_index_cost(mult_op, index::IndexExpr, inputs::Vector{Union{Factor,
         end
     end
     covered_indices = union([stats.index_set for stats in edge_cover_stats]...)
-    parent_indices = Set{IndexExpr}()
+    parent_indices = copy(output_indices)
     for idx in covered_indices
-        for input in inputs
+        for i in eachindex(inputs)
+            i in edge_cover && continue
             if idx in input.stats.index_set
                 push!(parent_indices, idx)
                 break
@@ -30,13 +31,13 @@ function _get_index_cost(mult_op, index::IndexExpr, inputs::Vector{Union{Factor,
 end
 
 
-function _get_cheapest_edge_cover(mult_op, inputs::Vector{Union{Factor, Bag}})
+function _get_cheapest_edge_cover(mult_op, inputs::Vector{Union{Factor, Bag}}, output_indices::Set{IndexExpr})
     all_indices = union([input.stats.index_set for input in inputs]...)
     min_cost = Inf64
     cheapest_index = IndexExpr("")
     cheapest_edge_cover = Int[]
     for index in all_indices
-        cur_cost, edge_cover = _get_index_cost(mult_op, index, inputs)
+        cur_cost, edge_cover = _get_index_cost(mult_op, index, inputs, output_indices)
         if cur_cost < min_cost
             min_cost = cur_cost
             cheapest_index = index
@@ -51,12 +52,13 @@ function greedy_decomposition(faq::FAQInstance)
     mult_op = faq.mult_op
     sum_op = faq.sum_op
     output_indices = faq.output_indices
+    output_index_order = faq.output_index_order
     factors = Set{Factor}(faq.factors)
     for factor in factors
         push!(inputs, factor)
     end
     while length(inputs) > 1
-        cheapest_edge_cover = _get_cheapest_edge_cover(mult_op, inputs)
+        cheapest_edge_cover = _get_cheapest_edge_cover(mult_op, inputs, output_indices)
         edge_cover = Factor[]
         child_bags = Bag[]
         covered_indices = Set{IndexExpr}()
@@ -98,6 +100,6 @@ function greedy_decomposition(faq::FAQInstance)
         inputs[1] = Bag(mult_op, sum_op, [inputs[1]], Set{IndexExpr}(inputs[1].stats.index_set), Set{IndexExpr}(inputs[1].stats.index_set), Bag[])
     end
     root_bag::Bag = inputs[1]
-    htd = HyperTreeDecomposition(mult_op, sum_op, output_indices, root_bag)
+    htd = HyperTreeDecomposition(mult_op, sum_op, output_indices, root_bag, output_index_order)
     return htd
 end

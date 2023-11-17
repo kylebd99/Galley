@@ -148,7 +148,8 @@ function hypertree_width_decomposition(faq::FAQInstance)
     println("Beginning HTD")
     mult_op = faq.mult_op
     sum_op = faq.sum_op
-    output_indices::Set{IndexExpr} = faq.output_indices
+    output_indices = faq.output_indices
+    output_index_order = faq.output_index_order
     factors = Set{Factor}(faq.factors)
     println("Making Factor Graph")
     factor_graph = Dict{Factor, Vector{Factor}}()
@@ -178,7 +179,7 @@ function hypertree_width_decomposition(faq::FAQInstance)
             continue
         else
             println("Finished HTD")
-            return HyperTreeDecomposition(mult_op, sum_op, output_indices, bag)
+            return HyperTreeDecomposition(mult_op, sum_op, output_indices, bag, output_index_order)
         end
     end
 end

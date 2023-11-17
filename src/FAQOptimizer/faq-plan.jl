@@ -22,6 +22,26 @@ end
     output_indices::Set{IndexExpr}
     input_indices::Set{IndexExpr}
     factors::Vector{Factor}
+    output_index_order::Union{Nothing, Vector{IndexExpr}}
+    function FAQInstance(
+        mult_op::Function,
+        sum_op::Function,
+        output_indices::Set{IndexExpr},
+        input_indices::Set{IndexExpr},
+        factors::Vector{Factor})
+        return new(mult_op, sum_op, output_indices, input_indices, factors, nothing)
+    end
+
+    function FAQInstance(
+        mult_op::Function,
+        sum_op::Function,
+        output_indices::Set{IndexExpr},
+        input_indices::Set{IndexExpr},
+        factors::Vector{Factor},
+        output_index_order::Union{Nothing, Vector{IndexExpr}})
+        return new(mult_op, sum_op, output_indices, input_indices, factors, output_index_order)
+    end
+
 end
 
 @auto_hash_equals mutable struct Bag
@@ -51,6 +71,7 @@ end
     sum_op::Function
     output_indices::Set{IndexExpr}
     root_bag::Bag
+    output_index_order::Union{Nothing, Vector{IndexExpr}}
 end
 
 function _factor_to_plan_node(f::Factor)
@@ -88,5 +109,9 @@ function _recursive_bag_to_plan_node(b::Bag, mult_op::Function, sum_op::Function
 end
 
 function decomposition_to_logical_plan(htd::HyperTreeDecomposition)
-    return _recursive_bag_to_plan_node(htd.root_bag, htd.mult_op, htd.sum_op)
+    expr = _recursive_bag_to_plan_node(htd.root_bag, htd.mult_op, htd.sum_op)
+    if !isnothing(htd.output_index_order)
+        expr = Reorder(expr, htd.output_index_order)
+    end
+    return expr
 end

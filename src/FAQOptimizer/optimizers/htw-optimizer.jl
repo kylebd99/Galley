@@ -145,7 +145,7 @@ end
 
 
 function hypertree_width_decomposition(faq::FAQInstance; verbose=0)
-    println("Beginning HTD")
+    verbose > 2 && println("Beginning HTD")
     mult_op = faq.mult_op
     sum_op = faq.sum_op
     output_indices = faq.output_indices

@@ -152,7 +152,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         end
     end
 
-    factors = []
+    factors = Factor[]
     for v in keys(query_vertices)
         label = query_vertices[v]
         if label == -1

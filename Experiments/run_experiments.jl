@@ -13,7 +13,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         for query in queries
             println("Query Path: ", query.query_path)
             try
-                result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer)
+                result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer,  verbose=2)
                 push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time)))
                 num_completed += 1
             catch e

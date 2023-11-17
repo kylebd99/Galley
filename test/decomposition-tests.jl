@@ -7,7 +7,6 @@ end
 
 # The conversion of an HTD to a logical plan should be a fairly straightforward process.
 @testset "HTD to LogicalPlan" begin
-
     @testset "matrix multiplication" begin
         i = IndexExpr("i")
         j = IndexExpr("j")
@@ -59,7 +58,7 @@ end
         output_order = [i, k]
         tensor_kernel = expr_to_kernel(plan, output_order)
         correct_matrix = a_matrix * b_matrix
-        @test execute_tensor_kernel(tensor_kernel; verbose=3) == correct_matrix skip=true
+        @test execute_tensor_kernel(tensor_kernel) == correct_matrix
     end
 end
 
@@ -82,6 +81,6 @@ end
 
         faq = FAQInstance(*, +, Set([i,k]), Set([i,j,k]), [a_factor, b_factor], [i,k])
         correct_matrix = a_matrix * b_matrix
-        @test galley(faq; faq_optimizer = naive, verbose=3) == correct_matrix skip=true
+        @test galley(faq; faq_optimizer = naive) == correct_matrix
     end
 end

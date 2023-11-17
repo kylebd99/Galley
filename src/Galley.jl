@@ -24,7 +24,7 @@ module Galley
     include("ExecutionEngine/ExecutionEngine.jl")
 
 
-    function galley(expr::LogicalPlanNode; optimize=true, verbose=2, global_index_order=1)
+    function galley(expr::LogicalPlanNode; optimize=true, verbose=0, global_index_order=1)
         verbose >= 3 && println("Before Rename Pass: ", expr)
         dummy_index_order = get_index_order(expr)
         expr = insert_global_orders(expr, dummy_index_order)
@@ -66,7 +66,7 @@ module Galley
 
 
 
-    function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=2)
+    function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=0)
         verbose >= 3 && println("Input FAQ : ", faq_problem)
 
         htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)

@@ -29,16 +29,20 @@ end
     covered_indices::Set{IndexExpr}
     parent_indices::Set{IndexExpr}
     child_bags::Vector{Bag}
+    stats::TensorStats
 
-    function Bag(edge_covers::Vector{Factor},
+    function Bag(mult_op,
+                    sum_op,
+                    edge_covers::Vector{Factor},
                     covered_indices::Set{IndexExpr},
                     parent_indices::Set{IndexExpr},
                     child_bags::Vector{Bag})
-        return new(edge_covers, covered_indices, parent_indices, child_bags)
+        input_stats::Vector{TensorStats} = cat([f.stats for f in edge_covers], [b.stats for b in child_bags], dims=(1,1))
+        return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices))
     end
 
     function Bag()
-        new(nothing, [], Set(), Set(), [])
+        new(nothing, [], Set(), Set(), [], TensorStats())
     end
 end
 
@@ -78,7 +82,7 @@ function _recursive_bag_to_plan_node(b::Bag, mult_op::Function, sum_op::Function
     indices_to_aggregate = setdiff(b.covered_indices, b.parent_indices)
 
     if length(indices_to_aggregate) > 0
-        result_node = Aggregate(sum_op, collect(indices_to_aggregate), result_node)
+        result_node = Aggregate(sum_op, indices_to_aggregate, result_node)
     end
     return result_node
 end

@@ -65,7 +65,9 @@ function get_valid_subsets(factors::Set{Factor}, width, factor_graph::Dict{Facto
     return factor_sets_by_width
 end
 
-function _recursive_hypertree_bag_decomp(factors::Set{Factor},
+function _recursive_hypertree_bag_decomp(mult_op,
+                                        sum_op,
+                                        factors::Set{Factor},
                                         factor_sets_by_width::Dict{Int, Set{Set{Factor}}},
                                         parent_vars::Set{IndexExpr},
                                         max_width::Int,
@@ -110,7 +112,7 @@ function _recursive_hypertree_bag_decomp(factors::Set{Factor},
             end
 
             if length(remaining_factors) == 0
-                bag = Bag(complete_edge_cover, V1, parent_vars, Bag[])
+                bag = Bag(mult_op, sum_op, complete_edge_cover, V1, parent_vars, Bag[])
                 subtree_dict[(factors, parent_vars)] = bag
                 return bag
             end
@@ -125,7 +127,7 @@ function _recursive_hypertree_bag_decomp(factors::Set{Factor},
                         push!(component_edges, factor)
                     end
                 end
-                child_tree = _recursive_hypertree_bag_decomp(component_edges, factor_sets_by_width, V1, max_width, subtree_dict)
+                child_tree = _recursive_hypertree_bag_decomp(mult_op, sum_op, component_edges, factor_sets_by_width, V1, max_width, subtree_dict)
                 if isnothing(child_tree)
                     invalid_cover = true
                     break
@@ -133,7 +135,7 @@ function _recursive_hypertree_bag_decomp(factors::Set{Factor},
                 push!(child_trees, child_tree)
             end
             invalid_cover && continue
-            bag = Bag(complete_edge_cover, V1, parent_vars, child_trees)
+            bag = Bag(mult_op, sum_op, complete_edge_cover, V1, parent_vars, child_trees)
             subtree_dict[(factors, parent_vars)] = bag
             return bag
         end
@@ -171,7 +173,7 @@ function hypertree_width_decomposition(faq::FAQInstance)
         println("Getting Subsets")
         factor_sets_by_width = get_valid_subsets(factors, max_width, factor_graph)
         println("Done Getting Subsets")
-        bag = _recursive_hypertree_bag_decomp(factors, factor_sets_by_width, Set{IndexExpr}(), max_width, subtree_dict)
+        bag = _recursive_hypertree_bag_decomp(mult_op, sum_op, factors, factor_sets_by_width, Set{IndexExpr}(), max_width, subtree_dict)
         if isnothing(bag)
             continue
         else

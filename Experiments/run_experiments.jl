@@ -1,6 +1,3 @@
-
-
-
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
         results = [("Workload", "QueryType", "QueryPath", "Runtime")]

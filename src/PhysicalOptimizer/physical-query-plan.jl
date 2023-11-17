@@ -22,7 +22,7 @@ end
 # `aggregate_indices`.
 mutable struct AggregateExpr <: TensorExpression
     op::Any
-    aggregate_indices::Vector{IndexExpr}
+    aggregate_indices::Set{IndexExpr}
     input::TensorExpression
 end
 

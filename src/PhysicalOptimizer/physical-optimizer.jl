@@ -9,9 +9,9 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
     if n.head == Aggregate || n.head == Reorder
         next_tensor_id = "t_" * string(input_counter[1])
         input_counter[1] += 1
-        input_indices = relative_sort(n.stats.indices, reverse(loop_order))
+        input_indices = relative_sort(collect(n.stats.index_set), reverse(loop_order))
         input_dict[next_tensor_id] = expr_to_kernel(n, input_indices)
-        stats = TensorStats(input_indices, n.stats.dim_size, n.stats.cardinality, n.stats.default_value)
+        stats = TensorStats(n.stats.index_set, n.stats.dim_size, n.stats.cardinality, n.stats.default_value, input_indices)
         kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for _ in input_indices], stats)
 
     elseif n.head == MapJoin
@@ -27,9 +27,8 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         next_tensor_id = "t_" * string(input_counter[1])
         input_counter[1] += 1
         input_dict[next_tensor_id] = transpose_input(loop_order, n.args[2],  n.stats)
-        input_indices = relative_sort(Vector{IndexExpr}(n.args[1]), reverse(loop_order))
-        stats = TensorStats(input_indices, n.stats.dim_size, n.stats.cardinality, n.stats.default_value)
-        kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for _ in stats.indices], stats)
+        n.stats.index_order = relative_sort(n.stats.index_order, reverse(loop_order))
+        kernel_root = InputExpr(next_tensor_id, n.stats.index_order, [t_walk for _ in n.stats.index_order], n.stats)
     end
     return kernel_root, input_dict
 end
@@ -60,7 +59,7 @@ end
 function get_join_loop_order(input_stats)
     num_occurrences = counter(IndexExpr)
     for stats in values(input_stats)
-        for v in stats.indices
+        for v in stats.index_set
             inc!(num_occurrences, v)
         end
     end
@@ -73,20 +72,22 @@ end
 # loop order of the kernel. This is essentially the same as building an index on the fly
 # when needed.
 function transpose_input(loop_order, input, stats)
-    storage_index_order = collect(reverse(loop_order))
-    is_sorted = is_sorted_wrt_index_order(stats.indices, storage_index_order)
+    input_index_set = stats.index_set
+    storage_index_order = reverse([x for x in loop_order if x  in input_index_set])
+    @assert !isnothing(stats.index_order)
+    is_sorted = is_sorted_wrt_index_order(stats.index_order, storage_index_order)
     if !is_sorted
         if input isa TensorKernel
             input.output_indices = relative_sort(input.output_indices, storage_index_order)
         else
-            expr = InputExpr("t_1", stats.indices, [t_walk for _ in stats.indices], stats)
-            input_indices = stats.indices
+            expr = InputExpr("t_1", stats.index_order, [t_walk for _ in stats.index_order], stats)
+            input_indices = stats.index_order
             input_dict = Dict()
             input_dict["t_1"] = input
-            stats = TensorStats(relative_sort(stats.indices, storage_index_order), stats.dim_size, stats.cardinality, stats.default_value, storage_index_order)
-            expr = ReorderExpr(relative_sort(stats.indices, storage_index_order), expr)
-            output_formats = [t_hash for _ in 1:length(stats.indices)]
-            input = TensorKernel(expr, stats, input_dict, stats.indices, output_formats, reverse(input_indices))
+            stats = TensorStats(stats.index_set, stats.dim_size, stats.cardinality, stats.default_value, storage_index_order)
+            expr = ReorderExpr(relative_sort(stats.index_order, storage_index_order), expr)
+            output_formats = [t_hash for _ in 1:length(stats.index_order)]
+            input = TensorKernel(expr, stats, input_dict, stats.index_order, output_formats, reverse(input_indices))
         end
     end
     return input
@@ -108,7 +109,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
         sub_expr = n.args[3]
         input_stats = _recursive_get_stats(sub_expr, [1])
         loop_order = get_join_loop_order(input_stats)
-        output_indices = relative_sort(n.stats.indices, output_order)
+        output_indices = relative_sort(collect(n.stats.index_set), output_order)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]
@@ -123,7 +124,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
         r_input_stats = _recursive_get_stats(right_expr, input_counter)
         input_stats = Dict(l_input_stats..., r_input_stats...)
         loop_order = get_join_loop_order(input_stats)
-        output_indices = relative_sort(n.stats.indices, output_order)
+        output_indices = relative_sort(collect(n.stats.index_set), output_order)
         l_body_kernel, l_input_dict = _recursive_get_kernel_root(left_expr, loop_order, input_counter)
         r_body_kernel, r_input_dict = _recursive_get_kernel_root(right_expr, loop_order, input_counter)
         kernel_root = OperatorExpr(op, [l_body_kernel, r_body_kernel])
@@ -134,7 +135,8 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
     elseif n.head == Reorder
         sub_expr = n.args[1]
         output_indices = n.args[2]
-        loop_order = reverse(output_order) # We iterate in the input tensor's order for efficient reordering
+        @assert length(sub_expr.stats.index_order) > 0
+        loop_order = reverse(sub_expr.stats.index_order) # We iterate in the input tensor's order for efficient reordering
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = ReorderExpr(output_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]

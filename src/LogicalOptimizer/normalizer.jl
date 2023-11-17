@@ -1,32 +1,3 @@
-
-function add_global_order(x::LogicalPlanNode, global_index_order)
-    return LogicalPlanNode(x.head, [x.args..., global_index_order], nothing)
-end
-
-function insert_global_orders(expr, global_index_order)
-    global_order_rule = @rule ~x => add_global_order(x, global_index_order) where (x isa LogicalPlanNode && x.head == InputTensor)
-    global_order_rule = Metatheory.Postwalk(Metatheory.PassThrough(global_order_rule))
-    return global_order_rule(expr)
-end
-
-needs_reorder(expr, index_order) = false
-function needs_reorder(expr::LogicalPlanNode, index_order)
-    return expr.head == InputTensor && !is_sorted_wrt_index_order(expr.args[1], index_order)
-end
-
-function insert_input_reorders(expr, global_index_order)
-    reorder_rule = @rule ~x => Reorder(x, global_index_order) where (needs_reorder(x, global_index_order))
-    reorder_rule = Metatheory.Postwalk(Metatheory.PassThrough(reorder_rule))
-    return reorder_rule(expr)
-end
-
-function remove_uneccessary_reorders(expr, global_index_order)
-    if expr.head == Reorder && is_sorted_wrt_index_order(expr.args[2], global_index_order)
-        return expr.args[1]
-    end
-    return expr
-end
-
 function merge_aggregates(expr)
     merge_rule = @rule op idx_1 idx_2 x  Aggregate(op, idx_1, Aggregate(op, idx_2, x)) => Aggregate(op, union(idx_1, idx_2), x)
     merge_rule = Metatheory.Postwalk(Metatheory.PassThrough(merge_rule))

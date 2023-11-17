@@ -3,7 +3,7 @@
 module Galley
     export galley, InputTensor, IndexExpr, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
     export uniform_fiber, declare_binary_operator, Factor, FAQInstance
-    export FAQ_OPTIMIZERS, naive, hypertree
+    export FAQ_OPTIMIZERS, naive, hypertree_width, greedy
 
     using AutoHashEquals
     using Combinatorics
@@ -18,6 +18,7 @@ module Galley
 
     include("utility-funcs.jl")
     include("LogicalOptimizer/LogicalOptimizer.jl")
+    include("TensorStats/TensorStats.jl")
     include("FAQOptimizer/FAQOptimizer.jl")
     include("PhysicalOptimizer/PhysicalOptimizer.jl")
     include("ExecutionEngine/ExecutionEngine.jl")
@@ -65,19 +66,15 @@ module Galley
 
 
 
-    function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=2, global_index_order=1)
+    function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=2)
         verbose >= 3 && println("Input FAQ : ", faq_problem)
 
         htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
         expr = decomposition_to_logical_plan(htd)
-        global_index_order = get_index_order(expr, global_index_order)
-#        expr = insert_input_reorders(expr, global_index_order)
-        expr = insert_global_orders(expr, global_index_order)
-        expr = fill_in_stats(expr, global_index_order)
+        _recursive_insert_stats!(expr)
         expr = merge_aggregates(expr)
-        expr = fill_in_stats(expr, global_index_order)
         verbose >= 1 && println("Plan: ", expr)
-        tensor_kernel = expr_to_kernel(expr, global_index_order, verbose = verbose)
+        tensor_kernel = expr_to_kernel(expr, collect(expr.stats.index_set), verbose = verbose)
         result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
         verbose >= 1 && println("Time to Execute: ", result.time)
         return result.value

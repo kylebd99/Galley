@@ -15,104 +15,6 @@ end
 annihilator_dict = Dict((*) => 0.0)
 identity_dict = Dict((*) => 1.0, (+) => 0.0)
 
-function merge_tensor_stats_join(op, lstats::TensorStats, rstats::TensorStats)
-    new_default_value = op(lstats.default_value, rstats.default_value)
-    new_indices = relative_sort(union(lstats.indices, rstats.indices), lstats.index_order)
-
-    new_dim_size = Dict()
-    for index in new_indices
-        if index in lstats.indices && index in rstats.indices
-            new_dim_size[index] = min(lstats.dim_size[index], rstats.dim_size[index])
-        elseif index in rstats.indices
-            new_dim_size[index] = rstats.dim_size[index]
-        else
-            new_dim_size[index] = lstats.dim_size[index]
-        end
-    end
-    new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
-    l_dim_space_size = prod([lstats.dim_size[x] for x in lstats.indices])
-    r_dim_space_size = prod([rstats.dim_size[x] for x in rstats.indices])
-    l_prob_non_default = (lstats.cardinality/l_dim_space_size)
-    r_prob_non_default = (rstats.cardinality/r_dim_space_size)
-    new_cardinality = l_prob_non_default * r_prob_non_default * new_dim_space_size
-    return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
-end
-
-function merge_tensor_stats_union(op, lstats::TensorStats, rstats::TensorStats)
-    new_default_value = op(lstats.default_value, rstats.default_value)
-    new_indices = relative_sort(union(lstats.indices, rstats.indices), rstats.index_order)
-
-    new_dim_size = Dict()
-    for index in new_indices
-        if index in lstats.indices && index in rstats.indices
-            new_dim_size[index] = max(lstats.dim_size[index], rstats.dim_size[index])
-        elseif index in rstats.indices
-            new_dim_size[index] = rstats.dim_size[index]
-        else
-            new_dim_size[index] = lstats.dim_size[index]
-        end
-    end
-
-    new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
-    l_dim_space_size = prod([lstats.dim_size[x] for x in lstats.indices])
-    r_dim_space_size = prod([rstats.dim_size[x] for x in rstats.indices])
-    l_prob_default = (1 - lstats.cardinality/l_dim_space_size)
-    r_prob_default = (1 - rstats.cardinality/r_dim_space_size)
-    new_cardinality = (1 - l_prob_default * r_prob_default) * new_dim_space_size
-    return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, lstats.index_order)
-end
-
-function merge_tensor_stats(op, lstats::TensorStats, rstats::TensorStats)
-    if !haskey(annihilator_dict, :($op))
-        return merge_tensor_stats_union(op, lstats, rstats)
-    end
-
-    annihilator_value = annihilator_dict[:($op)]
-    if annihilator_value == lstats.default_value && annihilator_value == rstats.default_value
-        return merge_tensor_stats_join(op, lstats, rstats)
-    else
-        return merge_tensor_stats_union(op, lstats, rstats)
-    end
-end
-
-function reduce_tensor_stats(op, reduce_indices::Vector{IndexExpr}, stats::TensorStats)
-    indices = relative_sort(intersect(stats.indices, reduce_indices), stats.index_order)
-    new_default_value = nothing
-    if haskey(identity_dict, :($op)) && identity_dict[:($op)] == stats.default_value
-        new_default_value = stats.default_value
-    elseif op == +
-        new_default_value = stats.default_value * prod([stats.dim_size[x] for x in indices])
-    elseif op == *
-        new_default_value = stats.default_value ^ prod([stats.dim_size[x] for x in indices])
-    else
-        # This is going to be VERY SLOW. Should raise a warning about reductions over non-identity default values.
-        # Depending on the semantics of reductions, we might be able to do this faster.
-        println("Warning: A reduction can take place over a tensor whose default value is not the reduction operator's identity. \\
-                         This can result in a large slowdown as the new default is calculated.")
-        new_default_value = op([stats.default_value for _ in prod([stats.dim_size[x] for x in indices])]...)
-    end
-
-    new_indices = relative_sort(setdiff(stats.indices, indices), stats.index_order)
-    new_dim_size = Dict()
-    for index in new_indices
-        new_dim_size[index] = stats.dim_size[index]
-    end
-
-
-    new_dim_space_size = 1
-    if length(new_indices) > 0
-        new_dim_space_size = prod([new_dim_size[x] for x in new_indices])
-    end
-    old_dim_space_size = 1
-    if length(stats.indices) > 0
-        old_dim_space_size = prod([stats.dim_size[x] for x in stats.indices])
-    end
-    prob_default_value = 1 - stats.cardinality/old_dim_space_size
-    prob_non_default_subspace = 1 - prob_default_value ^ (old_dim_space_size/new_dim_space_size)
-    new_cardinality = new_dim_space_size * prob_non_default_subspace
-    return TensorStats(new_indices, new_dim_size, new_cardinality, new_default_value, stats.index_order)
-end
-
 # This analysis function could support general statistics merging
 function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
     if exprhead(n) == :call && operation(n) == MapJoin
@@ -126,9 +28,9 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         # If one of the arguments is a scalar, return the other argument's stats,
         # with the default value modified appropriately.
         if length(lstats.dim_size) == 0
-            return TensorStats(rstats.indices, rstats.dim_size, rstats.cardinality, op(lstats.default_value, rstats.default_value), rstats.index_order)
+            return TensorStats(rstats.index_set, rstats.dim_size, rstats.cardinality, op(lstats.default_value, rstats.default_value), nothing)
         elseif length(rstats.dim_size) == 0
-            return TensorStats(lstats.indices, lstats.dim_size, lstats.cardinality, op(lstats.default_value, rstats.default_value), lstats.index_order)
+            return TensorStats(lstats.index_set, lstats.dim_size, lstats.cardinality, op(lstats.default_value, rstats.default_value), nothing)
         else
             return merge_tensor_stats(op, lstats, rstats)
         end
@@ -137,12 +39,12 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         # Get the left and right child eclasses
         child_eclasses = arguments(n)
         op = g[child_eclasses[1]][1].value
-        indices = g[child_eclasses[2]][1].value
+        index_set = g[child_eclasses[2]][1].value
         r = g[child_eclasses[3]]
 
         # Return the union of the index sets for MapJoin operators
         rstats = getdata(r, :TensorStatsAnalysis, nothing)
-        return reduce_tensor_stats(op, indices, rstats)
+        return reduce_tensor_stats(op, index_set, rstats)
 
     elseif exprhead(n) == :call && operation(n) == Reorder
         op = operation(n)
@@ -154,22 +56,22 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
         # Return the union of the index sets for MapJoin operators
         stats = getdata(l, :TensorStatsAnalysis, nothing)
         output_order = r[1].value
-        sorted_indices = relative_sort(stats.indices, output_order)
-        return TensorStats(sorted_indices, stats.dim_size,
+        sorted_index_set = relative_sort(stats.index_set, output_order)
+        return TensorStats(sorted_index_set, stats.dim_size,
                             stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == RenameIndices
         op = operation(n)
         child_eclasses = arguments(n)
         stats = getdata(g[child_eclasses[1]], :TensorStatsAnalysis, nothing)
-        output_indices = g[child_eclasses[2]][1].value
-        return TensorStats(output_indices, Dict(x => 0 for x in output_indices),
+        output_index_set = g[child_eclasses[2]][1].value
+        return TensorStats(output_index_set, Dict(x => 0 for x in output_index_set),
                             stats.cardinality, stats.default_value, stats.index_order)
     elseif exprhead(n) == :call && operation(n) == InputTensor
         child_eclasses = arguments(n)
-        indices::Vector{IndexExpr} = g[child_eclasses[1]][1].value
+        index_set::Vector{IndexExpr} = g[child_eclasses[1]][1].value
         fiber = g[child_eclasses[2]][1].value
         index_order::Vector{IndexExpr} = g[child_eclasses[3]][1].value
-        return TensorStats(indices, fiber, index_order)
+        return TensorStats(index_set, fiber, index_order)
     elseif exprhead(n) == :call && operation(n) == Scalar
         return TensorStats([], Dict(), 1, n.args[1], [])
     end
@@ -187,8 +89,8 @@ end
 EGraphs.islazy(::Val{:TensorStatsAnalysis})  = false
 
 function EGraphs.join(::Val{:TensorStatsAnalysis}, a, b)
-    if a.indices == b.indices && a.dim_size == b.dim_size && a.default_value == b.default_value
-        return TensorStats(a.indices, a.dim_size, min(a.cardinality, b.cardinality), a.default_value, a.index_order)
+    if a.index_set == b.index_set && a.dim_size == b.dim_size && a.default_value == b.default_value
+        return TensorStats(a.index_set, a.dim_size, min(a.cardinality, b.cardinality), a.default_value, a.index_order)
     else
         println(a, "  ", b)
         println("EGraph Error: E-Nodes within an E-Class should never have different tensor types!")
@@ -216,17 +118,17 @@ end
 # All literal expressions have cost 0
 simple_cardinality_cost_function(n::ENodeLiteral, g::EGraph) = 0
 
-doesnt_share_indices(is, a) = false
+doesnt_share_index_set(is, a) = false
 
-function doesnt_share_indices(is::Vector{IndexExpr}, a::EClass)
-    return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).indices)) == 0
+function doesnt_share_index_set(is::Vector{IndexExpr}, a::EClass)
+    return length(intersect(is, getdata(a, :TensorStatsAnalysis, nothing).index_set)) == 0
 end
 
-function doesnt_share_indices(a::EClass, b::EClass)
-    if length(getdata(a, :TensorStatsAnalysis, nothing).indices) == 0 || length(getdata(b, :TensorStatsAnalysis, nothing).indices) == 0
+function doesnt_share_index_set(a::EClass, b::EClass)
+    if length(getdata(a, :TensorStatsAnalysis, nothing).index_set) == 0 || length(getdata(b, :TensorStatsAnalysis, nothing).index_set) == 0
         return false
     end
-    return length(intersect(getdata(a, :TensorStatsAnalysis, nothing).indices, getdata(b, :TensorStatsAnalysis, nothing).indices)) == 0
+    return length(intersect(getdata(a, :TensorStatsAnalysis, nothing).index_set, getdata(b, :TensorStatsAnalysis, nothing).index_set)) == 0
 end
 
 
@@ -242,13 +144,13 @@ end
 #    the reducing variables.
 basic_rewrites = @theory a b c d f is js begin
     # Fuse reductions
-    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, Vector{IndexExpr}(collect(Set(union(is, js)))), a)
+    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f, Set{IndexExpr}(union(is, js)), a)
 
     # UnFuse reductions
-    Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, Vector{IndexExpr}(is[2:length(is)]), a)) where (length(is) > 1)
+    Aggregate(f, is, a) => Aggregate(f, is[1:1], Aggregate(f, Set{IndexExpr}(is[2:length(is)]), a)) where (length(is) > 1)
 
     # Reorder Reductions
-    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f,  Vector{IndexExpr}(js), Aggregate(f,  Vector{IndexExpr}(is), a))
+    Aggregate(f, is, Aggregate(f, js, a)) => Aggregate(f,  Set{IndexExpr}(js), Aggregate(f,  Set{IndexExpr}(is), a))
 
     # Commutativity
     MapJoin(+, a, b) == MapJoin(+, b, a)
@@ -256,17 +158,17 @@ basic_rewrites = @theory a b c d f is js begin
     Aggregate(+, is, MapJoin(+, a, b)) == MapJoin(+, Aggregate(+, is, a), Aggregate(+, is, b))
 
     # Associativity
-    MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesnt_share_indices(b, a))
-    MapJoin(*, a, MapJoin(*, b, c)) => MapJoin(*, MapJoin(*, a, b), c) where (!doesnt_share_indices(b, a))
+    MapJoin(+, a, MapJoin(+, b, c)) =>  MapJoin(+, MapJoin(+, a, b), c) where (!doesnt_share_index_set(b, a))
+    MapJoin(*, a, MapJoin(*, b, c)) => MapJoin(*, MapJoin(*, a, b), c) where (!doesnt_share_index_set(b, a))
 
     # Distributivity
     MapJoin(*, a, MapJoin(+, b, c)) == MapJoin(+, MapJoin(*, a, b), MapJoin(*, a, c))
 
     # Reduction PushUp
-    MapJoin(*, a, Aggregate(+, is, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesnt_share_indices(is, a))
+    MapJoin(*, a, Aggregate(+, is, b)) => Aggregate(+, is, MapJoin(*, a, b)) where (doesnt_share_index_set(is, a))
 
     # Reduction PushDown
-    Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesnt_share_indices(is, a))
+    Aggregate(+, is, MapJoin(*, a, b)) => MapJoin(*, a, Aggregate(+, is, b)) where (doesnt_share_index_set(is, a))
 
     # Handling Squares
     MapJoin(^, a, Scalar(2)) == MapJoin(*, a, a)

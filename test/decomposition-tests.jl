@@ -23,16 +23,16 @@ end
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
 
-        bag = Bag(*, +, [a_factor, b_factor], Set([i, j, k]), Set([i, k]), Vector{Bag}())
+        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}())
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
-        correct_plan = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
-        @test decomposition_to_logical_plan(htd) == correct_plan
+        correct_plan_1 = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
+        correct_plan_2 = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, b_tensor, a_tensor))
+        @test decomposition_to_logical_plan(htd) == correct_plan_1 || decomposition_to_logical_plan(htd) == correct_plan_2
     end
 end
 
 # The conversion of an HTD to a logical plan should be a fairly straightforward process.
 @testset "HTD to Output" begin
-
     # Currently, this is failing due to a finch unfurling error...
     @testset "matrix multiplication" begin
         i = IndexExpr("i")
@@ -50,7 +50,7 @@ end
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
 
-        bag = Bag(*, +, [a_factor, b_factor], Set([i, j, k]), Set([i, k]), Vector{Bag}())
+        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}())
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
         correct_plan = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
         plan = decomposition_to_logical_plan(htd)
@@ -63,7 +63,7 @@ end
 end
 
 @testset "FAQ to Output" begin
-    @testset "matrix multiplication - naive" begin
+    @testset "matrix multiplication" begin
         i = IndexExpr("i")
         j = IndexExpr("j")
         k = IndexExpr("k")
@@ -78,9 +78,10 @@ end
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
-
-        faq = FAQInstance(*, +, Set([i,k]), Set([i,j,k]), [a_factor, b_factor], [i,k])
+        faq = FAQInstance(*, +, Set([i,k]), Set([i,j,k]), Set([a_factor, b_factor]), [i, k])
         correct_matrix = a_matrix * b_matrix
         @test galley(faq; faq_optimizer = naive) == correct_matrix
+        @test galley(faq; faq_optimizer = greedy) == correct_matrix
+        @test galley(faq; faq_optimizer = hypertree_width) == correct_matrix
     end
 end

@@ -33,7 +33,7 @@ end
 
 
 function _get_cheapest_edge_cover(mult_op, sum_op, inputs::Vector{Union{Factor, Bag}}, output_indices::Set{IndexExpr})
-    all_indices = union([input.stats.index_set for input in inputs]...)
+    all_indices = setdiff(union([input.stats.index_set for input in inputs]...), output_indices)
     min_cost = Inf64
     cheapest_index = IndexExpr("")
     cheapest_edge_cover = Int[]
@@ -60,8 +60,8 @@ function greedy_decomposition(faq::FAQInstance)
     end
     while length(inputs) > 1
         cheapest_edge_cover = _get_cheapest_edge_cover(mult_op, sum_op, inputs, output_indices)
-        edge_cover = Factor[]
-        child_bags = Bag[]
+        edge_cover = Set{Factor}()
+        child_bags = Set{Bag}()
         covered_indices = Set{IndexExpr}()
         parent_indices = Set{IndexExpr}()
         for i in cheapest_edge_cover
@@ -76,7 +76,7 @@ function greedy_decomposition(faq::FAQInstance)
         end
         for idx in covered_indices
             for i in 1:length(inputs)
-                if !(i in cheapest_edge_cover) && idx in inputs[i].stats.index_set
+                if (!(i in cheapest_edge_cover) && idx in inputs[i].stats.index_set) || idx in output_indices
                     push!(parent_indices, idx)
                     break
                 end
@@ -97,10 +97,20 @@ function greedy_decomposition(faq::FAQInstance)
         push!(new_inputs, new_bag)
         inputs = new_inputs
     end
-    if inputs[1] isa Factor
-        inputs[1] = Bag(mult_op, sum_op, [inputs[1]], Set{IndexExpr}(inputs[1].stats.index_set), Set{IndexExpr}(inputs[1].stats.index_set), Bag[])
+    child_bags = Set{Bag}()
+    edge_covers = Set{Factor}()
+    covered_indices = Set{IndexExpr}()
+    for input in inputs
+        if input isa Factor
+            push!(edge_covers, input)
+        else
+            push!(child_bags, input)
+        end
+        for index in input.stats.index_set
+            push!(covered_indices, index)
+        end
     end
-    root_bag::Bag = inputs[1]
+    root_bag::Bag = Bag(mult_op, sum_op, edge_covers, covered_indices, output_indices, child_bags)
     htd = HyperTreeDecomposition(mult_op, sum_op, output_indices, root_bag, output_index_order)
     return htd
 end

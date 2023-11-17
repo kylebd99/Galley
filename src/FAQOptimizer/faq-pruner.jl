@@ -17,7 +17,7 @@ end
 function merge_prefix_joins!(faq::FAQInstance)
     made_change = false
     finished = false
-    prev_factors::Set{Factor} = Set(faq.factors)
+    prev_factors = faq.factors
     while !finished
         new_factors = Set{Factor}()
         handled_factors = Set{Factor}()
@@ -48,7 +48,7 @@ function merge_prefix_joins!(faq::FAQInstance)
         end
         prev_factors = new_factors
     end
-    faq.factors = collect(prev_factors)
+    faq.factors = prev_factors
     return made_change
 end
 

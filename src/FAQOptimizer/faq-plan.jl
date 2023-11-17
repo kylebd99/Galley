@@ -21,14 +21,14 @@ end
     sum_op::Function
     output_indices::Set{IndexExpr}
     input_indices::Set{IndexExpr}
-    factors::Vector{Factor}
+    factors::Set{Factor}
     output_index_order::Union{Nothing, Vector{IndexExpr}}
     function FAQInstance(
         mult_op::Function,
         sum_op::Function,
         output_indices::Set{IndexExpr},
         input_indices::Set{IndexExpr},
-        factors::Vector{Factor})
+        factors::Set{Factor})
         return new(mult_op, sum_op, output_indices, input_indices, factors, nothing)
     end
 
@@ -37,7 +37,7 @@ end
         sum_op::Function,
         output_indices::Set{IndexExpr},
         input_indices::Set{IndexExpr},
-        factors::Vector{Factor},
+        factors::Set{Factor},
         output_index_order::Union{Nothing, Vector{IndexExpr}})
         return new(mult_op, sum_op, output_indices, input_indices, factors, output_index_order)
     end
@@ -45,24 +45,24 @@ end
 end
 
 @auto_hash_equals mutable struct Bag
-    edge_covers::Vector{Factor}
+    edge_covers::Set{Factor}
     covered_indices::Set{IndexExpr}
     parent_indices::Set{IndexExpr}
-    child_bags::Vector{Bag}
+    child_bags::Set{Bag}
     stats::TensorStats
 
     function Bag(mult_op,
                     sum_op,
-                    edge_covers::Vector{Factor},
+                    edge_covers::Set{Factor},
                     covered_indices::Set{IndexExpr},
                     parent_indices::Set{IndexExpr},
-                    child_bags::Vector{Bag})
+                    child_bags::Set{Bag})
         input_stats::Vector{TensorStats} = cat([f.stats for f in edge_covers], [b.stats for b in child_bags], dims=(1,1))
         return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices))
     end
 
     function Bag()
-        new(nothing, [], Set(), Set(), [], TensorStats())
+        new(Set(), Set(), Set(), Set(), Set(), TensorStats())
     end
 end
 

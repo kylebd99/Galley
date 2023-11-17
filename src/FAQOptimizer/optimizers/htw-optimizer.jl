@@ -144,14 +144,15 @@ function _recursive_hypertree_bag_decomp(mult_op,
 end
 
 
-function hypertree_width_decomposition(faq::FAQInstance)
+function hypertree_width_decomposition(faq::FAQInstance; verbose=0)
     println("Beginning HTD")
     mult_op = faq.mult_op
     sum_op = faq.sum_op
     output_indices = faq.output_indices
     output_index_order = faq.output_index_order
     factors = Set{Factor}(faq.factors)
-    println("Making Factor Graph")
+
+    verbose > 2 && println("Making Factor Graph")
     factor_graph = Dict{Factor, Vector{Factor}}()
     for factor in factors
         neighbors = Factor[]
@@ -165,20 +166,20 @@ function hypertree_width_decomposition(faq::FAQInstance)
         end
         factor_graph[factor] = neighbors
     end
-    println("Done Making Factor Graph")
+    verbose > 2 && println("Done Making Factor Graph")
     start_time = time()
     subtree_dict = Dict{Tuple{Set{Factor}, Set{IndexExpr}}, Any}()
     for max_width in 1:length(factors)
-        println("Length: ", time() - start_time)
-        println("Max Width: ", max_width)
-        println("Getting Subsets")
+        verbose > 2 && println("Length: ", time() - start_time)
+        verbose > 2 && println("Max Width: ", max_width)
+        verbose > 2 && println("Getting Subsets")
         factor_sets_by_width = get_valid_subsets(factors, max_width, factor_graph)
-        println("Done Getting Subsets")
+        verbose > 2 && println("Done Getting Subsets")
         bag = _recursive_hypertree_bag_decomp(mult_op, sum_op, factors, factor_sets_by_width, output_indices, max_width, subtree_dict)
         if isnothing(bag)
             continue
         else
-            println("Finished HTD")
+            verbose > 2 && println("Finished HTD")
             return HyperTreeDecomposition(mult_op, sum_op, output_indices, bag, output_index_order)
         end
     end

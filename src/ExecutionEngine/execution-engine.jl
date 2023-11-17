@@ -112,6 +112,6 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     verbose >= 3 && println("Kernel: ", kernel.kernel_root)
     verbose >= 3 && println("Output Order: ", kernel.output_indices)
     verbose >= 3 && println("Loop Order: ", kernel.loop_order)
-    output_tensor = Finch.execute(full_prgm).output_tensor
+    output_tensor = Finch.execute(full_prgm, (mode = fastfinch,)).output_tensor
     return output_tensor
 end

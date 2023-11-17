@@ -113,7 +113,9 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        return TensorKernel(kernel_root, n.stats, input_dict, output_indices, output_formats, loop_order)
+        kernel = TensorKernel(kernel_root, n.stats, input_dict, output_indices, output_formats, loop_order)
+        validate_kernel(kernel)
+        return kernel
 
     elseif n.head == MapJoin
         op = n.args[1]
@@ -130,7 +132,9 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
         kernel_root = OperatorExpr(op, [l_body_kernel, r_body_kernel])
         input_dict = Dict(l_input_dict..., r_input_dict...)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        return TensorKernel(kernel_root, n.stats, input_dict, output_indices, output_formats, loop_order)
+        kernel = TensorKernel(kernel_root, n.stats, input_dict, output_indices, output_formats, loop_order)
+        validate_kernel(kernel)
+        return kernel
 
     elseif n.head == Reorder
         sub_expr = n.args[1]
@@ -140,7 +144,9 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = ReorderExpr(output_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        return TensorKernel(kernel_root, n.stats, input_dict, output_indices, output_formats, loop_order)
+        kernel = TensorKernel(kernel_root, n.stats, input_dict, output_indices, output_formats, loop_order)
+        validate_kernel(kernel)
+        return kernel
 
     elseif n.head == InputTensor
         return n.args[2]
@@ -148,4 +154,56 @@ function expr_to_kernel(n::LogicalPlanNode, output_order; verbose = 0)
     elseif n.head == Scalar
         return n.args[1]
     end
+end
+
+
+
+# This function does a variety of sanity checks on the kernel before we attempt to execute it.
+# Such as:
+#  1. Check that the loop order is a permutation of the input indices
+#  2. Check that the output indices are the inputs minus any that are aggregate_indices
+#  3. Check that the inputs are all sorted w.r.t. the loop order
+function validate_kernel(kernel::TensorKernel)
+    function get_input_indices(n::TensorExpression)
+        return if n isa InputExpr
+            Set(n.input_indices)
+        elseif n isa AggregateExpr
+            get_input_indices(n.input)
+        elseif n isa OperatorExpr
+            union([get_input_indices(input) for input in n.inputs]...)
+        elseif n isa ReorderExpr
+            get_input_indices(n.input)
+        end
+    end
+    input_indices = get_input_indices(kernel.kernel_root)
+    @assert  input_indices == Set(kernel.loop_order)
+
+    function get_output_indices(n::TensorExpression)
+        return if n isa InputExpr
+            Set(n.input_indices)
+        elseif n isa AggregateExpr
+            setdiff(get_input_indices(n.input), n.aggregate_indices)
+        elseif n isa OperatorExpr
+            union([get_input_indices(input) for input in n.inputs]...)
+        elseif n isa ReorderExpr
+            get_input_indices(n.input)
+        end
+    end
+    output_indices = get_output_indices(kernel.kernel_root)
+    @assert output_indices ⊆ input_indices
+
+    function check_sorted_inputs(n::TensorExpression)
+        if n isa InputExpr
+            @assert is_sorted_wrt_index_order(n.input_indices, kernel.loop_order; loop_order=true)
+        elseif n isa AggregateExpr
+            check_sorted_inputs(n.input)
+        elseif n isa OperatorExpr
+            for input in n.inputs
+                check_sorted_inputs(input)
+            end
+        elseif n isa ReorderExpr
+            check_sorted_inputs(n.input)
+        end
+    end
+    check_sorted_inputs(kernel.kernel_root)
 end

@@ -18,12 +18,11 @@ function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector
         end
 #        push!(index_expressions, @finch_program_instance index::protocol)
         push!(index_expressions, index)
-end
+    end
     tensor_var = variable_instance(Symbol(tensor_id))
     tensor_tag = tag_instance(tensor_var, tensor)
     return @finch_program_instance $(tensor_tag)[index_expressions...]
 end
-
 
 function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     verbose >= 3 && println(lvl)

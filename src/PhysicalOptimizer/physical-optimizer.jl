@@ -109,8 +109,6 @@ end
 # TODO: In the future, we would like to actually execute the kernels here and decide whether
 # to re-optimize at this point based on the materialized children (e.g. their nnz count).
 function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; verbose = 0)
-    println(n)
-    println(output_order)
     kernel_root = nothing
     if n.head == Aggregate
         op = n.args[1]

@@ -30,3 +30,20 @@ function is_sorted_wrt_index_order(indices::Vector, index_order::Vector; loop_or
         return issorted(indexin(indices, index_order))
     end
 end
+
+# This function returns the index set that occurs in the subtree of the plan rooted
+# at `node`.
+function get_plan_node_indices(node::LogicalPlanNode)
+    if node.head == InputTensor
+        return node.stats.index_set
+    elseif node.head == MapJoin
+        return union(get_plan_node_indices(node.args[2]),
+        get_plan_node_indices(node.args[3]))
+    elseif node.head == Aggregate
+        return setdiff(get_plan_node_indices(node.args[3]), node.args[2])
+    elseif node.head == Reorder
+        return get_plan_node_indices(node.args[1])
+    elseif node.head == Scalar
+        return Set{IndexExpr}()
+    end
+end

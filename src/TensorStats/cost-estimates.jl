@@ -6,6 +6,6 @@ function get_prefix_cost(vars::Set{IndexExpr}, input_stats::Vector{TensorStats},
     for i in 2:length(prefix_stats)
         resulting_stat = merge_tensor_stats_join(*, resulting_stat, prefix_stats[i])
     end
-    resulting_stat = reduce_tensor_stats(+, setdiff(all_vars, vars),resulting_stat)
-    return resulting_stat.cardinality + prev_cost
+    resulting_stat = reduce_tensor_stats(+, setdiff(all_vars, vars), resulting_stat)
+    return estimate_nnz(resulting_stat) + prev_cost
 end

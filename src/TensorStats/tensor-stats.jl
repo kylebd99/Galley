@@ -31,6 +31,7 @@ get_dim_sizes(stat::NaiveStats) = stat.def.dim_sizes
 get_dim_size(stat::NaiveStats, idx::IndexExpr) = stat.def.dim_sizes[idx]
 get_default_value(stat::NaiveStats) = stat.def.default_value
 get_index_order(stat::NaiveStats) = stat.def.index_order
+estimate_nnz(stat::NaiveStats) = stat.cardinality
 
 NaiveStats() = NaiveStats(TensorDef(), 0)
 NaiveStats(index_set, dim_size, cardinality, default_value) = NaiveStats(index_set, dim_size, cardinality, default_value, nothing)

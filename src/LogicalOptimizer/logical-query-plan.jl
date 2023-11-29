@@ -32,7 +32,8 @@ Aggregate(op, index::Union{IndexExpr, String}, input) = Aggregate(op, Set{IndexE
 Agg(op, indices, input) = Aggregate(op, indices, input)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
-InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], nothing)
+InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], NaiveStats)
+InputTensor(fiber::Fiber, stats_type::Type)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], stats_type)
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
 OutTensor() = LogicalPlanNode(OutTensor, [], nothing)
@@ -58,7 +59,8 @@ declare_binary_operator(max)
 function Base.getindex(input::LogicalPlanNode, indices...)
     index_vector = IndexExpr[x isa String ? IndexExpr(x) : x for x in collect(indices)]
     if input.head == InputTensor
-        stats = TensorStats(index_vector, input.args[2])
+        stats_type = input.stats
+        stats = stats_type(index_vector, input.args[2])
         return LogicalPlanNode(InputTensor, [index_vector, input.args[2]], stats)
     else
         return LogicalPlanNode(RenameIndices, [input, index_vector], input.stats)

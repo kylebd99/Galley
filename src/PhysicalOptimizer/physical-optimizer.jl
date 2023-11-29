@@ -7,9 +7,12 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
     if n.head == Aggregate || n.head == Reorder
         next_tensor_id = "t_" * string(input_counter[1])
         input_counter[1] += 1
-        input_indices = relative_sort(collect(n.stats.index_set), reverse(loop_order))
+        def = deepcopy(get_def(n.stats))
+        input_indices = relative_sort(collect(def.index_set), reverse(loop_order))
+        stats = deepcopy(n.stats)
+        def = get_def(stats)
+        def.index_order = input_indices
         input_dict[next_tensor_id] = expr_to_kernel(n, input_indices)
-        stats = TensorStats(n.stats.index_set, n.stats.dim_size, n.stats.cardinality, n.stats.default_value, input_indices)
         kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for _ in input_indices], stats)
 
     elseif n.head == MapJoin
@@ -25,8 +28,10 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         next_tensor_id = "t_" * string(input_counter[1])
         input_counter[1] += 1
         input_dict[next_tensor_id] = transpose_input(loop_order, n.args[2],  n.stats)
-        n.stats.index_order = relative_sort(n.stats.index_order, reverse(loop_order))
-        kernel_root = InputExpr(next_tensor_id, n.stats.index_order, [t_walk for _ in n.stats.index_order], n.stats)
+        stats = deepcopy(n.stats)
+        def = get_def(stats)
+        def.index_order = relative_sort(def.index_order, reverse(loop_order))
+        kernel_root = InputExpr(next_tensor_id, def.index_order, [t_walk for _ in def.index_order], stats)
     end
     return kernel_root, input_dict
 end
@@ -57,7 +62,7 @@ end
 function get_join_loop_order_simple(input_stats)
     num_occurrences = counter(IndexExpr)
     for stats in values(input_stats)
-        for v in stats.index_set
+        for v in get_index_set(stats)
             inc!(num_occurrences, v)
         end
     end
@@ -68,7 +73,7 @@ end
 
 
 function get_join_loop_order(input_stats::Vector{TensorStats})
-    all_vars = union([stat.index_set for stat in input_stats]...)
+    all_vars = union([get_index_set(stat) for stat in input_stats]...)
     prefix_costs = Dict{Set{IndexExpr}, Float64}()
     optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
     for var in all_vars
@@ -84,8 +89,9 @@ function get_join_loop_order(input_stats::Vector{TensorStats})
             # We only consider extensions that don't result in cross products
             potential_vars = Set{IndexExpr}()
             for stat in input_stats
-                if length(∩(stat.index_set, prefix_set)) > 0
-                    potential_vars = ∪(potential_vars, stat.index_set)
+                index_set = get_index_set(stat)
+                if length(∩(index_set, prefix_set)) > 0
+                    potential_vars = ∪(potential_vars, index_set)
                 end
             end
             potential_vars = setdiff(potential_vars, prefix_set)
@@ -108,28 +114,28 @@ end
 # loop order of the kernel. This is essentially the same as building an index on the fly
 # when needed.
 function transpose_input(loop_order, input, stats)
-    input_index_set = stats.index_set
-    transposed_index_order = reverse([x for x in loop_order if x  in input_index_set])
-    @assert !isnothing(stats.index_order)
-    is_sorted = is_sorted_wrt_index_order(stats.index_order, transposed_index_order)
+    input_index_set = get_index_set(stats)
+    transposed_index_order = reverse([x for x in loop_order if x in input_index_set])
+    @assert !isnothing(get_index_order(stats))
+    is_sorted = is_sorted_wrt_index_order(get_index_order(stats), transposed_index_order)
     if !is_sorted
         if input isa TensorKernel
-            input.output_indices = relative_sort(input.output_indices, transposed_index_order)
+            input.output_indices = transposed_index_order
         else
-            expr = InputExpr("t_1", stats.index_order, [t_walk for _ in stats.index_order], stats)
-            input_indices = stats.index_order
+            @assert input isa Fiber
+            input_indices = get_index_order(stats)
+            expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
             input_dict = Dict()
             input_dict["t_1"] = input
-            stats = TensorStats(stats.index_set, stats.dim_size, stats.cardinality, stats.default_value, transposed_index_order)
-            expr = ReorderExpr(relative_sort(stats.index_order, transposed_index_order), expr)
+            expr = ReorderExpr(transposed_index_order, expr)
             output_formats = [t_hash for _ in 1:length(transposed_index_order)]
-            output_dims = [stats.dim_size[idx] for idx in transposed_index_order]
+            output_dims = [get_dim_size(stats, idx) for idx in transposed_index_order]
             input = TensorKernel(expr,
                                     input_dict,
-                                    stats.index_order,
+                                    transposed_index_order,
                                     output_formats,
                                     output_dims,
-                                    stats.default_value,
+                                    get_default_value(stats),
                                     reverse(input_indices))
         end
     end
@@ -155,17 +161,17 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         input_stats = _recursive_get_stats(sub_expr, [1])
         input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
         loop_order = get_join_loop_order(input_stats_vec)
-        output_indices = relative_sort(collect(n.stats.index_set), output_order)
+        output_indices = relative_sort(collect(get_index_set(n.stats)), output_order)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        output_dims = [n.stats.dim_size[idx] for idx in output_indices]
+        output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,
                                 input_dict,
                                 output_indices,
                                 output_formats,
                                 output_dims,
-                                n.stats.default_value,
+                                get_default_value(n.stats),
                                 loop_order)
         validate_kernel(kernel)
         return kernel
@@ -180,19 +186,19 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         input_stats = Dict(l_input_stats..., r_input_stats...)
         input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
         loop_order = get_join_loop_order(input_stats_vec)
-        output_indices = relative_sort(collect(n.stats.index_set), output_order)
+        output_indices = relative_sort(collect(get_index_set(n.stats)), output_order)
         l_body_kernel, l_input_dict = _recursive_get_kernel_root(left_expr, loop_order, input_counter)
         r_body_kernel, r_input_dict = _recursive_get_kernel_root(right_expr, loop_order, input_counter)
         kernel_root = OperatorExpr(op, [l_body_kernel, r_body_kernel])
         input_dict = Dict(l_input_dict..., r_input_dict...)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        output_dims = [n.stats.dim_size[idx] for idx in output_indices]
+        output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,
                                 input_dict,
                                 output_indices,
                                 output_formats,
                                 output_dims,
-                                n.stats.default_value,
+                                get_default_value(n.stats),
                                 loop_order)
         validate_kernel(kernel)
         return kernel
@@ -204,13 +210,13 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = ReorderExpr(output_indices, body_kernel)
         output_formats = [t_hash for _ in 1:length(output_indices)]
-        output_dims = [n.stats.dim_size[idx] for idx in output_indices]
+        output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,
                                 input_dict,
                                 output_indices,
                                 output_formats,
                                 output_dims,
-                                n.stats.default_value,
+                                get_default_value(n.stats),
                                 loop_order)
         validate_kernel(kernel)
         return kernel

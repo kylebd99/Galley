@@ -6,17 +6,17 @@ function _get_index_cost(mult_op, sum_op, index::IndexExpr, inputs::Vector{Union
     edge_cover_stats = TensorStats[]
     for i in eachindex(inputs)
         stats = inputs[i].stats
-        if index in stats.index_set
+        if index in get_index_set(stats)
             push!(edge_cover, i)
             push!(edge_cover_stats, stats)
         end
     end
-    covered_indices = union([stats.index_set for stats in edge_cover_stats]...)
+    covered_indices = union([get_index_set(stats) for stats in edge_cover_stats]...)
     parent_indices = copy(output_indices)
     for idx in covered_indices
         for i in eachindex(inputs)
             i in edge_cover && continue
-            if idx in inputs[i].stats.index_set
+            if idx in get_index_set(inputs[i].stats)
                 push!(parent_indices, idx)
                 break
             end
@@ -33,7 +33,7 @@ end
 
 
 function _get_cheapest_edge_cover(mult_op, sum_op, inputs::Vector{Union{Factor, Bag}}, output_indices::Set{IndexExpr})
-    indices_to_aggregate = setdiff(union([input.stats.index_set for input in inputs]...), output_indices)
+    indices_to_aggregate = setdiff(union([get_index_set(input.stats) for input in inputs]...), output_indices)
     min_cost = Inf64
     cheapest_index = IndexExpr("")
     cheapest_edge_cover = Int[]
@@ -58,7 +58,7 @@ function greedy_decomposition(faq::FAQInstance)
     for factor in factors
         push!(inputs, factor)
     end
-    all_indices = union([input.stats.index_set for input in inputs]...)
+    all_indices = union([get_index_set(input.stats) for input in inputs]...)
     while all_indices != output_indices
         cheapest_edge_cover = _get_cheapest_edge_cover(mult_op, sum_op, inputs, output_indices)
         edge_cover = Set{Factor}()
@@ -71,13 +71,13 @@ function greedy_decomposition(faq::FAQInstance)
             else
                 push!(child_bags, inputs[i])
             end
-            for idx in inputs[i].stats.index_set
+            for idx in get_index_set(inputs[i].stats)
                 push!(covered_indices, idx)
             end
         end
         for idx in covered_indices
             for i in 1:length(inputs)
-                if (!(i in cheapest_edge_cover) && idx in inputs[i].stats.index_set) || idx in output_indices
+                if (!(i in cheapest_edge_cover) && idx in get_index_set(inputs[i].stats)) || idx in output_indices
                     push!(parent_indices, idx)
                     break
                 end
@@ -97,7 +97,7 @@ function greedy_decomposition(faq::FAQInstance)
         end
         push!(new_inputs, new_bag)
         inputs = new_inputs
-        all_indices = union([input.stats.index_set for input in inputs]...)
+        all_indices = union([get_index_set(input.stats) for input in inputs]...)
     end
     child_bags = Set{Bag}()
     edge_covers = Set{Factor}()
@@ -108,7 +108,7 @@ function greedy_decomposition(faq::FAQInstance)
         else
             push!(child_bags, input)
         end
-        for index in input.stats.index_set
+        for index in get_index_set(input.stats)
             push!(covered_indices, index)
         end
     end

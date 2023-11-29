@@ -16,12 +16,12 @@ end
         a_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
-        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], a_fiber))
+        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix = [0 1; 1 0]
         b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
-        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
+        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
 
         bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}())
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
@@ -42,13 +42,12 @@ end
         a_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
-        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], a_fiber))
+        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix = [0 1; 1 0]
         b_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
-        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
-
+        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
         bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}())
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
         correct_plan = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
@@ -68,17 +67,18 @@ end
         k = IndexExpr("k")
 
         m,n = 10, 10
+        p = .05
         T = Int64
-        a_matrix =  sprand(T, m, n, .25)
+        a_matrix =  abs.(sprand(T, m, n, p) .% 100)
         a_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
-        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], a_fiber))
-        b_matrix =  sprand(T, m, n, .25)
+        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
+        b_matrix =  abs.(sprand(T, m, n, p) .% 100)
         b_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
-        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
+        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
         faq = FAQInstance(*, +, Set([i,k]), Set([i,j,k]), Set([a_factor, b_factor]), [i, k])
         correct_matrix = a_matrix * b_matrix
         @test galley(faq; faq_optimizer = naive) == correct_matrix
@@ -93,22 +93,23 @@ end
         l = IndexExpr("l")
 
         m,n = 10, 10
+        p = .05
         T = Int64
-        a_matrix = sprand(T, m, n, .25)
+        a_matrix = abs.(sprand(T, m, n, p) .% 100)
         a_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
-        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], a_fiber))
-        b_matrix = sprand(T, m, n, .25)
+        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
+        b_matrix = abs.(sprand(T, m, n, p) .% 100)
         b_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
-        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, TensorStats([j,k], b_fiber))
-        c_matrix = sprand(T, m, n, .25)
+        b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
+        c_matrix =  abs.(sprand(T, m, n, p) .% 100)
         c_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(c_fiber, c_matrix)
         c_tensor = InputTensor(c_fiber)[k, l]
-        c_factor = Factor(c_tensor, Set([k, l]), Set([k, l]), false, TensorStats([k, l], c_fiber))
+        c_factor = Factor(c_tensor, Set([k, l]), Set([k, l]), false, NaiveStats([k, l], c_fiber))
         faq = FAQInstance(*, +, Set([i,l]), Set([i,j,k,l]), Set([a_factor, b_factor, c_factor]), [i, l])
         correct_matrix = a_matrix * b_matrix * c_matrix
         @test galley(faq; faq_optimizer = naive) == correct_matrix
@@ -121,22 +122,23 @@ end
         j = IndexExpr("j")
 
         m,n = 10, 10
+        p = .05
         T = Int64
-        a_matrix = sprand(T, m, n, .25)
+        a_matrix = abs.(sprand(T, m, n, p) .% 100)
         a_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
-        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], a_fiber))
-        b_matrix = sprand(T, m, n, .25)
+        a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
+        b_matrix = abs.(sprand(T, m, n, p) .% 100)
         b_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[i, j]
-        b_factor = Factor(b_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], b_fiber))
-        c_matrix = sprand(T, m, n, .25)
+        b_factor = Factor(b_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], b_fiber))
+        c_matrix = abs.(sprand(T, m, n, p) .% 100)
         c_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(c_fiber, c_matrix)
         c_tensor = InputTensor(c_fiber)[i, j]
-        c_factor = Factor(c_tensor, Set([i, j]), Set([i, j]), false, TensorStats([i, j], c_fiber))
+        c_factor = Factor(c_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], c_fiber))
         faq = FAQInstance(*, +, Set([i, j]), Set([i,j]), Set([a_factor, b_factor, c_factor]), [i, j])
         correct_matrix = a_matrix .* b_matrix .* c_matrix
         @test galley(faq; faq_optimizer = naive) == correct_matrix

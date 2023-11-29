@@ -1,27 +1,47 @@
-@auto_hash_equals mutable struct TensorStats
+# This struct holds the high-level definition of a tensor. This information should be
+# agnostic to the statistics used for cardinality estimation.
+@auto_hash_equals mutable struct TensorDef
     index_set::Set{IndexExpr}
-    dim_size::Dict{IndexExpr, Int}
-    cardinality::Float64
+    dim_sizes::Dict{IndexExpr, Int}
     default_value::Any
     index_order::Union{Nothing, Vector{IndexExpr}}
 end
 
-TensorStats(index_set, dim_size, cardinality, default_value) = TensorStats(index_set, dim_size, cardinality, default_value, nothing)
-function TensorStats(indices::Vector{IndexExpr}, fiber::Fiber)
+function TensorDef(indices::Vector{IndexExpr}, fiber::Fiber)
     shape_tuple = size(fiber)
     dim_size = Dict()
     for i in 1:length(indices)
         dim_size[indices[i]] = shape_tuple[i]
     end
-    cardinality = countstored(fiber)
     default_value = default(fiber)
-    return TensorStats(Set{IndexExpr}(indices), dim_size, cardinality, default_value, indices)
+    return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, indices)
 end
 
-function TensorStats(x::Number)
-    stats = TensorStats()
-    stats.default_value = x
-    return stats
+abstract type TensorStats end
+
+
+@auto_hash_equals mutable struct NaiveStats <: TensorStats
+    def::TensorDef
+    cardinality::Float64
 end
 
-TensorStats() = TensorStats(Set{IndexExpr}(), Dict(), -1, nothing, IndexExpr[])
+get_def(stat::NaiveStats) = stat.def
+get_index_set(stat::NaiveStats) = stat.def.index_set
+get_dim_sizes(stat::NaiveStats) = stat.def.dim_sizes
+get_dim_size(stat::NaiveStats, idx::IndexExpr) = stat.def.dim_sizes[idx]
+get_default_value(stat::NaiveStats) = stat.def.default_value
+get_index_order(stat::NaiveStats) = stat.def.index_order
+
+NaiveStats() = NaiveStats(TensorDef(), 0)
+NaiveStats(index_set, dim_size, cardinality, default_value) = NaiveStats(index_set, dim_size, cardinality, default_value, nothing)
+
+function NaiveStats(indices::Vector{IndexExpr}, fiber::Fiber)
+    def = TensorDef(indices, fiber)
+    cardinality = countstored(fiber)
+    return NaiveStats(def, cardinality)
+end
+
+function NaiveStats(x::Number)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing)
+    return NaiveStats(def, 1)
+end

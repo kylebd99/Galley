@@ -35,7 +35,7 @@ end
 # at `node`.
 function get_plan_node_indices(node::LogicalPlanNode)
     if node.head == InputTensor
-        return node.stats.index_set
+        return get_index_set(node.stats)
     elseif node.head == MapJoin
         return union(get_plan_node_indices(node.args[2]),
         get_plan_node_indices(node.args[3]))

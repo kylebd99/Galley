@@ -31,12 +31,12 @@ function validate_htd(faq::FAQInstance, htd::HyperTreeDecomposition)
     function _validate_indices(factor::Factor)
         input_node_indices = get_plan_node_indices(factor.input)
         @assert factor.all_indices == input_node_indices
-        @assert factor.stats.index_set == input_node_indices
-        @assert factor.stats.index_set == factor.input.stats.index_set
+        @assert get_index_set(factor.stats) == input_node_indices
+        @assert get_index_set(factor.stats) == get_index_set(factor.input.stats)
     end
 
     function _validate_indices(parent_indices::Set{IndexExpr}, bag::Bag)
-        covered_indices = union([factor.stats.index_set for factor in edge_cover]...)
+        covered_indices = union([get_index_set(factor.stats) for factor in edge_cover]...)
         @assert bag.covered_indices == covered_indices
         for factor in bag.edge_covers
             _validate_indices(factor)

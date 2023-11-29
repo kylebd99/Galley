@@ -1,7 +1,7 @@
 
 # This file defines a prototype front-end which allows users to define tensor expressions and get their results.
 module Galley
-    export galley, InputTensor, IndexExpr, TensorStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
+    export galley, InputTensor, IndexExpr, TensorStats, NaiveStats, OutTensor, ∑, ∏, Aggregate, MapJoin, Scalar, Agg
     export uniform_fiber, declare_binary_operator, Factor, FAQInstance
     export FAQ_OPTIMIZERS, naive, hypertree_width, greedy
 

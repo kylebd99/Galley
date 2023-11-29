@@ -54,7 +54,7 @@ end
 # This function takes in a dict of (tensor_id => tensor_stats) and outputs a join order.
 # Currently, it uses a simple prefix-join heuristic, but in the future it will be cost-based.
 # TODO: Make a cost-based implementation of this function.
-function get_join_loop_order(input_stats)
+function get_join_loop_order_simple(input_stats)
     num_occurrences = counter(IndexExpr)
     for stats in values(input_stats)
         for v in stats.index_set
@@ -64,6 +64,44 @@ function get_join_loop_order(input_stats)
     vars_and_counts = sort([(num_occurrences[v], v) for v in keys(num_occurrences)], by=(x)->x[1], rev=true)
     vars = [x[2] for x in vars_and_counts]
     return vars
+end
+
+
+function get_join_loop_order(input_stats::Vector{TensorStats})
+    all_vars = union([stat.index_set for stat in input_stats]...)
+    prefix_costs = Dict{Set{IndexExpr}, Float64}()
+    optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
+    for var in all_vars
+        v_set = Set([var])
+        prefix_costs[v_set] = get_prefix_cost(v_set, input_stats, 0)
+        optimal_prefix_orders[v_set] = [var]
+    end
+
+    for _ in 2:length(all_vars)
+        new_prefix_costs = Dict{Set{IndexExpr}, Float64}()
+        new_optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
+        for (prefix_set, min_cost) in prefix_costs
+            # We only consider extensions that don't result in cross products
+            potential_vars = Set{IndexExpr}()
+            for stat in input_stats
+                if length(∩(stat.index_set, prefix_set)) > 0
+                    potential_vars = ∪(potential_vars, stat.index_set)
+                end
+            end
+            potential_vars = setdiff(potential_vars, prefix_set)
+            for new_var in potential_vars
+                new_prefix_set = union(prefix_set, [new_var])
+                new_cost = get_prefix_cost(new_prefix_set, input_stats, min_cost)
+                if !haskey(new_prefix_costs, new_prefix_set) || new_cost < new_prefix_costs[new_prefix_set]
+                    new_prefix_costs[new_prefix_set] = new_cost
+                    new_optimal_prefix_orders[new_prefix_set] = [optimal_prefix_orders[prefix_set]..., new_var]
+                end
+            end
+        end
+        prefix_costs = new_prefix_costs
+        optimal_prefix_orders = new_optimal_prefix_orders
+    end
+    return optimal_prefix_orders[all_vars]
 end
 
 # This function takes in an input and replaces it with an input expression which matches the
@@ -115,7 +153,8 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         reduce_indices = n.args[2]
         sub_expr = n.args[3]
         input_stats = _recursive_get_stats(sub_expr, [1])
-        loop_order = get_join_loop_order(input_stats)
+        input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
+        loop_order = get_join_loop_order(input_stats_vec)
         output_indices = relative_sort(collect(n.stats.index_set), output_order)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
@@ -139,7 +178,8 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         l_input_stats = _recursive_get_stats(left_expr, input_counter)
         r_input_stats = _recursive_get_stats(right_expr, input_counter)
         input_stats = Dict(l_input_stats..., r_input_stats...)
-        loop_order = get_join_loop_order(input_stats)
+        input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
+        loop_order = get_join_loop_order(input_stats_vec)
         output_indices = relative_sort(collect(n.stats.index_set), output_order)
         l_body_kernel, l_input_dict = _recursive_get_kernel_root(left_expr, loop_order, input_counter)
         r_body_kernel, r_input_dict = _recursive_get_kernel_root(right_expr, loop_order, input_counter)

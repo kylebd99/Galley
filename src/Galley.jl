@@ -71,10 +71,15 @@ module Galley
 
         htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
         expr = decomposition_to_logical_plan(htd)
-        _recursive_insert_stats!(expr)
         expr = merge_aggregates(expr)
+        _recursive_insert_stats!(expr)
         verbose >= 1 && println("Plan: ", expr)
-        tensor_kernel = expr_to_kernel(expr, htd.output_index_order, verbose = verbose)
+        output_index_order = htd.output_index_order
+        if isnothing(htd.output_index_order)
+            output_index_order = collect(htd.output_indices)
+        end
+
+        tensor_kernel = expr_to_kernel(expr, output_index_order, verbose = verbose)
         result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
         verbose >= 1 && println("Time to Execute: ", result.time)
         return result.value

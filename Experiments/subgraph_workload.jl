@@ -152,7 +152,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         end
     end
 
-    factors = Factor[]
+    factors = Set{Factor}()
     for v in keys(query_vertices)
         label = query_vertices[v]
         if label == -1
@@ -257,6 +257,11 @@ function load_subgraph_workload(dataset::WORKLOAD)
     println("Loading Queries For: ", dataset)
     for query_path in query_paths
         query = load_query(query_path, vertex_vectors, edge_matrices)
+        if isfile(replace(query_path, "Subgraph_Queries"=>"Subgraph_TrueCardinalities"))
+            exact_size = load_true_cardinality(replace(query_path, "Subgraph_Queries"=>"Subgraph_TrueCardinalities"))
+        else
+            exact_size = nothing
+        end
         query_type = ""
         if dataset == lubm80
             query_type = match(r".*/.*/lubm80_(.*).txt", query_path).captures[1]
@@ -265,8 +270,15 @@ function load_subgraph_workload(dataset::WORKLOAD)
         else
             query_type = match(r".*/.*/query_(.*)_.*", query_path).captures[1]
         end
-        push!(all_queries, (query=query, query_type=query_type, query_path=query_path))
+        push!(all_queries, (query=query, query_type=query_type, query_path=query_path, expected_result=exact_size))
     end
     return all_queries
+end
 
+function load_true_cardinality(path)
+    true_cardinality = 0
+    for line in eachline(path)
+        true_cardinality = parse(Int, split(line)[1])
+    end
+    return true_cardinality
 end

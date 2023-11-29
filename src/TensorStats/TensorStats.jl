@@ -4,3 +4,4 @@
 
 include("tensor-stats.jl")
 include("propagate-stats.jl")
+include("cost-estimates.jl")

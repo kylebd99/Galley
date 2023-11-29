@@ -64,7 +64,7 @@ function aggregate_dangling_vars!(faq::FAQInstance)
         end
         if length(rel_factors) == 1 && !(idx in faq.output_indices)
             factor = rel_factors[1]
-            factor.input = Aggregate(faq.sum_op, [idx], factor.input)
+            factor.input = Aggregate(faq.sum_op, Set{IndexExpr}([idx]), factor.input)
             delete!(factor.active_indices, idx)
             delete!(factor.all_indices, idx)
             delete!(faq.input_indices, idx)

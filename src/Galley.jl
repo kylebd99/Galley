@@ -4,9 +4,14 @@ using AutoHashEquals
 using Combinatorics
 using DataStructures
 using Finch
-using Finch: @finch_program_instance, SparseHashLevel, SparseListLevel
+using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO
+using Random
+
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
-                        access_instance, Updater, Reader, assign_instance
+                        access_instance,  assign_instance, loop_instance, declare_instance,
+                        block_instance, define_instance, call_instance, freeze_instance,
+                        thaw_instance,
+                        Updater, Reader, Dimensionless
 using Metatheory
 using Metatheory.EGraphs
 using PrettyPrinting

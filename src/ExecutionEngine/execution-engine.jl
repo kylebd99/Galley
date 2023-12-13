@@ -1,5 +1,7 @@
 # This file performs the actual execution of physical query plan.
-function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Vector{AccessProtocol})
+function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Vector{AccessProtocol}; read=true)
+    mode = read ? Reader() : Updater()
+    mode = literal_instance(mode)
     index_expressions = []
     for i in range(1, length(index_ids))
         index = index_instance(Symbol(index_ids[i]))
@@ -19,7 +21,8 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Ve
     end
     tensor_var = variable_instance(Symbol(tensor_id))
     tensor_tag = tag_instance(tensor_var, tensor)
-    return @finch_program_instance $(tensor_tag)[index_expressions...]
+    tensor_access = access_instance(tensor_tag, mode, index_expressions...)
+    return tensor_access
 end
 
 function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)

@@ -16,6 +16,7 @@ struct IndexExpr
 end
 Base.convert(::Type{IndexExpr}, x::String) = IndexExpr(x)
 Base.isless(x::IndexExpr, y::IndexExpr) = x.id < y.id
+Base.:(==)(x::IndexExpr, y::IndexExpr) = x.id == y.id && x.name == y.name
 
 # Here, we define the internal expression type that we use to describe logical query plans.
 # This is the expression type that we will optimize using Metatheory.jl, so it has to conform to
@@ -59,9 +60,14 @@ declare_binary_operator(max)
 function Base.getindex(input::LogicalPlanNode, indices...)
     index_vector = IndexExpr[x isa String ? IndexExpr(x) : x for x in collect(indices)]
     if input.head == InputTensor
-        stats_type = input.stats
-        stats = stats_type(index_vector, input.args[2])
-        return LogicalPlanNode(InputTensor, [index_vector, input.args[2]], stats)
+        if input.stats isa TensorStats
+            stats = reindex_stats(index_vector, input.stats)
+            return LogicalPlanNode(InputTensor, [index_vector, input.args[2]], stats)
+        else
+            stats_type = input.stats
+            stats = stats_type(index_vector, input.args[2])
+            return LogicalPlanNode(InputTensor, [index_vector, input.args[2]], stats)
+        end
     else
         return LogicalPlanNode(RenameIndices, [input, index_vector], input.stats)
     end

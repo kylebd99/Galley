@@ -14,9 +14,10 @@ struct ExperimentParams
     workload::WORKLOAD
     warm_start::Bool
     faq_optimizer::FAQ_OPTIMIZERS
+    stats_type::Type
 
-    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive)
-        return new(workload, warm_start, faq_optimizer)
+    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats)
+        return new(workload, warm_start, faq_optimizer, stats_type)
     end
 end
 
@@ -24,6 +25,7 @@ function param_to_results_filename(param::ExperimentParams)
     filename = ""
     filename *= string(param.workload) * "_"
     filename *= string(param.warm_start) * "_"
-    filename *= string(param.faq_optimizer) * ".csv"
+    filename *= string(param.faq_optimizer) * "_"
+    filename *= string(param.stats_type) * ".csv"
     return filename
 end

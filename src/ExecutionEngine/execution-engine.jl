@@ -1,5 +1,5 @@
 # This file performs the actual execution of physical query plan.
-function initialize_access(tensor_id::TensorId, tensor::Fiber, index_ids::Vector{IndexExpr}, protocols::Vector{AccessProtocol})
+function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Vector{AccessProtocol})
     index_expressions = []
     for i in range(1, length(index_ids))
         index = index_instance(Symbol(index_ids[i]))
@@ -61,8 +61,9 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             if kernel.input_tensors[tensor_id] isa Number
                 node_dict[node_id] = literal_instance(kernel.input_tensors[tensor_id])
             else
-                if verbose >= 3
-                    println("Expected Output Tensor Size: ", node.stats.cardinality)
+                if verbose >= 0 && abs(estimate_nnz(node.stats) - countstored(kernel.input_tensors[tensor_id])) > 1.0
+                    println("Stats Type: ", typeof(node.stats))
+                    println("Expected Output Tensor Size: ", estimate_nnz(node.stats))
                     println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
                 end
                 node_dict[node_id] = initialize_access(tensor_id, kernel.input_tensors[tensor_id], node.input_indices, node.input_protocols)
@@ -112,6 +113,14 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     verbose >= 3 && println("Kernel: ", kernel.kernel_root)
     verbose >= 3 && println("Output Order: ", kernel.output_indices)
     verbose >= 3 && println("Loop Order: ", kernel.loop_order)
-    output_tensor = Finch.execute(full_prgm, (mode = fastfinch,)).output_tensor
+    verbose >= 3 && println("Output Tensor: ", output_tensor)
+    verbose >= 3 && println("Default Value: ", default_value)
+    verbose >= 3 && println("Loop Instance: ", loop_order)
+    verbose >= 3 && println("Output Indices Instance: ", output_indices)
+    verbose >= 3 && pprintln(typeof(full_prgm))
+    output_tensor = Finch.execute(full_prgm).output_tensor
+    if output_tensor isa Finch.Scalar
+        return output_tensor[]
+    end
     return output_tensor
 end

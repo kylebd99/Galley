@@ -1,0 +1,10 @@
+Finch.FinchNotation.BlockInstance{
+    Tuple{
+        Finch.FinchNotation.DeclareInstance{
+            Finch.FinchNotation.TagInstance{
+                Finch.FinchNotation.VariableInstance{
+                    :output_fiber},
+                Fiber{
+                    SparseHashLevel{
+                        1, Tuple{Int64}, Vector{Int64}, Dict{Tuple{Int64, Tuple{Int64}}, Int64}, Vector{Pair{Tuple{Int64, Tuple{Int64}}, Int64}}, ElementLevel{0.0, Float64, Int64, Vector{Float64}}}}}, Finch.FinchNotation.LiteralInstance{0.0}}, Finch.FinchNotation.LoopInstance{Finch.FinchNotation.IndexInstance{:j}, Finch.FinchNotation.Dimensionless, Finch.FinchNotation.LoopInstance{Finch.FinchNotation.IndexInstance{:i}, Finch.FinchNotation.Dimensionless, Finch.FinchNotation.AssignInstance{Finch.FinchNotation.AccessInstance{Finch.FinchNotation.TagInstance{Finch.FinchNotation.VariableInstance{:output_fiber}, Fiber{SparseHashLevel{1, Tuple{Int64}, Vector{Int64}, Dict{Tuple{Int64, Tuple{Int64}}, Int64}, Vector{Pair{Tuple{Int64, Tuple{Int64}}, Int64}}, ElementLevel{0.0, Float64, Int64, Vector{Float64}}}}}, Finch.FinchNotation.LiteralInstance{Updater()}, Tuple{Finch.FinchNotation.IndexInstance{:i}}}, Finch.FinchNotation.TagInstance{Finch.FinchNotation.VariableInstance{:max}, Finch.FinchNotation.LiteralInstance{max}}, Finch.FinchNotation.AccessInstance{Finch.FinchNotation.TagInstance{Finch.FinchNotation.VariableInstance{:s}, Fiber{SparseListLevel{Int64, Vector{Int64}, Vector{Int64}, SparseListLevel{Int64, Vector{Int64}, Vector{Int64}, ElementLevel{0.0, Float64, Int64, Vector{Float64}}}}}}, Finch.FinchNotation.LiteralInstance{Reader()}, Tuple{Finch.FinchNotation.TagInstance{Finch.FinchNotation.VariableInstance{:i}, Finch.FinchNotation.IndexInstance{:i}}, Finch.FinchNotation.TagInstance{Finch.FinchNotation.VariableInstance{:j}, Finch.FinchNotation.IndexInstance{:j}}}}}}}}}
+Type of Fiber: Fiber{SparseListLevel{Int64, Vector{Int64}, Vector{Int64}, SparseListLevel{Int64, Vector{Int64}, Vector{Int64}, ElementLevel{0.0, Float64, Int64, Vector{Float64}}}}}

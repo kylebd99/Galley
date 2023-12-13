@@ -1,7 +1,7 @@
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
         results = [("Workload", "QueryType", "QueryPath", "Runtime", "Result")]
-        queries = load_workload(experiment.workload)
+        queries = load_workload(experiment.workload, experiment.stats_type)
         if experiment.warm_start
             for query in queries
                 println("Warm Start Query Path: ", query.query_path)
@@ -19,7 +19,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
             println("Query Path: ", query.query_path)
             num_attempted +=1
             try
-                result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer,  verbose=3)
+                result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer)
                 push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time), string(result.value)))
                 if !isnothing(query.expected_result)
                     if all(result.value .== query.expected_result)

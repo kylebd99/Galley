@@ -1,5 +1,5 @@
-using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance
-#using Finch.FinchNotation: loop_body
 
+#using Finch.FinchNotation: loop_body
+using PrettyPrinting
 
 include("execution-engine.jl")

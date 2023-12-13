@@ -6,12 +6,12 @@
 # each edge label as a 0/1 matrix E_ij indicating whether there is an edge from i to j
 # where the edge has the correct label
 
-function load_dataset(path; subgraph_matching_data=false)
+function load_dataset(path, stats_type; subgraph_matching_data=false)
     n = 0
     edges::Dict{Tuple{Int, Int}, Int} = Dict()
     vertices::Dict{Int, Array{Int}} = Dict()
-    edge_labels = []
-    vertex_labels = []
+    edge_labels = Set()
+    vertex_labels = Set()
     for line in eachline(path)
         if length(line) == 0
             continue
@@ -21,14 +21,15 @@ function load_dataset(path; subgraph_matching_data=false)
             labels = []
             if (subgraph_matching_data)
                 push!(labels, parse(Int, parts[3]))
+                push!(vertex_labels, parse(Int, parts[3]))
                 vertices[parse(Int, parts[2])+1] =  labels
             else
                 for x in parts[3:length(parts)]
                     push!(labels, parse(Int, x))
+                    push!(vertex_labels, parse(Int, x))
                 end
                 vertices[parse(Int,  parts[2]) + 1] =  labels
             end
-            vertex_labels = union(vertex_labels, labels)
             n += 1
         elseif line[1] == 'e'
             parts = split(line)
@@ -36,14 +37,14 @@ function load_dataset(path; subgraph_matching_data=false)
                 e1, e2 = parse(Int, parts[2])+1, parse(Int, parts[3])+1
                 edges[(e1, e2)] = 0
                 edges[(e2, e1)] = 0
-                edge_labels = [0]
+                edge_labels = Set([0])
             else
                 e1, e2, l1 = parse(Int, parts[2])+1, parse(Int, parts[3])+1, parse(Int, parts[4])
                 edges[(e1, e2)] =  l1
+                push!(edge_labels, l1)
             end
         end
     end
-    edge_labels = union(collect(values(edges)))
     vertex_vectors = Dict()
     for label in vertex_labels
         node_ids= []
@@ -53,10 +54,9 @@ function load_dataset(path; subgraph_matching_data=false)
             end
         end
         values = [1 for _ in node_ids]
-
-        vertex_vector = Fiber!(SparseList(Element(0), n))
+        vertex_vector = Fiber!(SparseList(Element(0.0), n))
         copyto!(vertex_vector,  sparsevec(node_ids, values, n))
-        vertex_vectors[label] = vertex_vector
+        vertex_vectors[label] =  InputTensor(vertex_vector, stats_type)[IndexExpr("i")]
     end
 
     edge_matrices = Dict()
@@ -70,49 +70,48 @@ function load_dataset(path; subgraph_matching_data=false)
             end
         end
         values = [1 for _ in i_ids]
-
-        edge_matrix = Fiber!(SparseList(SparseList(Element(0), n), n))
+        edge_matrix = Fiber!(SparseList(SparseList(Element(0.0), n), n))
         copyto!(edge_matrix, sparse(i_ids, j_ids, values, n, n))
-        edge_matrices[label] = edge_matrix
+        edge_matrices[label] = InputTensor(edge_matrix, stats_type)[IndexExpr("i"), IndexExpr("j")]
     end
     return vertex_vectors, edge_matrices
 end
 
 
-function load_subgraph_dataset(dataset::WORKLOAD)
+function load_subgraph_dataset(dataset::WORKLOAD, stats_type::Type)
     if dataset == aids
         aids_data_file_path = "Experiments/Data/Subgraph_Data/aids/aids.txt"
-        return load_dataset(aids_data_file_path)
+        return load_dataset(aids_data_file_path, stats_type)
     elseif dataset == human
         human_data_file_path = "Experiments/Data/Subgraph_Data/human/human.txt"
-        return load_dataset(human_data_file_path)
+        return load_dataset(human_data_file_path, stats_type)
     elseif dataset == lubm80
         lubm80_data_file_path = "Experiments/Data/Subgraph_Data/lubm80/lubm80.txt"
-        return load_dataset(lubm80_data_file_path)
+        return load_dataset(lubm80_data_file_path, stats_type)
     elseif dataset == yago
         yago_data_file_path = "Experiments/Data/Subgraph_Data/yago/yago.txt"
-        return load_dataset(yago_data_file_path)
+        return load_dataset(yago_data_file_path, stats_type)
     elseif dataset == yeast
         yeast_data_file_path = "Experiments/Data/Subgraph_Data/yeast/yeast.graph"
-        return load_dataset(yeast_data_file_path, subgraph_matching_data=true)
+        return load_dataset(yeast_data_file_path, stats_type, subgraph_matching_data=true)
     elseif dataset == hprd
         hprd_data_file_path = "Experiments/Data/Subgraph_Data/hprd/hprd.graph"
-        return load_dataset(hprd_data_file_path, subgraph_matching_data=true)
+        return load_dataset(hprd_data_file_path, stats_type, subgraph_matching_data=true)
     elseif dataset == wordnet
         wordnet_data_file_path = "Experiments/Data/Subgraph_Data/wordnet/wordnet.graph"
-        return load_dataset(wordnet_data_file_path, subgraph_matching_data=true)
+        return load_dataset(wordnet_data_file_path, stats_type, subgraph_matching_data=true)
     elseif dataset == dblp
         dblp_data_file_path = "Experiments/Data/Subgraph_Data/dblp/dblp.graph"
-        return load_dataset(dblp_data_file_path, subgraph_matching_data=true)
+        return load_dataset(dblp_data_file_path, stats_type, subgraph_matching_data=true)
     elseif dataset == youtube
         youtube_data_file_path = "Experiments/Data/Subgraph_Data/youtube/youtube.graph"
-        return load_dataset(youtube_data_file_path, subgraph_matching_data=true)
+        return load_dataset(youtube_data_file_path, stats_type, subgraph_matching_data=true)
     elseif dataset == patents
         patents_data_file_path = "Experiments/Data/Subgraph_Data/patents/patents.graph"
-        return load_dataset(patents_data_file_path, subgraph_matching_data=true)
+        return load_dataset(patents_data_file_path, stats_type, subgraph_matching_data=true)
     elseif dataset == eu2005
         eu2005_data_file_path = "Experiments/Data/Subgraph_Data/eu2005/eu2005.graph"
-        return load_dataset(eu2005_data_file_path, subgraph_matching_data=true)
+        return load_dataset(eu2005_data_file_path, stats_type, subgraph_matching_data=true)
     end
 end
 
@@ -160,8 +159,8 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         end
         idx = query_id_to_idx(v)
         indices = Set([idx])
-        vertex_tensor = InputTensor(vertex_vectors[label])[idx]
-        vertex_factor = Factor(vertex_tensor, indices, indices, false, TensorStats([idx], vertex_vectors[label]))
+        vertex_tensor = vertex_vectors[label][idx]
+        vertex_factor = Factor(vertex_tensor, indices, indices, false, deepcopy(vertex_tensor.stats))
         push!(factors, vertex_factor)
     end
 
@@ -173,8 +172,8 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         l_idx = query_id_to_idx(edge[1])
         r_idx = query_id_to_idx(edge[2])
         indices = Set([l_idx, r_idx])
-        edge_tensor = InputTensor(edge_matrices[label])[l_idx, r_idx]
-        edge_factor = Factor(edge_tensor, indices, indices, false, TensorStats([l_idx, r_idx], edge_matrices[label]))
+        edge_tensor = edge_matrices[label][l_idx, r_idx]
+        edge_factor = Factor(edge_tensor, indices, indices, false, deepcopy(edge_tensor.stats))
         push!(factors, edge_factor)
     end
     faq = FAQInstance(*, +, Set{IndexExpr}(), Set([query_id_to_idx(v) for v in 1:n]), factors)
@@ -183,7 +182,7 @@ end
 
 
 
-function load_subgraph_workload(dataset::WORKLOAD)
+function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type)
 
     query_directories = Dict()
     query_directories[aids] = ["/aids/Chain_3/",
@@ -252,7 +251,7 @@ function load_subgraph_workload(dataset::WORKLOAD)
     query_paths = [readdir("Experiments/Data/Subgraph_Queries" * dir, join=true) for dir in query_directories[dataset]]
     query_paths = [(query_paths...)...]
 
-    vertex_vectors, edge_matrices = load_subgraph_dataset(dataset)
+    vertex_vectors, edge_matrices = load_subgraph_dataset(dataset, stats_type)
     all_queries = []
     println("Loading Queries For: ", dataset)
     for query_path in query_paths

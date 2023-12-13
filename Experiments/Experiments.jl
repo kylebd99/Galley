@@ -1,14 +1,12 @@
-
-
 using SparseArrays
 using Finch
-using Galley
 using DelimitedFiles
 using CSV, DataFrames
 using DelimitedFiles: writedlm
 using StatsPlots
 using Plots
 
+include("../src/Galley.jl")
 include("experiment_params.jl")
 include("subgraph_workload.jl")
 include("load_workload.jl")

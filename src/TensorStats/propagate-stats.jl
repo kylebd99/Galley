@@ -141,9 +141,9 @@ end
 ################# NaiveStats Propagation ##################################################
 function merge_tensor_stats_join(op, lstats::NaiveStats, rstats::NaiveStats)
     new_def = merge_tensor_def_join(op, get_def(lstats), get_def(rstats))
-    new_dim_space_size = prod([new_def.dim_sizes[x] for x in new_def.index_set])
-    l_dim_space_size = prod([get_dim_size(lstats, x) for x in get_index_set(lstats)])
-    r_dim_space_size = prod([get_dim_size(rstats, x) for x in get_index_set(rstats)])
+    new_dim_space_size = get_dim_space_size(new_def, new_def.index_set)
+    l_dim_space_size = get_dim_space_size(lstats, get_index_set(lstats))
+    r_dim_space_size = get_dim_space_size(rstats, get_index_set(rstats))
     l_prob_non_default = (lstats.cardinality/l_dim_space_size)
     r_prob_non_default = (rstats.cardinality/r_dim_space_size)
     new_cardinality = l_prob_non_default * r_prob_non_default * new_dim_space_size
@@ -152,9 +152,9 @@ end
 
 function merge_tensor_stats_union(op, lstats::NaiveStats, rstats::NaiveStats)
     new_def = merge_tensor_def_union(op, get_def(lstats), get_def(rstats))
-    new_dim_space_size = prod([new_def.dim_sizes[x] for x in new_def.index_set])
-    l_dim_space_size = prod([get_dim_size(lstats, x) for x in get_index_set(lstats)])
-    r_dim_space_size = prod([get_dim_size(rstats, x) for x in get_index_set(rstats)])
+    new_dim_space_size = get_dim_space_size(new_def, new_def.index_set)
+    l_dim_space_size = get_dim_space_size(lstats, get_index_set(lstats))
+    r_dim_space_size = get_dim_space_size(rstats, get_index_set(rstats))
     l_prob_default = (1 - lstats.cardinality/l_dim_space_size)
     r_prob_default = (1 - rstats.cardinality/r_dim_space_size)
     new_cardinality = (1 - l_prob_default * r_prob_default) * new_dim_space_size
@@ -163,16 +163,84 @@ end
 
 function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::NaiveStats)
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
-    new_dim_space_size = 1
-    if length(new_def.index_set) > 0
-        new_dim_space_size = prod([new_def.dim_sizes[x] for x in new_def.index_set])
-    end
-    old_dim_space_size = 1
-    if length(get_index_set(stats)) > 0
-        old_dim_space_size = prod([get_dim_size(stats, x) for x in get_index_set(stats)])
-    end
+    new_dim_space_size = get_dim_space_size(stats, new_def.index_set)
+    old_dim_space_size = get_dim_space_size(stats, get_index_set(stats))
     prob_default_value = 1 - stats.cardinality/old_dim_space_size
     prob_non_default_subspace = 1 - prob_default_value ^ (old_dim_space_size/new_dim_space_size)
     new_cardinality = new_dim_space_size * prob_non_default_subspace
     return NaiveStats(new_def, new_cardinality)
+end
+
+
+################# DCStats Propagation ##################################################
+function merge_tensor_stats_join(op, lstats::DCStats, rstats::DCStats)
+    new_def = merge_tensor_def_join(op, get_def(lstats), get_def(rstats))
+    new_dc_dict = Dict()
+    for dc in ∪(rstats.dcs, lstats.dcs)
+        dc_key = (X=dc.X, Y=dc.Y)
+        current_dc = get(new_dc_dict, dc_key, Inf)
+        if dc.d < current_dc
+            new_dc_dict[dc_key] = dc.d
+        end
+    end
+    return DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dc_dict))
+end
+
+function merge_tensor_stats_union(op, lstats::DCStats, rstats::DCStats)
+    new_def = merge_tensor_def_union(op, get_def(lstats), get_def(rstats))
+
+    # We start by extending both arguments' dcs to the new dimensions
+    extended_l_dcs = Set{DC}()
+    new_l_indices = setdiff(get_index_set(rstats), get_index_set(lstats))
+    for dc in lstats.dcs
+        for Z in subset(new_l_indices)
+            Z_dimension_space_size = get_dim_space_size(rstats, Z)
+            push!(extended_l_dcs, DC(dc.X, ∪(dc.Y, Z), dc.d*Z_dimension_space_size))
+        end
+    end
+
+    extended_r_dcs = Set{DC}()
+    new_r_indices = setdiff(get_index_set(lstats), get_index_set(rstats))
+    for dc in rstats.dcs
+        for Z in subset(new_r_indices)
+            Z_dimension_space_size = get_dim_space_size(lstats, Z)
+            push!(extended_r_dcs, DC(dc.X, ∪(dc.Y, Z), dc.d*Z_dimension_space_size))
+        end
+    end
+
+    # Once the DCs are properly extended, we can add them to get the result
+    new_dc_dict = Dict()
+    for dc in ∪(rstats.dcs, lstats.dcs)
+        dc_key = (X=dc.X, Y=dc.Y)
+        current_dc = get(new_dc_dict, dc_key, 0)
+        new_dc_dict[dc_key] = current_dc + dc.d
+    end
+
+    return DCStats(new_def, new_cardinality)
+end
+
+function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
+    new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
+    # In order to preserve as much information as possible, we need to infer dcs before
+    # filtering out DCs.
+    inferred_dcs = _infer_dcs(stats.dcs)
+    new_dcs_dict = Dict()
+    for dc in inferred_dcs
+        summed_Xs = ∩(dc.X, reduce_indices)
+        remaining_Xs = setdiff(dc.X, reduce_indices)
+        summed_X_dim_size = get_dim_space_size(stats, summed_Xs)
+        new_Y = setdiff(dc.Y, reduce_indices)
+        new_Y_dim_size = get_dim_space_size(stats, new_Y)
+        new_dc = min(dc.d * summed_X_dim_size, new_Y_dim_size)
+        new_key = (X = remaining_Xs, Y = new_Y)
+        current_dc = get(new_dcs_dict, new_key, Inf)
+        if new_dc < current_dc
+            new_dcs_dict[new_key] = new_dc
+        end
+    end
+    new_dcs = Set{DC}()
+    for (key, d) in new_dcs_dict
+        push!(new_dcs, DC(key.X, key.Y, d))
+    end
+    return DCStats(new_def, new_dcs)
 end

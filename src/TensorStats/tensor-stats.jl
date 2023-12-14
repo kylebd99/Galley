@@ -120,15 +120,15 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000)
             if l.Y ⊇ r.X
                 new_key = (X = l.X, Y = ∪(l.Y, r.Y))
                 new_degree = l.d*r.d
-                if get(all_dcs, new_key, DC(new_key.X, new_key.Y, 0)).d < new_degree &&
-                        get(new_dcs, new_key, DC(new_key.X, new_key.Y, 0)).d < new_degree
+                if get(all_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree &&
+                        get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
                     new_dcs[new_key] = DC(new_key.X, new_key.Y, new_degree)
                 end
             elseif r.Y ⊇ l.X
                 new_key = (X = r.X, Y = ∪(r.Y, l.Y))
                 new_degree = r.d*l.d
-                if get(all_dcs, new_key, DC(new_key.X, new_key.Y, 0)).d < new_degree &&
-                    get(new_dcs, new_key, DC(new_key.X, new_key.Y, 0)).d < new_degree
+                if get(all_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree &&
+                    get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
                     new_dcs[new_key] = DC(new_key.X, new_key.Y, new_degree)
                 end
             end
@@ -161,7 +161,6 @@ end
 function estimate_nnz(stat::DCStats)
     indices = get_index_set(stat)
     dcs = stat.dcs
-
     min_card = Inf
     for dc in dcs
         if isempty(dc.X) && dc.Y ⊇ indices
@@ -173,7 +172,7 @@ function estimate_nnz(stat::DCStats)
     inferred_dcs = _infer_dcs(dcs)
     min_card = Inf
     for dc in inferred_dcs
-        if ∪(dc.X, dc.Y) ⊇ indices
+        if isempty(dc.X) && dc.Y ⊇ indices
             min_card = min(min_card, dc.d)
         end
     end

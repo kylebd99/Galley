@@ -25,11 +25,14 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Ve
     return tensor_access
 end
 
+
 function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     verbose >= 3 && println(lvl)
     for tensor_id in keys(kernel.input_tensors)
         if kernel.input_tensors[tensor_id] isa TensorKernel
-            kernel.input_tensors[tensor_id] = execute_tensor_kernel(kernel.input_tensors[tensor_id], lvl=lvl+1, verbose=verbose)
+            kernel.input_tensors[tensor_id] = execute_tensor_kernel(kernel.input_tensors[tensor_id],
+                                                                     lvl=lvl+1,
+                                                                     verbose=verbose)
         end
     end
     verbose >= 3 && println(lvl)
@@ -69,12 +72,15 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                     println("Expected Output Tensor Size: ", estimate_nnz(node.stats))
                     println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
                 end
-                node_dict[node_id] = initialize_access(tensor_id, kernel.input_tensors[tensor_id], node.input_indices, node.input_protocols)
+                node_dict[node_id] = initialize_access(tensor_id,
+                                                        kernel.input_tensors[tensor_id],
+                                                        node.input_indices,
+                                                        node.input_protocols)
             end
         elseif node isa OperatorExpr
             child_prgms = [node_dict[x] for x in child_node_ids]
             op = node.op
-            node_dict[node_id] = @finch_program_instance op(child_prgms...)
+            node_dict[node_id] = call_instance(literal_instance(op), child_prgms...)
         end
         if node_id == 0
             if node isa AggregateExpr
@@ -92,27 +98,31 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         end
     end
 
-    loop_order = [index_instance(Symbol(i)) for i in kernel.loop_order]
-    output_indices = [index_instance(Symbol(i)) for i in kernel.output_indices]
     output_dimensions = kernel.output_dims
     output_default = kernel.output_default
-    output_tensor = initialize_tensor(kernel.output_formats, output_dimensions, output_default)
-    if agg_op === nothing
-        full_prgm = @finch_program_instance output_tensor[output_indices...] = $kernel_prgm
-    else
-        full_prgm = @finch_program_instance output_tensor[output_indices...] <<agg_op>>=  $kernel_prgm
-    end
-    default_value = literal_instance(output_default)
-    for index in reverse(loop_order)
-        full_prgm = @finch_program_instance (for $index = _; $full_prgm end)
-    end
-    full_prgm = @finch_program_instance (output_tensor .= $default_value; $full_prgm)
+    output_tensor = initialize_tensor(kernel.output_formats,
+                                        output_dimensions,
+                                        output_default)
+    output_access = initialize_access("output_tensor",
+                                        output_tensor,
+                                        kernel.output_indices,
+                                        [t_walk for _ in kernel.output_indices];
+                                        read=false)
 
-    for tensor_id in keys(kernel.input_tensors)
-        if kernel.input_tensors[tensor_id] isa TensorKernel
-            kernel.input_tensors[tensor_id] = nothing
-        end
+    if agg_op === nothing
+        agg_op = initwrite(output_default)
     end
+
+    full_prgm = assign_instance(output_access, literal_instance(agg_op), kernel_prgm)
+
+    loop_order = [index_instance(Symbol(i)) for i in kernel.loop_order]
+    for index in reverse(loop_order)
+        full_prgm = loop_instance(index, Dimensionless(), full_prgm)
+    end
+    full_prgm = block_instance(declare_instance(variable_instance(:output_tensor),
+                                                 literal_instance(output_default)),
+                                full_prgm)
+
     verbose >= 3 && println("Kernel: ", kernel.kernel_root)
     verbose >= 3 && println("Output Order: ", kernel.output_indices)
     verbose >= 3 && println("Loop Order: ", kernel.loop_order)
@@ -124,6 +134,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     output_tensor = Finch.execute(full_prgm).output_tensor
     if output_tensor isa Finch.Scalar
         return output_tensor[]
+    else
+        return output_tensor
     end
-    return output_tensor
 end

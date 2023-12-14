@@ -62,11 +62,10 @@ function get_sparsity_structure(fiber::Fiber)
     end
     indices = [IndexExpr("t_" * string(i)) for i in 1:length(size(fiber))]
     fiber_instance = initialize_access("A", fiber, indices, [t_walk for _ in indices], read=true)
-    func_instance = tag_instance(variable_instance(:non_zero_func), literal_instance(non_zero_func))
-    fiber_instance = call_instance(func_instance, fiber_instance)
+    fiber_instance = call_instance(literal_instance(non_zero_func), fiber_instance)
     output_fiber = initialize_tensor([t_sparse_list for _ in indices ], [dim for dim in size(fiber)], 0.0)
     output_instance = initialize_access("output_fiber", output_fiber, indices, [t_walk for _ in indices], read = false)
-    full_prgm = assign_instance(output_instance, literal_instance(overwrite), fiber_instance)
+    full_prgm = assign_instance(output_instance, literal_instance(initwrite(0.0)), fiber_instance)
 
     for index in indices
         full_prgm = loop_instance(index_instance(Symbol(index)), Dimensionless(), full_prgm)
@@ -74,12 +73,8 @@ function get_sparsity_structure(fiber::Fiber)
 
     initializer = declare_instance(variable_instance(:output_fiber), literal_instance(0.0))
     full_prgm = block_instance(initializer, full_prgm)
-    println(typeof(full_prgm))
-    println("Type of PROGRAM: ")
-    display(Finch.virtualize(:root, typeof(full_prgm), Finch.JuliaContext()))
+
     output_fiber = Finch.execute(full_prgm).output_fiber
-    println("Input Size: ", countstored(fiber))
-    println("Output Size: ", countstored(output_fiber))
     return output_fiber
 end
 
@@ -108,14 +103,19 @@ function one_off_reduce(op,
     if is_prefix(output_indices, loop_order)
         output_formats = [t_sparse_list for _ in output_indices]
     end
-
     fiber_instance = initialize_access("s", s, input_indices, [t_walk for _ in input_indices])
     output_fiber = initialize_tensor(output_formats, output_dims, 0.0)
 
     loop_index_instances = [index_instance(Symbol(idx)) for idx in input_indices]
     output_variable = tag_instance(variable_instance(:output_fiber), output_fiber)
     output_access = initialize_access("output_fiber", output_fiber, output_indices, [t_walk for _ in output_indices]; read=false)
-    op_instance = tag_instance(variable_instance(:op), op)
+    op_instance = if op == max
+        literal_instance(initmax(Finch.default(s)))
+    elseif op == min
+        literal_instance(initmin(Finch.default(s)))
+    else
+        literal_instance(op)
+    end
     full_prgm = assign_instance(output_access, op_instance, fiber_instance)
 
     for index in loop_index_instances
@@ -123,13 +123,6 @@ function one_off_reduce(op,
     end
     initializer = declare_instance(output_variable, literal_instance(0.0))
     full_prgm = block_instance(initializer, full_prgm)
-
-    println(typeof(full_prgm))
-    println("Type of PROGRAM: ")
-    display(Finch.virtualize(:root, typeof(full_prgm), Finch.JuliaContext()))
-    println("Type of Fiber: ", typeof(s))
-    println("Size of Fiber: ", countstored(s))
-    println(Finch.execute_code(full_prgm, typeof(full_prgm))|> Finch.pretty |> Finch.dataflow |> Finch.unresolve |> Finch.unquote_literals)
     return Finch.execute(full_prgm).output_fiber
 end
 

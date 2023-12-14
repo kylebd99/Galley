@@ -142,6 +142,25 @@ function transpose_input(loop_order, input, stats)
     return input
 end
 
+
+
+function select_output_format(output_stats::TensorStats,
+                                loop_order::Vector{IndexExpr},
+                                output_indices::Vector{IndexExpr}
+                                )
+    approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
+    if approx_sparsity > .5
+        return [t_dense for _ in output_indices]
+    end
+
+    if is_prefix(output_indices, loop_order)
+        return [t_sparse_list for _ in output_indices]
+    end
+
+    return [t_hash for _ in output_indices]
+end
+
+
 # This function takes in a logical plan and outputs a tree of tensor kernels.
 # These kernels fully define the program that Finch will compile:
 #   - Loop Order
@@ -164,7 +183,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         output_indices = relative_sort(collect(get_index_set(n.stats)), output_order)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
-        output_formats = [t_hash for _ in 1:length(output_indices)]
+        output_formats = select_output_format(n.stats, loop_order, output_indices)
         output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,
                                 input_dict,
@@ -191,7 +210,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         r_body_kernel, r_input_dict = _recursive_get_kernel_root(right_expr, loop_order, input_counter)
         kernel_root = OperatorExpr(op, [l_body_kernel, r_body_kernel])
         input_dict = Dict(l_input_dict..., r_input_dict...)
-        output_formats = [t_hash for _ in 1:length(output_indices)]
+        output_formats = select_output_format(n.stats, loop_order, output_indices)
         output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,
                                 input_dict,
@@ -209,7 +228,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         loop_order = reverse(output_indices)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = ReorderExpr(output_indices, body_kernel)
-        output_formats = [t_hash for _ in 1:length(output_indices)]
+        output_formats = select_output_format(n.stats, loop_order, output_indices)
         output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,
                                 input_dict,
@@ -237,6 +256,7 @@ end
 #  2. Check that the output indices are the inputs minus any that are aggregate_indices
 #  3. Check that the inputs are all sorted w.r.t. the loop order
 function validate_kernel(kernel::TensorKernel)
+    println(kernel.output_formats)
     function get_input_indices(n::TensorExpression)
         return if n isa InputExpr
             Set(n.input_indices)

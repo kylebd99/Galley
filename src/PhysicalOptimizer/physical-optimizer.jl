@@ -161,7 +161,7 @@ function transpose_input(loop_order, input, stats)
 end
 
 function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel, stats::TensorStats)
-    transposed_index_order = reverse([x for x in output_order])
+    transposed_index_order =  [x for x in output_order]
     is_sorted = is_sorted_wrt_index_order(kernel.output_indices, transposed_index_order)
     if is_sorted
         return kernel
@@ -298,7 +298,6 @@ end
 #  2. Check that the output indices are the inputs minus any that are aggregate_indices
 #  3. Check that the inputs are all sorted w.r.t. the loop order
 function validate_kernel(kernel::TensorKernel)
-    println(kernel.output_formats)
     function get_input_indices(n::TensorExpression)
         return if n isa InputExpr
             Set(n.input_indices)

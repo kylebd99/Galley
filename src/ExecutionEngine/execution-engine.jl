@@ -60,6 +60,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
 
     agg_op = nothing
     kernel_prgm = nothing
+    input_index_orders = []
     for node_id in reverse(range(0, length(keys(node_dict))-1))
         node, child_node_ids = node_dict[node_id]
         if node isa InputExpr
@@ -76,6 +77,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                                                         kernel.input_tensors[tensor_id],
                                                         node.input_indices,
                                                         node.input_protocols)
+                push!(input_index_orders, node.input_indices)
             end
         elseif node isa OperatorExpr
             child_prgms = [node_dict[x] for x in child_node_ids]
@@ -125,13 +127,11 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
 
     verbose >= 3 && println("Kernel: ", kernel.kernel_root)
     verbose >= 3 && println("Output Order: ", kernel.output_indices)
+    verbose >= 3 && println("Input Orders: ", input_index_orders)
     verbose >= 3 && println("Loop Order: ", kernel.loop_order)
-    verbose >= 3 && println("Output Tensor: ", output_tensor)
-    verbose >= 3 && println("Default Value: ", default_value)
-    verbose >= 3 && println("Loop Instance: ", loop_order)
-    verbose >= 3 && println("Output Indices Instance: ", output_indices)
-    verbose >= 3 && pprintln(typeof(full_prgm))
+    start_time = time()
     output_tensor = Finch.execute(full_prgm).output_tensor
+    verbose >= 3 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         return output_tensor[]
     else

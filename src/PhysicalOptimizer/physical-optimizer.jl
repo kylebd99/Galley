@@ -72,19 +72,27 @@ function get_join_loop_order_simple(input_stats)
 end
 
 
-function get_join_loop_order(input_stats::Vector{TensorStats})
+function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
     all_vars = union([get_index_set(stat) for stat in input_stats]...)
+    transpose_cost = estimate_nnz(output_stats)
     prefix_costs = Dict{Set{IndexExpr}, Float64}()
+    paid_transpose = Dict{Set{IndexExpr}, Bool}()
     optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
+#    println("Input Orders: ", [get_index_set(stat) for stat in input_stats])
     for var in all_vars
         v_set = Set([var])
-        prefix_costs[v_set] = get_prefix_cost(v_set, input_stats, 0)
+        prefix_costs[v_set] = get_prefix_cost(v_set, input_stats)
         optimal_prefix_orders[v_set] = [var]
+        is_output_prefix = is_prefix(output_order, optimal_prefix_orders[v_set]) || is_prefix(optimal_prefix_orders[v_set], output_order)
+        prefix_costs[v_set] += !is_output_prefix * transpose_cost
+        paid_transpose[v_set] = get(paid_transpose, v_set, false) || !is_output_prefix
     end
 
     for _ in 2:length(all_vars)
         new_prefix_costs = Dict{Set{IndexExpr}, Float64}()
+        new_paid_transpose = Dict{Set{IndexExpr}, Bool}()
         new_optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
+
         for (prefix_set, min_cost) in prefix_costs
             # We only consider extensions that don't result in cross products
             potential_vars = Set{IndexExpr}()
@@ -97,16 +105,30 @@ function get_join_loop_order(input_stats::Vector{TensorStats})
             potential_vars = setdiff(potential_vars, prefix_set)
             for new_var in potential_vars
                 new_prefix_set = union(prefix_set, [new_var])
-                new_cost = get_prefix_cost(new_prefix_set, input_stats, min_cost)
+                new_prefix_order = [optimal_prefix_orders[prefix_set]..., new_var]
+                new_cost = get_prefix_cost(new_prefix_set, input_stats) + min_cost
+                already_paid = get(paid_transpose, prefix_set, false)
+                is_output_prefix = is_prefix(output_order, new_prefix_order) || is_prefix(new_prefix_order, output_order)
+                new_cost += (!already_paid && !is_output_prefix) * transpose_cost
+#                println("Output Order: ", output_order)
+#                println("New Prefix: ", new_prefix_order)
+#                println("Output Cost: ", (!is_prefix(output_order, new_prefix_order) &&
+#                            !is_prefix(new_prefix_order, output_order)) *
+#                            transpose_cost)
+#                println("Prefix Cost: ", get_prefix_cost(new_prefix_set, input_stats) + min_cost)
                 if !haskey(new_prefix_costs, new_prefix_set) || new_cost < new_prefix_costs[new_prefix_set]
                     new_prefix_costs[new_prefix_set] = new_cost
-                    new_optimal_prefix_orders[new_prefix_set] = [optimal_prefix_orders[prefix_set]..., new_var]
+                    new_optimal_prefix_orders[new_prefix_set] = new_prefix_order
+                    new_paid_transpose[new_prefix_set] = (already_paid || is_output_prefix)
                 end
             end
         end
         prefix_costs = new_prefix_costs
         optimal_prefix_orders = new_optimal_prefix_orders
+        paid_transpose = new_paid_transpose
     end
+
+#    println("Optimal Order: ", optimal_prefix_orders[all_vars])
     return optimal_prefix_orders[all_vars]
 end
 
@@ -119,30 +141,47 @@ function transpose_input(loop_order, input, stats)
     @assert !isnothing(get_index_order(stats))
     is_sorted = is_sorted_wrt_index_order(get_index_order(stats), transposed_index_order)
     if !is_sorted
-        if input isa TensorKernel
-            input.output_indices = transposed_index_order
-        else
-            @assert input isa Fiber
-            input_indices = get_index_order(stats)
-            expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
-            input_dict = Dict()
-            input_dict["t_1"] = input
-            expr = ReorderExpr(transposed_index_order, expr)
-            output_formats = [t_hash for _ in 1:length(transposed_index_order)]
-            output_dims = [get_dim_size(stats, idx) for idx in transposed_index_order]
-            input = TensorKernel(expr,
-                                    input_dict,
-                                    transposed_index_order,
-                                    output_formats,
-                                    output_dims,
-                                    get_default_value(stats),
-                                    reverse(input_indices))
-        end
+        @assert input isa Fiber
+        input_indices = get_index_order(stats)
+        expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
+        input_dict = Dict()
+        input_dict["t_1"] = input
+        expr = ReorderExpr(transposed_index_order, expr)
+        output_formats = [t_hash for _ in 1:length(transposed_index_order)]
+        output_dims = [get_dim_size(stats, idx) for idx in transposed_index_order]
+        input = TensorKernel(expr,
+                                input_dict,
+                                transposed_index_order,
+                                output_formats,
+                                output_dims,
+                                get_default_value(stats),
+                                reverse(input_indices))
     end
     return input
 end
 
-
+function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel, stats::TensorStats)
+    transposed_index_order = reverse([x for x in output_order])
+    is_sorted = is_sorted_wrt_index_order(kernel.output_indices, transposed_index_order)
+    if is_sorted
+        return kernel
+    end
+    input_indices = kernel.output_indices
+    expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
+    input_dict = Dict()
+    input_dict["t_1"] = kernel
+    expr = ReorderExpr(transposed_index_order, expr)
+    output_formats = [t_hash for _ in 1:length(transposed_index_order)]
+    output_dims = [get_dim_size(stats, idx) for idx in transposed_index_order]
+    input = TensorKernel(expr,
+                            input_dict,
+                            transposed_index_order,
+                            output_formats,
+                            output_dims,
+                            kernel.output_default,
+                            reverse(input_indices))
+    return input
+end
 
 function select_output_format(output_stats::TensorStats,
                                 loop_order::Vector{IndexExpr},
@@ -179,12 +218,13 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         sub_expr = n.args[3]
         input_stats = _recursive_get_stats(sub_expr, [1])
         input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
-        loop_order = get_join_loop_order(input_stats_vec)
-        output_indices = relative_sort(collect(get_index_set(n.stats)), output_order)
+        loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
+        output_indices = relative_sort(collect(get_index_set(n.stats)), loop_order)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
         output_formats = select_output_format(n.stats, loop_order, output_indices)
         output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
+
         kernel = TensorKernel(kernel_root,
                                 input_dict,
                                 output_indices,
@@ -192,6 +232,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
                                 output_dims,
                                 get_default_value(n.stats),
                                 loop_order)
+        kernel = transpose_kernel(output_order, kernel, n.stats)
         validate_kernel(kernel)
         return kernel
 
@@ -204,8 +245,8 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         r_input_stats = _recursive_get_stats(right_expr, input_counter)
         input_stats = Dict(l_input_stats..., r_input_stats...)
         input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
-        loop_order = get_join_loop_order(input_stats_vec)
-        output_indices = relative_sort(collect(get_index_set(n.stats)), output_order)
+        loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
+        output_indices = relative_sort(collect(get_index_set(n.stats)), loop_order)
         l_body_kernel, l_input_dict = _recursive_get_kernel_root(left_expr, loop_order, input_counter)
         r_body_kernel, r_input_dict = _recursive_get_kernel_root(right_expr, loop_order, input_counter)
         kernel_root = OperatorExpr(op, [l_body_kernel, r_body_kernel])
@@ -219,6 +260,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
                                 output_dims,
                                 get_default_value(n.stats),
                                 loop_order)
+        kernel = transpose_kernel(output_order, kernel, n.stats)
         validate_kernel(kernel)
         return kernel
 

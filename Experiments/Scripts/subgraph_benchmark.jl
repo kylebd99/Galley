@@ -9,7 +9,7 @@ for dataset in datasets
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=hypertree_width))
     push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy))
-    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))
+#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))
 end
 
 run_experiments(experiments)

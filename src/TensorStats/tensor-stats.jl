@@ -118,14 +118,14 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000)
     while time < timeout && !finished
         function infer_dc(l, r)
             if l.Y ⊇ r.X
-                new_key = (X = l.X, Y = ∪(l.Y, r.Y))
+                new_key = (X = l.X, Y = setdiff(∪(l.Y, r.Y), l.X))
                 new_degree = l.d*r.d
                 if get(all_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree &&
                         get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
                     new_dcs[new_key] = DC(new_key.X, new_key.Y, new_degree)
                 end
             elseif r.Y ⊇ l.X
-                new_key = (X = r.X, Y = ∪(r.Y, l.Y))
+                new_key = (X = r.X, Y = setdiff(∪(l.Y, r.Y), r.X))
                 new_degree = r.d*l.d
                 if get(all_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree &&
                     get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
@@ -182,8 +182,6 @@ end
 DCStats() = DCStats(TensorDef(), Set())
 
 function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::Vector{IndexExpr}, s::Fiber)
-    println("Calculating DC: ", string((X,Y)))
-    println("Stored: ", countstored(s))
     Z = setdiff(indices, ∪(X,Y)) # Indices that we want to project out before counting
     XY_ordered = setdiff(indices, Z)
     if length(Z) > 0
@@ -227,7 +225,6 @@ end
 
 function DCStats(indices::Vector{IndexExpr}, fiber::Fiber)
     def = TensorDef(indices, fiber)
-    println(typeof(fiber))
     sparsity_structure = get_sparsity_structure(fiber)
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)

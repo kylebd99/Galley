@@ -4,8 +4,7 @@
 end
 
 
-@testset "DCStats" begin
-
+@testset verbose = true "DCStats" begin
     @testset "Single Tensor Card" begin
         i = IndexExpr("i")
         j = IndexExpr("j")
@@ -49,4 +48,112 @@ end
         @test estimate_nnz(stat) == 50*5*5
     end
 
+    @testset "Triangle DC Card" begin
+        i = IndexExpr("i")
+        j = IndexExpr("j")
+        k = IndexExpr("k")
+        dims = Dict(i=>1000, j=>1000, k=>1000)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        dcs = Set([
+                DC(Set(), Set([i, j]), 50),
+                DC(Set([i]), Set([j]), 5),
+                DC(Set([j]), Set([i]), 5),
+                DC(Set(), Set([j, k]), 50),
+                DC(Set([j]), Set([k]), 5),
+                DC(Set([k]), Set([j]), 5),
+                DC(Set(), Set([i, k]), 50),
+                DC(Set([i]), Set([k]), 5),
+                DC(Set([k]), Set([i]), 5),
+                ])
+        stat = DCStats(def, dcs)
+        @test estimate_nnz(stat) == 50*5
+    end
+
+    @testset "Triangle-Small DC Card" begin
+        i = IndexExpr("i")
+        j = IndexExpr("j")
+        k = IndexExpr("k")
+        dims = Dict(i=>1000, j=>1000, k=>1000)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        # In this version, |R(i,j)| = 1
+        dcs = Set([
+                DC(Set(), Set([i, j]), 1),
+                DC(Set([i]), Set([j]), 1),
+                DC(Set([j]), Set([i]), 1),
+                DC(Set(), Set([j, k]), 50),
+                DC(Set([j]), Set([k]), 5),
+                DC(Set([k]), Set([j]), 5),
+                DC(Set(), Set([i, k]), 50),
+                DC(Set([i]), Set([k]), 5),
+                DC(Set([k]), Set([i]), 5),
+                ])
+        stat = DCStats(def, dcs)
+        @test estimate_nnz(stat) == 1*5
+    end
+
+    @testset "Full Reduce DC Card" begin
+        i = IndexExpr("i")
+        j = IndexExpr("j")
+        k = IndexExpr("k")
+        dims = Dict(i=>1000, j=>1000, k=>1000)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        dcs = Set([
+                DC(Set(), Set([i, j]), 50),
+                DC(Set([i]), Set([j]), 5),
+                DC(Set([j]), Set([i]), 5),
+                DC(Set(), Set([j, k]), 50),
+                DC(Set([j]), Set([k]), 5),
+                DC(Set([k]), Set([j]), 5),
+                DC(Set(), Set([i, k]), 50),
+                DC(Set([i]), Set([k]), 5),
+                DC(Set([k]), Set([i]), 5),
+                ])
+        stat = DCStats(def, dcs)
+        reduce_stats = reduce_tensor_stats(+, Set([i,j,k]), stat)
+        @test estimate_nnz(reduce_stats) == 1
+    end
+
+    @testset "1-Attr Reduce DC Card" begin
+        i = IndexExpr("i")
+        j = IndexExpr("j")
+        k = IndexExpr("k")
+        dims = Dict(i=>1000, j=>1000, k=>1000)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        dcs = Set([
+                    DC(Set(), Set([i, j]), 1),
+                    DC(Set([i]), Set([j]), 1),
+                    DC(Set([j]), Set([i]), 1),
+                    DC(Set(), Set([j, k]), 50),
+                    DC(Set([j]), Set([k]), 5),
+                    DC(Set([k]), Set([j]), 5),
+                    DC(Set(), Set([i, k]), 50),
+                    DC(Set([i]), Set([k]), 5),
+                    DC(Set([k]), Set([i]), 5),
+                ])
+        stat = DCStats(def, dcs)
+        reduce_stats = reduce_tensor_stats(+, Set([i, j]), stat)
+        @test estimate_nnz(reduce_stats) == 5
+    end
+
+    @testset "2-Attr Reduce DC Card" begin
+        i = IndexExpr("i")
+        j = IndexExpr("j")
+        k = IndexExpr("k")
+        dims = Dict(i=>1000, j=>1000, k=>1000)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        dcs = Set([
+                    DC(Set(), Set([i, j]), 1),
+                    DC(Set([i]), Set([j]), 1),
+                    DC(Set([j]), Set([i]), 1),
+                    DC(Set(), Set([j, k]), 50),
+                    DC(Set([j]), Set([k]), 5),
+                    DC(Set([k]), Set([j]), 5),
+                    DC(Set(), Set([i, k]), 50),
+                    DC(Set([i]), Set([k]), 5),
+                    DC(Set([k]), Set([i]), 5),
+                ])
+        stat = DCStats(def, dcs)
+        reduce_stats = reduce_tensor_stats(+, Set([i]), stat)
+        @test estimate_nnz(reduce_stats) == 5
+    end
 end

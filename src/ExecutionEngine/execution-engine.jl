@@ -27,7 +27,6 @@ end
 
 
 function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
-    verbose >= 3 && println(lvl)
     for tensor_id in keys(kernel.input_tensors)
         if kernel.input_tensors[tensor_id] isa TensorKernel
             kernel.input_tensors[tensor_id] = execute_tensor_kernel(kernel.input_tensors[tensor_id],
@@ -35,8 +34,8 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                                                                      verbose=verbose)
         end
     end
-    verbose >= 3 && println(lvl)
 
+    verbose >= 3 && println("------- Kernel at Level: $(lvl) -------", lvl)
     nodes_to_visit = Queue{Tuple{TensorExpression, Int64}}()
     node_dict = Dict()
     node_id_counter = 0
@@ -68,7 +67,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             if kernel.input_tensors[tensor_id] isa Number
                 node_dict[node_id] = literal_instance(kernel.input_tensors[tensor_id])
             else
-                if verbose >= 0 && abs(estimate_nnz(node.stats) - countstored(kernel.input_tensors[tensor_id])) > 1.0
+                if verbose >= 3 && abs(estimate_nnz(node.stats) - countstored(kernel.input_tensors[tensor_id])) > 1.0
                     println("Stats Type: ", typeof(node.stats))
                     println("Expected Output Tensor Size: ", estimate_nnz(node.stats))
                     println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
@@ -124,13 +123,9 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     full_prgm = block_instance(declare_instance(variable_instance(:output_tensor),
                                                  literal_instance(output_default)),
                                 full_prgm)
-
-    verbose >= 3 && println("Kernel: ", kernel.kernel_root)
-    verbose >= 3 && println("Output Order: ", kernel.output_indices)
-    verbose >= 3 && println("Input Orders: ", input_index_orders)
-    verbose >= 3 && println("Loop Order: ", kernel.loop_order)
+    printKernel(kernel, verbose)
     start_time = time()
-    output_tensor = Finch.execute(full_prgm).output_tensor
+    output_tensor = Finch.execute(full_prgm, (mode=Finch.FastFinch(),)).output_tensor
     verbose >= 3 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         return output_tensor[]

@@ -126,9 +126,9 @@ function one_off_reduce(op,
     return Finch.execute(full_prgm).output_fiber
 end
 
-function Base.show(io::IO ,fiber::Fiber)
-    println(io, "FIBER Type( ", typeof(fiber), ")")
-end
+#function Base.show(io::IO ,fiber::Fiber)
+#    println(io, "FIBER Type( ", typeof(fiber), ")")
+#end
 
 function Base.print(io::IO ,fiber::Fiber)
     println(io, "FIBER Type( ", typeof(fiber), ")")

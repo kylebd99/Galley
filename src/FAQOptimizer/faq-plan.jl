@@ -22,14 +22,14 @@ end
     output_indices::Set{IndexExpr}
     input_indices::Set{IndexExpr}
     factors::Set{Factor}
-    output_index_order::Union{Nothing, Vector{IndexExpr}}
+    output_index_order::Vector{IndexExpr}
     function FAQInstance(
         mult_op::Function,
         sum_op::Function,
         output_indices::Set{IndexExpr},
         input_indices::Set{IndexExpr},
         factors::Set{Factor})
-        return new(mult_op, sum_op, output_indices, input_indices, factors, nothing)
+        return new(mult_op, sum_op, output_indices, input_indices, factors, collect(output_indices))
     end
 
     function FAQInstance(

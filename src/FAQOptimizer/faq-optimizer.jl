@@ -12,6 +12,8 @@ function faq_to_htd(faq::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS = naive, use
         htd = return hypertree_width_decomposition(faq)
     elseif faq_optimizer == greedy
         htd = return greedy_decomposition(faq)
+    elseif faq_optimizer == ordering
+        htd = return order_based_decomposition(faq)
     else
         throw(ArgumentError(string(faq_optimizer) * " is not supported yet."))
     end

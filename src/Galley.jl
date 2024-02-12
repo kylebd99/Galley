@@ -1,4 +1,5 @@
 # This file defines a prototype front-end which allows users to define tensor expressions and get their results.
+module Galley
 
 using AutoHashEquals
 using Combinatorics
@@ -16,6 +17,14 @@ using Metatheory
 using Metatheory.EGraphs
 using PrettyPrinting
 using TermInterface
+
+export galley
+export LogicalPlanNode, IndexExpr, Aggregate, Agg, MapJoin, Reorder, InputTensor
+export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
+export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
+export DCStats, NaiveStats, _recursive_insert_stats!, TensorDef, DC
+export naive, hypertree_width, greedy, ordering
+export expr_to_kernel, execute_tensor_kernel
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
@@ -83,4 +92,6 @@ function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, v
     result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
     verbose >= 1 && println("Time to Execute: ", result.time)
     return result.value
+end
+
 end

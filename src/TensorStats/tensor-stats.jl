@@ -36,8 +36,11 @@ function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
     return TensorDef(new_index_set, new_dim_sizes, def.default_value, indices)
 end
 
-abstract type TensorStats end
-
+get_dim_sizes(def::TensorDef) = def.dim_sizes
+get_dim_size(def::TensorDef, idx::IndexExpr) = def.dim_sizes[idx]
+get_index_set(def::TensorDef) = def.index_set
+get_index_order(def::TensorDef) = def.index_order
+get_default_value(def::TensorDef) = def.default_value
 
 function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
     dim_space_size = 1
@@ -47,9 +50,14 @@ function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
     return dim_space_size
 end
 
-function get_dim_space_size(stat::TensorStats, indices::Set{IndexExpr})
-    return get_dim_space_size(get_def(stat), indices)
-end
+abstract type TensorStats end
+
+get_dim_sizes(stat::TensorStats) = get_dim_sizes(get_def(stat))
+get_dim_size(stat::TensorStats, idx::IndexExpr) = get_dim_size(get_def(stat), idx)
+get_dim_space_size(stat::TensorStats, indices::Set{IndexExpr}) = get_dim_space_size(get_def(stat), indices)
+get_index_set(stat::TensorStats) = get_index_set(get_def(stat))
+get_index_order(stat::TensorStats) = get_index_order(get_def(stat))
+get_default_value(stat::TensorStats) = get_default_value(get_def(stat))
 
 #################  NaiveStats Definition ###################################################
 
@@ -59,11 +67,6 @@ end
 end
 
 get_def(stat::NaiveStats) = stat.def
-get_index_set(stat::NaiveStats) = stat.def.index_set
-get_dim_sizes(stat::NaiveStats) = stat.def.dim_sizes
-get_dim_size(stat::NaiveStats, idx::IndexExpr) = stat.def.dim_sizes[idx]
-get_default_value(stat::NaiveStats) = stat.def.default_value
-get_index_order(stat::NaiveStats) = stat.def.index_order
 estimate_nnz(stat::NaiveStats) = stat.cardinality
 
 NaiveStats() = NaiveStats(TensorDef(), 0)
@@ -99,12 +102,6 @@ DC = DegreeConstraint
 end
 
 get_def(stat::DCStats) = stat.def
-get_index_set(stat::DCStats) = stat.def.index_set
-get_dim_sizes(stat::DCStats) = stat.def.dim_sizes
-get_dim_size(stat::DCStats, idx::IndexExpr) = stat.def.dim_sizes[idx]
-get_default_value(stat::DCStats) = stat.def.default_value
-get_index_order(stat::DCStats) = stat.def.index_order
-
 
 function _infer_dcs(dcs::Set{DC}; timeout=100000)
     all_dcs = Dict()

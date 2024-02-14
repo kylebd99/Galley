@@ -1,0 +1,150 @@
+Plan: Reorder(
+   Aggregate(+,Set(IndexExpr[l, m]),
+      MapJoin(*,
+         InputTensor(IndexExpr[l, m],FIBER),
+         Aggregate(+,Set(IndexExpr[i, j]),
+            MapJoin(*,
+               InputTensor(IndexExpr[i, j],FIBER),
+               Aggregate(+,Set(IndexExpr[k]),
+                  MapJoin(*,
+                     MapJoin(*,
+                        MapJoin(*,
+                           InputTensor(IndexExpr[j, k],FIBER),
+                           InputTensor(IndexExpr[m, k],FIBER)),
+                        InputTensor(IndexExpr[l, k],FIBER)),
+                     InputTensor(IndexExpr[i, k],FIBER))))))),IndexExpr[])
+------- Kernel at Depth: 6 -------
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[m, k])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[j, k])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[l, k])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[i, k])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
++(*(*(*(t_1[j::t_walk,k::t_walk],t_2[m::t_walk,k::t_walk]),t_3[l::t_walk,k::t_walk]),t_4[i::t_walk,k::t_walk]);Set(IndexExpr[k]))
+Loop Order: IndexExpr[k, i, m, l, j]
+Output: [i::(h, 254156), m::(h, 254156), l::(h, 254156), j::(h, 254156) Def: 0.0]
+Kernel Execution Took: 25.615038871765137
+------- Kernel at Depth: 5 -------
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[i, l, j, m])
+Expected Output Tensor Size: 0.0
+Output Tensor Size: 4084564
+Reorder(IndexExpr[m, l, i, j] ,t_1[i::t_walk,m::t_walk,l::t_walk,j::t_walk])
+Loop Order: IndexExpr[j, l, m, i]
+Output: [m::(h, 254156), l::(h, 254156), i::(h, 254156), j::(h, 254156) Def: 0.0]
+Kernel Execution Took: 2.8377928733825684
+------- Kernel at Depth: 4 -------
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[i, l, j, m])
+Expected Output Tensor Size: 0.0
+Output Tensor Size: 4084564
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[i, j])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
++(*(t_1[i::t_walk,j::t_walk],t_2[m::t_walk,l::t_walk,i::t_walk,j::t_walk]);Set(IndexExpr[i, j]))
+Loop Order: IndexExpr[j, i, l, m]
+Output: [l::(h, 254156), m::(h, 254156) Def: 0.0]
+Kernel Execution Took: 0.01733994483947754
+------- Kernel at Depth: 3 -------
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[l, m])
+Expected Output Tensor Size: 0.0
+Output Tensor Size: 11599
+Reorder(IndexExpr[m, l] ,t_1[l::t_walk,m::t_walk])
+Loop Order: IndexExpr[m, l]
+Output: [m::(h, 254156), l::(h, 254156) Def: 0.0]
+Kernel Execution Took: 0.0033559799194335938
+------- Kernel at Depth: 3 -------
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[l, m])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
+Reorder(IndexExpr[m, l] ,t_1[l::t_walk,m::t_walk])
+Loop Order: IndexExpr[m, l]
+Output: [m::(h, 254156), l::(h, 254156) Def: 0.0]
+Kernel Execution Took: 0.1010141372680664
+------- Kernel at Depth: 2 -------
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[l, m])
+Expected Output Tensor Size: 0.0
+Output Tensor Size: 11599
+Stats Type: NaiveStats
+Indices:  Set(IndexExpr[l, m])
+Expected Output Tensor Size: 269960.0
+Output Tensor Size: 269960
++(*(t_1[m::t_walk,l::t_walk],t_2[m::t_walk,l::t_walk]);Set(IndexExpr[l, m]))
+Loop Order: IndexExpr[l, m]
+Output: [ Def: 0.0]
+Kernel Execution Took: 0.0008509159088134766
+------- Kernel at Depth: 1 -------
+Reorder(IndexExpr[] ,t_1[])
+Loop Order: IndexExpr[]
+Output: [ Def: 0.0]
+Kernel Execution Took: 6.198883056640625e-6
+Time to Execute: 29.553146987
+Balanced Bowtie [NaiveStats]: 5.812445858
+
+
+
+Plan: Reorder(
+   Aggregate(+,Set(IndexExpr[i, j]),
+      MapJoin(*,
+         InputTensor(IndexExpr[i, j],FIBER),
+         Aggregate(+,Set(IndexExpr[k]),
+            MapJoin(*,
+               MapJoin(*,
+                  InputTensor(IndexExpr[j, k],FIBER),
+                  InputTensor(IndexExpr[i, k],FIBER)),
+               Aggregate(+,Set(IndexExpr[m]),
+                  MapJoin(*,
+                     InputTensor(IndexExpr[m, k],FIBER),
+                     Aggregate(+,Set(IndexExpr[l]),
+                        MapJoin(*,
+                           InputTensor(IndexExpr[l, m],FIBER),
+                           InputTensor(IndexExpr[l, k],FIBER))))))))),IndexExpr[])
+------- Kernel at Level: 7 -------
+Reorder(IndexExpr[k, l] ,t_1[l::t_walk,k::t_walk])
+Loop Order: IndexExpr[k, l]
+Kernel Execution Took: 0.10148882865905762
+------- Kernel at Level: 7 -------
+Reorder(IndexExpr[m, l] ,t_1[l::t_walk,m::t_walk])
+Loop Order: IndexExpr[m, l]
+Kernel Execution Took: 0.09282708168029785
+------- Kernel at Level: 6 -------
++(*(t_1[m::t_walk,l::t_walk],t_2[k::t_walk,l::t_walk]);Set(IndexExpr[l]))
+Loop Order: IndexExpr[l, k, m]
+Kernel Execution Took: 3.107388973236084
+------- Kernel at Level: 5 -------
+Reorder(IndexExpr[m, k] ,t_1[k::t_walk,m::t_walk])
+Loop Order: IndexExpr[m, k]
+Kernel Execution Took: 0.17687106132507324
+------- Kernel at Level: 4 -------
++(*(t_1[m::t_walk,k::t_walk],t_2[m::t_walk,k::t_walk]);Set(IndexExpr[m]))
+Loop Order: IndexExpr[k, m]
+Kernel Execution Took: 0.0030379295349121094
+------- Kernel at Level: 3 -------
++(*(*(t_1[j::t_walk,k::t_walk],t_2[i::t_walk,k::t_walk]),t_3[k::t_walk]);Set(IndexExpr[k]))
+Loop Order: IndexExpr[k, i, j]
+Kernel Execution Took: 4.239154100418091
+------- Kernel at Level: 2 -------
++(*(t_1[i::t_walk,j::t_walk],t_2[i::t_walk,j::t_walk]);Set(IndexExpr[i, j]))
+Loop Order: IndexExpr[j, i]
+Kernel Execution Took: 3.0040740966796875e-5
+------- Kernel at Level: 1 -------
+Reorder(IndexExpr[] ,t_1[])
+Loop Order: IndexExpr[]
+Kernel Execution Took: 1.0967254638671875e-5
+Time to Execute: 8.222977465
+
+Unbalanced Bowtie [NaiveStats]: 0.656595315

@@ -1,5 +1,7 @@
 using Galley
+using Finch
 using BenchmarkTools
+using Galley: initmax, _calc_dc_from_structure, IndexExpr
 
 include("../../Experiments.jl")
 
@@ -79,36 +81,37 @@ for ST in [DCStats, NaiveStats]
     main_edge = edges[0]
 
     qt_balanced = query_triangle(main_edge, main_edge, main_edge)
-    galley(qt_balanced, faq_optimizer=greedy, verbose=3)
+    galley(qt_balanced, faq_optimizer=greedy, verbose=2)
     qt_balanced_time = @elapsed galley(qt_balanced, faq_optimizer=greedy, verbose=0)
     println("Balanced Triangle [$ST]: ", qt_balanced_time)
     time_dict["balanced triangle"][ST] = qt_balanced_time
+
     qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-    galley(qt_unbalanced, faq_optimizer=greedy, verbose=3)
+    galley(qt_unbalanced, faq_optimizer=greedy, verbose=2)
     qt_unbalanced_time = @elapsed galley(qt_unbalanced, faq_optimizer=greedy, verbose=0)
     println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
     time_dict["unbalanced triangle"][ST] = qt_balanced_time
 
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
-    galley(qp_balanced, faq_optimizer=greedy, verbose=3)
+    galley(qp_balanced, faq_optimizer=greedy, verbose=2)
     qp_balanced_time = @elapsed galley(qp_balanced, faq_optimizer=greedy, verbose=0)
     println("Balanced Path [$ST]: ", qp_balanced_time)
     time_dict["balanced path"][ST] = qp_balanced_time
-    println(keys(edges))
+
     qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-    galley(qp_unbalanced, faq_optimizer=greedy, verbose=3)
+    galley(qp_unbalanced, faq_optimizer=greedy, verbose=2)
     qp_unbalanced_time = @elapsed galley(qp_unbalanced, faq_optimizer=greedy, verbose=0)
     println("Unbalanced Path [$ST]: ", qp_unbalanced_time)
     time_dict["unbalanced path"][ST] = qp_unbalanced_time
 
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
     galley(qb_balanced, faq_optimizer=greedy, verbose=3)
-    qb_balanced_time = @elapsed galley(qb_balanced, faq_optimizer=greedy, verbose=0)
+    qb_balanced_time = @elapsed galley(qb_balanced, faq_optimizer=greedy, verbose=3)
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][ST] = qb_balanced_time
 
     qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-    galley(qb_unbalanced, faq_optimizer=greedy, verbose=3)
+    galley(qb_unbalanced, faq_optimizer=greedy, verbose=2)
     qb_unbalanced_time = @elapsed galley(qb_unbalanced, faq_optimizer=greedy, verbose=0)
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][ST] = qb_unbalanced_time

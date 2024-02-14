@@ -35,7 +35,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         end
     end
 
-    verbose >= 1 && println("------- Kernel at Level: $(lvl) -------")
+    verbose >= 1 && println("------- Kernel at Depth: $(lvl) -------")
     nodes_to_visit = Queue{Tuple{TensorExpression, Int64}}()
     node_dict = Dict()
     node_id_counter = 0

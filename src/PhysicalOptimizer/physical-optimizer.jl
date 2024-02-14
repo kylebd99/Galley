@@ -58,7 +58,6 @@ end
 
 # This function takes in a dict of (tensor_id => tensor_stats) and outputs a join order.
 # Currently, it uses a simple prefix-join heuristic, but in the future it will be cost-based.
-# TODO: Make a cost-based implementation of this function.
 function get_join_loop_order_simple(input_stats)
     num_occurrences = counter(IndexExpr)
     for stats in values(input_stats)
@@ -71,14 +70,13 @@ function get_join_loop_order_simple(input_stats)
     return vars
 end
 
-
+# We use a version of Selinger's algorithm to determine the join loop ordering.
 function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
     all_vars = union([get_index_set(stat) for stat in input_stats]...)
     transpose_cost = estimate_nnz(output_stats)
     prefix_costs = Dict{Set{IndexExpr}, Float64}()
     paid_transpose = Dict{Set{IndexExpr}, Bool}()
     optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
-#    println("Input Orders: ", [get_index_set(stat) for stat in input_stats])
     for var in all_vars
         v_set = Set([var])
         prefix_costs[v_set] = get_prefix_cost(v_set, input_stats)
@@ -110,12 +108,6 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                 already_paid = get(paid_transpose, prefix_set, false)
                 is_output_prefix = is_prefix(output_order, new_prefix_order) || is_prefix(new_prefix_order, output_order)
                 new_cost += (!already_paid && !is_output_prefix) * transpose_cost
-#                println("Output Order: ", output_order)
-#                println("New Prefix: ", new_prefix_order)
-#                println("Output Cost: ", (!is_prefix(output_order, new_prefix_order) &&
-#                            !is_prefix(new_prefix_order, output_order)) *
-#                            transpose_cost)
-#                println("Prefix Cost: ", get_prefix_cost(new_prefix_set, input_stats) + min_cost)
                 if !haskey(new_prefix_costs, new_prefix_set) || new_cost < new_prefix_costs[new_prefix_set]
                     new_prefix_costs[new_prefix_set] = new_cost
                     new_optimal_prefix_orders[new_prefix_set] = new_prefix_order

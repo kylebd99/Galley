@@ -71,6 +71,9 @@ function get_join_loop_order_simple(input_stats)
 end
 
 # We use a version of Selinger's algorithm to determine the join loop ordering.
+# For each subset of variables, we calculate their optimal ordering via dynamic programming.
+# This is singly exponential in the number of loop variables, and it uses the statistics to
+# determine the costs.
 function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
     all_vars = union([get_index_set(stat) for stat in input_stats]...)
     transpose_cost = estimate_nnz(output_stats)
@@ -79,7 +82,7 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
     optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
     for var in all_vars
         v_set = Set([var])
-        prefix_costs[v_set] = get_prefix_cost(v_set, input_stats)
+        prefix_costs[v_set] = get_prefix_cost(v_set, var, input_stats)
         optimal_prefix_orders[v_set] = [var]
         is_output_prefix = is_prefix(output_order, optimal_prefix_orders[v_set]) || is_prefix(optimal_prefix_orders[v_set], output_order)
         prefix_costs[v_set] += !is_output_prefix * transpose_cost
@@ -100,11 +103,12 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                     potential_vars = ∪(potential_vars, index_set)
                 end
             end
+
             potential_vars = setdiff(potential_vars, prefix_set)
             for new_var in potential_vars
                 new_prefix_set = union(prefix_set, [new_var])
                 new_prefix_order = [optimal_prefix_orders[prefix_set]..., new_var]
-                new_cost = get_prefix_cost(new_prefix_set, input_stats) + min_cost
+                new_cost = get_prefix_cost(new_prefix_set, new_var, input_stats) + min_cost
                 already_paid = get(paid_transpose, prefix_set, false)
                 is_output_prefix = is_prefix(output_order, new_prefix_order) || is_prefix(new_prefix_order, output_order)
                 new_cost += (!already_paid && !is_output_prefix) * transpose_cost
@@ -119,8 +123,6 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
         optimal_prefix_orders = new_optimal_prefix_orders
         paid_transpose = new_paid_transpose
     end
-
-#    println("Optimal Order: ", optimal_prefix_orders[all_vars])
     return optimal_prefix_orders[all_vars]
 end
 

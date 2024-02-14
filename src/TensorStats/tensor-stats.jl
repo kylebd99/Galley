@@ -52,9 +52,9 @@ end
 
 abstract type TensorStats end
 
+get_dim_space_size(stat::TensorStats, indices::Set{IndexExpr}) = get_dim_space_size(get_def(stat), indices)
 get_dim_sizes(stat::TensorStats) = get_dim_sizes(get_def(stat))
 get_dim_size(stat::TensorStats, idx::IndexExpr) = get_dim_size(get_def(stat), idx)
-get_dim_space_size(stat::TensorStats, indices::Set{IndexExpr}) = get_dim_space_size(get_def(stat), indices)
 get_index_set(stat::TensorStats) = get_index_set(get_def(stat))
 get_index_order(stat::TensorStats) = get_index_order(get_def(stat))
 get_default_value(stat::TensorStats) = get_default_value(get_def(stat))
@@ -96,6 +96,10 @@ struct DegreeConstraint
 end
 DC = DegreeConstraint
 
+function get_dc_key(dc::DegreeConstraint)
+    return (X=dc.X, Y=dc.Y)
+end
+
 @auto_hash_equals mutable struct DCStats <: TensorStats
     def::TensorDef
     dcs::Set{DC}
@@ -121,13 +125,6 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000)
                         get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
                     new_dcs[new_key] = DC(new_key.X, new_key.Y, new_degree)
                 end
-            elseif r.Y ⊇ l.X
-                new_key = (X = r.X, Y = setdiff(∪(l.Y, r.Y), r.X))
-                new_degree = r.d*l.d
-                if get(all_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree &&
-                    get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
-                    new_dcs[new_key] = DC(new_key.X, new_key.Y, new_degree)
-                end
             end
             time +=1
         end
@@ -135,13 +132,14 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000)
         for l in values(all_dcs)
             for r in values(prev_new_dcs)
                 infer_dc(l,r)
+                infer_dc(r,l)
                 time > timeout && break
             end
             time > timeout && break
         end
         prev_new_dcs = new_dcs
         for dc in values(new_dcs)
-            all_dcs[(X = dc.X, Y = dc.Y)] = dc
+            all_dcs[get_dc_key(dc)] = dc
         end
         new_dcs = Dict()
         if length(prev_new_dcs) == 0
@@ -197,6 +195,7 @@ function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::
         return x_counts[] # If X is empty, we don't need to do a second pass
     end
     dc = one_off_reduce(max, X_ordered, IndexExpr[], x_counts)
+
     return dc[] # `[]` used to retrieve the actual value of the Finch.Scalar type
 end
 
@@ -209,13 +208,9 @@ function _structure_to_dcs(indices::Vector{IndexExpr}, s::Fiber)
         d = _calc_dc_from_structure(X, Y, indices, s)
         push!(dcs, DC(X,Y,d))
 
-        isempty(X) && continue # Don't need to calculate the projection size of an empty set
-        X == Set(indices) && continue
-
-        X = Set(X)
-        Y = Set(setdiff(indices, X))
-        d = _calc_dc_from_structure(Set{IndexExpr}(), X, indices, s)
-        push!(dcs, DC(Set{IndexExpr}(), X, d))
+        isempty(Y) && continue # Don't need to calculate the projection size of an empty set
+        d = _calc_dc_from_structure(Set{IndexExpr}(), Y, indices, s)
+        push!(dcs, DC(Set{IndexExpr}(), Y, d))
     end
     return dcs
 end

@@ -35,7 +35,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         end
     end
 
-    verbose >= 3 && println("------- Kernel at Level: $(lvl) -------", lvl)
+    verbose >= 1 && println("------- Kernel at Level: $(lvl) -------")
     nodes_to_visit = Queue{Tuple{TensorExpression, Int64}}()
     node_dict = Dict()
     node_id_counter = 0
@@ -67,8 +67,9 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             if kernel.input_tensors[tensor_id] isa Number
                 node_dict[node_id] = literal_instance(kernel.input_tensors[tensor_id])
             else
-                if verbose >= 3 && abs(estimate_nnz(node.stats) - countstored(kernel.input_tensors[tensor_id])) > 1.0
+                if verbose >= 3
                     println("Stats Type: ", typeof(node.stats))
+                    println("Indices:  ", get_index_set(node.stats))
                     println("Expected Output Tensor Size: ", estimate_nnz(node.stats))
                     println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
                 end
@@ -126,7 +127,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     printKernel(kernel, verbose)
     start_time = time()
     output_tensor = Finch.execute(full_prgm, (mode=Finch.FastFinch(),)).output_tensor
-    verbose >= 3 && println("Kernel Execution Took: ", time() - start_time)
+    verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         return output_tensor[]
     else

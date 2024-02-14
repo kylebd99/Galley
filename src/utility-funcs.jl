@@ -97,15 +97,12 @@ function one_off_reduce(op,
                         output_indices,
                         s::Fiber)
     s_stats = TensorDef(input_indices, s)
-    loop_order = collect(input_indices)
+    loop_order = reverse(input_indices)
     output_dims = [get_dim_size(s_stats, idx) for idx in output_indices]
     output_formats = [t_hash for _ in output_indices]
     if is_prefix(output_indices, loop_order)
         output_formats = [t_sparse_list for _ in output_indices]
     end
-    println(output_formats)
-    println(output_indices)
-    println(loop_order)
     fiber_instance = initialize_access("s", s, input_indices, [t_walk for _ in input_indices])
     output_fiber = initialize_tensor(output_formats, output_dims, 0.0)
 
@@ -121,7 +118,7 @@ function one_off_reduce(op,
     end
     full_prgm = assign_instance(output_access, op_instance, fiber_instance)
 
-    for index in loop_index_instances
+    for index in reverse(loop_index_instances)
         full_prgm = loop_instance(index, Dimensionless(), full_prgm)
     end
     initializer = declare_instance(output_variable, literal_instance(0.0))

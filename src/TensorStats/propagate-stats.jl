@@ -13,6 +13,10 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::TensorSt
     throw(error("merge_tensor_stats_union not implemented for: ", typeof(stats)))
 end
 
+function transpose_tensor_stats(index_order::Vector{IndexExpr}, stats::TensorStats)
+    throw(error("merge_tensor_stats_union not implemented for: ", typeof(stats)))
+end
+
 # We now define a set of functions for manipulating the TensorDefs that will be shared
 # across all statistics types
 function merge_tensor_def_join(op, ldef::TensorDef, rdef::TensorDef)
@@ -137,6 +141,10 @@ function _recursive_insert_stats!(n::LogicalPlanNode)
     return n.stats
 end
 
+function transpose_tensor_def(index_order::Vector{IndexExpr}, def::TensorDef)
+    return reindex_def(index_order, def)
+end
+
 
 ################# NaiveStats Propagation ##################################################
 function merge_tensor_stats_join(op, lstats::NaiveStats, rstats::NaiveStats)
@@ -171,19 +179,26 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::NaiveSta
     return NaiveStats(new_def, new_cardinality)
 end
 
+function transpose_tensor_stats(index_order::Vector{IndexExpr}, stats::NaiveStats)
+    stats = deepcopy(stats)
+    stats.def = transpose_tensor_def(index_order, get_def(stats))
+    return stats
+end
+
 
 ################# DCStats Propagation ##################################################
 function merge_tensor_stats_join(op, lstats::DCStats, rstats::DCStats)
     new_def = merge_tensor_def_join(op, get_def(lstats), get_def(rstats))
     new_dc_dict = Dict()
     for dc in ∪(rstats.dcs, lstats.dcs)
-        dc_key = (X=dc.X, Y=dc.Y)
+        dc_key = get_dc_key(dc)
         current_dc = get(new_dc_dict, dc_key, Inf)
         if dc.d < current_dc
             new_dc_dict[dc_key] = dc.d
         end
     end
-    return DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dc_dict))
+    new_stats = DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dc_dict))
+    return new_stats
 end
 
 function merge_tensor_stats_union(op, lstats::DCStats, rstats::DCStats)
@@ -223,6 +238,7 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
     # In order to preserve as much information as possible, we need to infer dcs before
     # filtering out DCs.
+    old_dc_set = copy(stats.dcs)
     inferred_dcs = _infer_dcs(stats.dcs)
     new_dcs_dict = Dict()
     for dc in inferred_dcs
@@ -231,7 +247,11 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
         summed_X_dim_size = get_dim_space_size(stats, summed_Xs)
         new_Y = setdiff(dc.Y, reduce_indices)
         new_Y_dim_size = get_dim_space_size(stats, new_Y)
+
         new_dc = min(dc.d * summed_X_dim_size, new_Y_dim_size)
+        if new_dc == 1.0 && dc.d > 1 && length(new_Y) > 1
+            println("($(new_X)) min($(dc.d) * $(summed_X_dim_size), $(new_Y_dim_size))")
+        end
         new_key = (X = remaining_Xs, Y = new_Y)
         current_dc = get(new_dcs_dict, new_key, Inf)
         if new_dc < current_dc
@@ -242,5 +262,28 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
     for (key, d) in new_dcs_dict
         push!(new_dcs, DC(key.X, key.Y, d))
     end
-    return DCStats(new_def, new_dcs)
+
+    for dc in old_dc_set
+        for new_dc in new_dcs
+            if get_dc_key(dc) == get_dc_key(new_dc)
+                if new_dc.d == 1.0 && dc.d > 1
+                    println("Reduce Indices: $(reduce_indices) old_dc: $(dc) new_dc: $(new_dc)")
+                    for dc in old_dc_set
+                        println("       Old DC to Check: $(dc)")
+                    end
+                    for dc in inferred_dcs
+                        println("       Inferred DC to Check: $(dc)")
+                    end
+                end
+            end
+        end
+    end
+    new_stats = DCStats(new_def, new_dcs)
+    return new_stats
+end
+
+function transpose_tensor_stats(index_order::Vector{IndexExpr}, stats::DCStats)
+    stats = deepcopy(stats)
+    stats.def = transpose_tensor_def(index_order, get_def(stats))
+    return stats
 end

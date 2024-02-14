@@ -9,7 +9,7 @@ function test_fill()
     X_tag = tag_instance(variable_instance(:X), X)
     X_access = access_instance(X_tag, literal_instance(Reader()), indices...)
     X_instance = X_access
-    output_fiber = Fiber(SparseHashLevel{1}(SparseHashLevel{1}(Element(0.0))))
+    output_fiber = Tensor(SparseHashLevel{1}(SparseHashLevel{1}(Element(0.0))))
     output_tag = tag_instance(variable_instance(:output_fiber), output_fiber)
     output_access = access_instance(output_tag, literal_instance(Updater()), indices...)
     full_prgm = assign_instance(output_access, literal_instance(initwrite(0.0)), X_instance)

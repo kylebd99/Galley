@@ -141,7 +141,7 @@ function transpose_input(loop_order, input, stats)
     @assert !isnothing(get_index_order(stats))
     is_sorted = is_sorted_wrt_index_order(get_index_order(stats), transposed_index_order)
     if !is_sorted
-        @assert input isa Fiber
+        @assert input isa Tensor
         input_indices = get_index_order(stats)
         expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
         input_dict = Dict()

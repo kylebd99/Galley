@@ -13,12 +13,12 @@ end
         k = IndexExpr("k")
 
         a_matrix = [1 0; 0 1]
-        a_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
+        a_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
         a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix = [0 1; 1 0]
-        b_fiber = Fiber(SparseList(SparseList(Element(0.0), 2), 2))
+        b_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
@@ -39,12 +39,12 @@ end
         k = IndexExpr("k")
 
         a_matrix = [1 0; 0 1]
-        a_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
+        a_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
         a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix = [0 1; 1 0]
-        b_fiber = Fiber!(SparseList(SparseList(Element(0.0), 2), 2))
+        b_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
@@ -70,12 +70,12 @@ end
         p = .05
         T = Int64
         a_matrix =  abs.(sprand(T, m, n, p) .% 100)
-        a_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        a_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
         a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix =  abs.(sprand(T, m, n, p) .% 100)
-        b_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        b_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
@@ -96,17 +96,17 @@ end
         p = .05
         T = Int64
         a_matrix = abs.(sprand(T, m, n, p) .% 100)
-        a_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        a_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
         a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix = abs.(sprand(T, m, n, p) .% 100)
-        b_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        b_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_fiber))
         c_matrix =  abs.(sprand(T, m, n, p) .% 100)
-        c_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        c_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(c_fiber, c_matrix)
         c_tensor = InputTensor(c_fiber)[k, l]
         c_factor = Factor(c_tensor, Set([k, l]), Set([k, l]), false, NaiveStats([k, l], c_fiber))
@@ -125,17 +125,17 @@ end
         p = .05
         T = Int64
         a_matrix = abs.(sprand(T, m, n, p) .% 100)
-        a_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        a_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_fiber, a_matrix)
         a_tensor = InputTensor(a_fiber)[i, j]
         a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_fiber))
         b_matrix = abs.(sprand(T, m, n, p) .% 100)
-        b_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        b_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(b_fiber, b_matrix)
         b_tensor = InputTensor(b_fiber)[i, j]
         b_factor = Factor(b_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], b_fiber))
         c_matrix = abs.(sprand(T, m, n, p) .% 100)
-        c_fiber = Fiber!(SparseList(SparseList(Element(zero(T)), m), n))
+        c_fiber = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(c_fiber, c_matrix)
         c_tensor = InputTensor(c_fiber)[i, j]
         c_factor = Factor(c_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], c_fiber))

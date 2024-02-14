@@ -77,7 +77,7 @@ end
 # This will be the output of the kernel optimizer
 mutable struct TensorKernel
     kernel_root::TensorExpression
-    input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Fiber, Number}}
+    input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Tensor, Number}}
     output_indices::Vector{IndexExpr}
     output_formats::Vector{LevelFormat}
     output_dims::Vector{Int}

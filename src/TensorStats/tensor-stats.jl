@@ -7,7 +7,7 @@
     index_order::Union{Nothing, Vector{IndexExpr}}
 end
 
-function TensorDef(indices::Vector{IndexExpr}, fiber::Fiber)
+function TensorDef(indices::Vector{IndexExpr}, fiber::Tensor)
     shape_tuple = size(fiber)
     dim_size = Dict()
     for i in 1:length(indices)
@@ -72,7 +72,7 @@ estimate_nnz(stat::NaiveStats) = stat.cardinality
 NaiveStats() = NaiveStats(TensorDef(), 0)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
-function NaiveStats(indices::Vector{IndexExpr}, fiber::Fiber)
+function NaiveStats(indices::Vector{IndexExpr}, fiber::Tensor)
     def = TensorDef(indices, fiber)
     cardinality = countstored(fiber)
     return NaiveStats(def, cardinality)
@@ -176,7 +176,7 @@ end
 
 DCStats() = DCStats(TensorDef(), Set())
 
-function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::Vector{IndexExpr}, s::Fiber)
+function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::Vector{IndexExpr}, s::Tensor)
     Z = setdiff(indices, ∪(X,Y)) # Indices that we want to project out before counting
     XY_ordered = setdiff(indices, Z)
     if length(Z) > 0
@@ -199,7 +199,7 @@ function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::
     return dc[] # `[]` used to retrieve the actual value of the Finch.Scalar type
 end
 
-function _structure_to_dcs(indices::Vector{IndexExpr}, s::Fiber)
+function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
     dcs = Set{DC}()
     # Calculate DCs for all combinations of X and Y
     for X in subsets(indices)
@@ -215,7 +215,7 @@ function _structure_to_dcs(indices::Vector{IndexExpr}, s::Fiber)
     return dcs
 end
 
-function DCStats(indices::Vector{IndexExpr}, fiber::Fiber)
+function DCStats(indices::Vector{IndexExpr}, fiber::Tensor)
     def = TensorDef(indices, fiber)
     sparsity_structure = get_sparsity_structure(fiber)
     dcs = _structure_to_dcs(indices, sparsity_structure)

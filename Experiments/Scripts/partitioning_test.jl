@@ -8,8 +8,8 @@ vertices, edges = load_subgraph_dataset(aids, DCStats)
 function non_partitioned_4_cycle(edge_fiber)
     shape = size(edge_fiber)
     s = Finch.Scalar(0)
-    c1 = Finch.Fiber(SparseHashLevel{1}(SparseHashLevel{1}(Element(0), (shape[1], )), (shape[2], )))
-    edge_fiber_t = Finch.Fiber(SparseHashLevel{1}(SparseHashLevel{1}(Element(0), (shape[2], )), (shape[1], )))
+    c1 = Finch.Tensor(SparseHashLevel{1}(SparseHashLevel{1}(Element(0), (shape[1], )), (shape[2], )))
+    edge_fiber_t = Finch.Tensor(SparseHashLevel{1}(SparseHashLevel{1}(Element(0), (shape[2], )), (shape[1], )))
     @finch begin
         for j=_,i=_
             edge_fiber_t[j, i] = edge_fiber[i,j]
@@ -32,8 +32,8 @@ end
 function partitioned_4_cycle(edge_fiber)
     shape = size(edge_fiber)
     s = Finch.Scalar(0)
-    c1 = Finch.Fiber(Dense(Element(0), shape[1]))
-    edge_fiber_t = Finch.Fiber(SparseHashLevel{1}(SparseHashLevel{1}(Element(0), (shape[2], )), (shape[1], )))
+    c1 = Finch.Tensor(Dense(Element(0), shape[1]))
+    edge_fiber_t = Finch.Tensor(SparseHashLevel{1}(SparseHashLevel{1}(Element(0), (shape[2], )), (shape[1], )))
 
     println("Transposing Edge")
     @finch begin

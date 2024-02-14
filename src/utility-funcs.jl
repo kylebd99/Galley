@@ -15,7 +15,7 @@ function initialize_tensor(formats, dims::Vector{Int64}, default_value)
             println("Error: Attempted to initialize invalid level format type.")
         end
     end
-    return Fiber!(B)
+    return Tensor(B)
 end
 
 
@@ -55,7 +55,7 @@ end
 
 # This function takes in a tensor and outputs the 0/1 tensor which is 0 at all default
 # values and 1 at all other entries.
-function get_sparsity_structure(fiber::Fiber)
+function get_sparsity_structure(fiber::Tensor)
     default_value = Finch.default(fiber)
     function non_zero_func(x)
         return x == default_value ? 0.0 : 1.0
@@ -95,7 +95,7 @@ end
 function one_off_reduce(op,
                         input_indices,
                         output_indices,
-                        s::Fiber)
+                        s::Tensor)
     s_stats = TensorDef(input_indices, s)
     loop_order = reverse(input_indices)
     output_dims = [get_dim_size(s_stats, idx) for idx in output_indices]
@@ -126,10 +126,10 @@ function one_off_reduce(op,
     return Finch.execute(full_prgm, (mode=Finch.FastFinch(),)).output_fiber
 end
 
-#function Base.show(io::IO ,fiber::Fiber)
+#function Base.show(io::IO ,fiber::Tensor)
 #    println(io, "FIBER Type( ", typeof(fiber), ")")
 #end
 
-function Base.print(io::IO ,fiber::Fiber)
+function Base.print(io::IO ,fiber::Tensor)
     println(io, "FIBER Type( ", typeof(fiber), ")")
 end

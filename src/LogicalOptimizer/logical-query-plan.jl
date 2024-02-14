@@ -33,8 +33,8 @@ Aggregate(op, index::Union{IndexExpr, String}, input) = Aggregate(op, Set{IndexE
 Agg(op, indices, input) = Aggregate(op, indices, input)
 MapJoin(op, left_input, right_input) = LogicalPlanNode(MapJoin, [op, left_input, right_input], nothing)
 Reorder(input, index_order) = LogicalPlanNode(Reorder, [input, index_order], nothing)
-InputTensor(fiber::Fiber)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], NaiveStats)
-InputTensor(fiber::Fiber, stats_type::Type)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], stats_type)
+InputTensor(fiber::Tensor)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], NaiveStats)
+InputTensor(fiber::Tensor, stats_type::Type)  = LogicalPlanNode(InputTensor, [IndexExpr[], fiber], stats_type)
 Scalar(value, stats) = LogicalPlanNode(Scalar, [value], stats)
 Scalar(value) = Scalar(value, nothing)
 OutTensor() = LogicalPlanNode(OutTensor, [], nothing)
@@ -124,7 +124,7 @@ function logicalPlanToString(n::LogicalPlanNode, depth::Int64)
         output *= prefix
         if arg isa LogicalPlanNode
             output *= logicalPlanToString(arg, depth + 1)
-        elseif arg isa Fiber
+        elseif arg isa Tensor
             output *= "FIBER"
         else
             output *= string(arg)

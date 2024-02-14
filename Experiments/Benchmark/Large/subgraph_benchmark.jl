@@ -1,4 +1,4 @@
-include("../Experiments.jl")
+include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
@@ -8,9 +8,9 @@ experiments = ExperimentParams[]
 for dataset in datasets
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=hypertree_width))
-#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy))
-#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))
-    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=ordering))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))
+#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=ordering))
 end
 
 run_experiments(experiments)

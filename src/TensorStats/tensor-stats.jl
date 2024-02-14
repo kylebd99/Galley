@@ -7,13 +7,13 @@
     index_order::Union{Nothing, Vector{IndexExpr}}
 end
 
-function TensorDef(indices::Vector{IndexExpr}, fiber::Tensor)
-    shape_tuple = size(fiber)
+function TensorDef(indices::Vector{IndexExpr}, tensor::Tensor)
+    shape_tuple = size(tensor)
     dim_size = Dict()
     for i in 1:length(indices)
         dim_size[indices[i]] = shape_tuple[i]
     end
-    default_value = Finch.default(fiber)
+    default_value = Finch.default(tensor)
     return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, indices)
 end
 
@@ -72,9 +72,9 @@ estimate_nnz(stat::NaiveStats) = stat.cardinality
 NaiveStats() = NaiveStats(TensorDef(), 0)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
-function NaiveStats(indices::Vector{IndexExpr}, fiber::Tensor)
-    def = TensorDef(indices, fiber)
-    cardinality = countstored(fiber)
+function NaiveStats(indices::Vector{IndexExpr}, tensor::Tensor)
+    def = TensorDef(indices, tensor)
+    cardinality = countstored(tensor)
     return NaiveStats(def, cardinality)
 end
 
@@ -180,17 +180,17 @@ function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::
     Z = setdiff(indices, ∪(X,Y)) # Indices that we want to project out before counting
     XY_ordered = setdiff(indices, Z)
     if length(Z) > 0
-        XY_fiber = one_off_reduce(max, indices, XY_ordered, s)
+        XY_tensor = one_off_reduce(max, indices, XY_ordered, s)
     else
-        XY_fiber = s
+        XY_tensor = s
     end
 
     if length(XY_ordered) == 0
-        return XY_fiber[]
+        return XY_tensor[]
     end
 
     X_ordered = collect(X)
-    x_counts = one_off_reduce(+, XY_ordered, X_ordered, XY_fiber)
+    x_counts = one_off_reduce(+, XY_ordered, X_ordered, XY_tensor)
     if length(X) == 0
         return x_counts[] # If X is empty, we don't need to do a second pass
     end
@@ -215,9 +215,9 @@ function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
     return dcs
 end
 
-function DCStats(indices::Vector{IndexExpr}, fiber::Tensor)
-    def = TensorDef(indices, fiber)
-    sparsity_structure = get_sparsity_structure(fiber)
+function DCStats(indices::Vector{IndexExpr}, tensor::Tensor)
+    def = TensorDef(indices, tensor)
+    sparsity_structure = get_sparsity_structure(tensor)
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)
 end

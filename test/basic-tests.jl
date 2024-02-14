@@ -5,13 +5,13 @@ verbose = 0
 @testset "matrix operations" begin
     @testset "2x2 matrices, element-wise mult" begin
         a_matrix = [1 0; 0 1]
-        a_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = [0 1; 1 0]
-        b_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["i","j"] = a["i","j"] * b["i","j"]
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -21,13 +21,13 @@ verbose = 0
 
     @testset "2x2 matrices, element-wise add" begin
         a_matrix = [1 0; 0 1]
-        a_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = [0 1; 1 0]
-        b_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["i","j"] = a["i","j"] + b["i","j"]
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -38,13 +38,13 @@ verbose = 0
     @testset "2x2 matrices, element-wise custom" begin
         f(x,y) = min(x,y)
         a_matrix = [1 0; 0 1]
-        a_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = [0 1; 1 0]
-        b_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["i","j"] = f(a["i","j"], b["i","j"])
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -54,13 +54,13 @@ verbose = 0
 
     @testset "2x2 matrices, element-wise mult, reverse input" begin
         a_matrix = [1 1; 0 0]
-        a_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = [1 1; 0 0]
-        b_fiber = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["i","j"] = a["i","j"] * b["j","i"]
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -70,13 +70,13 @@ verbose = 0
 
     @testset "100x100 matrices, element-wise mult, reverse output" begin
         a_matrix = sprand(Bool, 100, 100, .01)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = sprand(Bool, 100, 100, .01)
-        b_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["j","i"] = a["i","j"] * b["i","j"]
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -86,13 +86,13 @@ verbose = 0
 
     @testset "100x100 matrices, matrix mult" begin
         a_matrix = sprand(Bool, 100, 100, .01)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = sprand(Bool, 100, 100, .01)
-        b_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["i", "k"] = ∑(["j"], a["i","j"] * b["j", "k"])
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -104,13 +104,13 @@ verbose = 0
     @testset "100x100 matrices, matrix mult, custom add" begin
         f(args...) = +(0, args...)
         a_matrix = sprand(Bool, 100, 100, .1)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = sprand(Bool, 100, 100, .1)
-        b_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c = OutTensor()
         c["i", "k"] = Agg(f, ["j"], a["i","j"] * b["j", "k"])
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -121,9 +121,9 @@ verbose = 0
 
     @testset "100x100 matrices, full sum" begin
         a_matrix = sprand(Bool, 100, 100, .01)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         c = OutTensor()
         c[] = ∑(["i", "j"], a["i","j"])
         galley_matrix = galley(c, optimize=true, verbose=verbose)
@@ -133,17 +133,17 @@ verbose = 0
 
     @testset "100x100 matrices, multi-line, matrix mult" begin
         a_matrix = sprand(Bool, 100, 100, .1)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = sprand(Bool, 100, 100, .1)
-        b_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         c_matrix = sprand(Bool, 100, 100, .1)
-        c_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(c_fiber, c_matrix)
-        c = InputTensor(c_fiber)
+        c_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(c_tensor, c_matrix)
+        c = InputTensor(c_tensor)
         d = OutTensor()
         e = OutTensor()
         d["i", "k"] = ∑("j", a["i","j"] * b["j", "k"])
@@ -155,13 +155,13 @@ verbose = 0
 
     @testset "100x100 matrices, multi-line, reuse, matrix mult" begin
         a_matrix = sprand(Bool, 100, 100, .1)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = sprand(Bool, 100, 100, .1)
-        b_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         d = OutTensor()
         e = OutTensor()
         d["i", "k"] = ∑("j", a["i","j"] * b["j", "k"])
@@ -176,13 +176,13 @@ verbose = 0
 
     @testset "100x100 matrices, diagonal mult" begin
         a_matrix = sprand(Bool, 100, 100, .1)
-        a_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_fiber, a_matrix)
-        a = InputTensor(a_fiber)
+        a_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_tensor, a_matrix)
+        a = InputTensor(a_tensor)
         b_matrix = sprand(Bool, 100, 100, .1)
-        b_fiber = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_fiber, b_matrix)
-        b = InputTensor(b_fiber)
+        b_tensor = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_tensor, b_matrix)
+        b = InputTensor(b_tensor)
         d = OutTensor()
         d["i"] =  a["i","i"] * b["i", "i"]
         galley_matrix = galley(d, optimize = true, verbose=verbose)

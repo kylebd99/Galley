@@ -69,9 +69,9 @@ function EGraphs.make(::Val{:TensorStatsAnalysis}, g::EGraph, n::ENodeTerm)
     elseif exprhead(n) == :call && operation(n) == InputTensor
         child_eclasses = arguments(n)
         index_set::Vector{IndexExpr} = g[child_eclasses[1]][1].value
-        fiber = g[child_eclasses[2]][1].value
+        tensor = g[child_eclasses[2]][1].value
         index_order::Vector{IndexExpr} = g[child_eclasses[3]][1].value
-        return TensorStats(index_set, fiber, index_order)
+        return TensorStats(index_set, tensor, index_order)
     elseif exprhead(n) == :call && operation(n) == Scalar
         return TensorStats([], Dict(), 1, n.args[1], [])
     end

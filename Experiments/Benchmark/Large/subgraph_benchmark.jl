@@ -2,13 +2,13 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-datasets = [human]
+datasets = [aids]
 
 experiments = ExperimentParams[]
 for dataset in datasets
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=hypertree_width))
-    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats))
     push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=ordering))
 end

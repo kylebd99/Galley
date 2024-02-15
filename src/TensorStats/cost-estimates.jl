@@ -1,3 +1,11 @@
+
+# We start by defining some basic cost parameters. These will need to be adjusted somewhat
+# through testing.
+const SeqReadCost = 1
+const SeqWriteCost = 1
+const RandomReadCost = 5
+const RandomWriteCost = 5
+
 #TODO: Remove the * and the + from this function to make it more elegant
 # We estimate the prefix cost based on the number of valid iterations in that prefix.
 function get_prefix_iterations(vars::Set{IndexExpr}, input_stats::Vector{TensorStats})
@@ -16,5 +24,5 @@ end
 function get_prefix_cost(vars::Set{IndexExpr}, new_var::IndexExpr, input_stats::Vector{TensorStats})
     iters = get_prefix_iterations(vars, input_stats)
     intersections_per_iter = length([stat for stat in input_stats if length([new_var] ∩ get_index_set(stat)) > 0])
-    return iters * intersections_per_iter
+    return iters * intersections_per_iter * SeqReadCost
 end

@@ -106,7 +106,7 @@ for ST in [DCStats, NaiveStats]
     time_dict["unbalanced path"][ST] = qp_unbalanced_time
 
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
-    galley(qb_balanced, faq_optimizer=greedy, verbose=0)
+    galley(qb_balanced, faq_optimizer=greedy, verbose=verbosity)
     qb_balanced_time = @elapsed galley(qb_balanced, faq_optimizer=greedy, verbose=verbosity)
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][ST] = qb_balanced_time

@@ -5,18 +5,6 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Ve
     index_expressions = []
     for i in range(1, length(index_ids))
         index = index_instance(Symbol(index_ids[i]))
-        protocol = nothing
-        if protocols[i] == t_walk
-            protocol = walk
-        elseif protocols[i] == t_fast_walk
-            protocol = laminate
-        elseif protocols[i] == t_follow
-            protocol = follow
-        elseif protocols[i] == t_lead
-            protocol = lead
-        elseif protocols[i] == t_gallop
-            protocol = gallop
-        end
         push!(index_expressions, index)
     end
     tensor_var = variable_instance(Symbol(tensor_id))

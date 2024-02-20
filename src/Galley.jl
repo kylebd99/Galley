@@ -77,7 +77,7 @@ end
 
 function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=0)
     verbose >= 3 && println("Input FAQ : ", faq_problem)
-
+    opt_start = time()
     htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
     expr = decomposition_to_logical_plan(htd)
     expr = merge_aggregates(expr)
@@ -87,9 +87,11 @@ function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, v
     if isnothing(htd.output_index_order)
         output_index_order = collect(htd.output_indices)
     end
-
     tensor_kernel = expr_to_kernel(expr, output_index_order, verbose = verbose)
+    opt_end = time()
+
     result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
+    verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
     verbose >= 1 && println("Time to Execute: ", result.time)
     return result.value
 end

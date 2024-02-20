@@ -79,15 +79,25 @@ function get_sparsity_structure(tensor::Tensor)
 end
 
 function is_prefix(l_vec::Vector, r_vec::Vector)
-    if length(l_vec) > length(r_vec)
-        return false
-    end
     for i in eachindex(l_vec)
+        if i > length(r_vec)
+            return true
+        end
         if l_vec[i] != r_vec[i]
             return false
         end
     end
     return true
+end
+
+# This function determines whether any ordering of the `l_set` is a prefix of `r_vec`.
+# If r_vec is smaller than l_set, we just check whether r_vec is a subset of l_set.
+function is_set_prefix(l_set::Set, r_vec::Vector)
+    if length(l_set) > length(r_vec)
+        return Set(r_vec) ⊆ l_set
+    else
+        return l_set == Set(r_vec[1:length(l_set)])
+    end
 end
 
 # Takes in a tensor `s` with indices `input_indices`, and outputs a tensor which has been

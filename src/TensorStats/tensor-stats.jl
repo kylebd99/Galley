@@ -6,6 +6,7 @@
     default_value::Any
     index_order::Union{Nothing, Vector{IndexExpr}}
 end
+TensorDef(default) = TensorDef(Set(), Dict(), default, nothing)
 
 function TensorDef(indices::Vector{IndexExpr}, tensor::Tensor)
     shape_tuple = size(tensor)
@@ -69,7 +70,7 @@ end
 get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats) = stat.cardinality
 
-NaiveStats() = NaiveStats(TensorDef(), 0)
+NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
 function NaiveStats(indices::Vector{IndexExpr}, tensor::Tensor)
@@ -105,6 +106,7 @@ end
     dcs::Set{DC}
 end
 
+DCStats(default) = DCStats(TensorDef(default), Set())
 get_def(stat::DCStats) = stat.def
 
 function _infer_dcs(dcs::Set{DC}; timeout=100000)

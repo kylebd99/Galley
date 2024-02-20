@@ -13,7 +13,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         def = get_def(stats)
         def.index_order = input_indices
         input_dict[next_tensor_id] = expr_to_kernel(n, input_indices)
-        kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for _ in input_indices], stats)
+        kernel_root = InputExpr(next_tensor_id, input_indices, [t_gallop for _ in input_indices], stats)
 
     elseif n.head == MapJoin
         op = n.args[1]
@@ -31,7 +31,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         stats = deepcopy(n.stats)
         def = get_def(stats)
         def.index_order = relative_sort(def.index_order, reverse(loop_order))
-        kernel_root = InputExpr(next_tensor_id, def.index_order, [t_walk for _ in def.index_order], stats)
+        kernel_root = InputExpr(next_tensor_id, def.index_order, [t_gallop for _ in def.index_order], stats)
     end
     return kernel_root, input_dict
 end
@@ -58,7 +58,6 @@ end
 
 # This function takes in a dict of (tensor_id => tensor_stats) and outputs a join order.
 # Currently, it uses a simple prefix-join heuristic, but in the future it will be cost-based.
-# TODO: Make a cost-based implementation of this function.
 function get_join_loop_order_simple(input_stats)
     num_occurrences = counter(IndexExpr)
     for stats in values(input_stats)
@@ -71,29 +70,38 @@ function get_join_loop_order_simple(input_stats)
     return vars
 end
 
-
+@enum OUTPUT_COMPAT FULL_PREFIX SET_PREFIX NO_PREFIX
+# We use a version of Selinger's algorithm to determine the join loop ordering.
+# For each subset of variables, we calculate their optimal ordering via dynamic programming.
+# This is singly exponential in the number of loop variables, and it uses the statistics to
+# determine the costs.
 function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
     all_vars = union([get_index_set(stat) for stat in input_stats]...)
-    transpose_cost = estimate_nnz(output_stats)
-    prefix_costs = Dict{Set{IndexExpr}, Float64}()
-    paid_transpose = Dict{Set{IndexExpr}, Bool}()
-    optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
-#    println("Input Orders: ", [get_index_set(stat) for stat in input_stats])
+    output_vars = get_index_set(output_stats)
+    ordered_output_vars = relative_sort(output_vars, output_order)
+
+    # At all times, we keep track of the best plans for each level of output compatability.
+    # This will let us consider the cost of random writes and transposes at the end.
+    prefix_costs = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Float64}()
+    optimal_prefix_orders = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Vector{IndexExpr}}()
     for var in all_vars
         v_set = Set([var])
-        prefix_costs[v_set] = get_prefix_cost(v_set, input_stats)
-        optimal_prefix_orders[v_set] = [var]
-        is_output_prefix = is_prefix(output_order, optimal_prefix_orders[v_set]) || is_prefix(optimal_prefix_orders[v_set], output_order)
-        prefix_costs[v_set] += !is_output_prefix * transpose_cost
-        paid_transpose[v_set] = get(paid_transpose, v_set, false) || !is_output_prefix
+        is_output_prefix = is_prefix(ordered_output_vars, [var])
+        prefix_key = if is_output_prefix
+            (v_set, FULL_PREFIX)
+        else
+            (v_set, NO_PREFIX)
+        end
+        prefix_costs[prefix_key] = get_prefix_cost(v_set, var, input_stats)
+        optimal_prefix_orders[prefix_key] = [var]
     end
 
     for _ in 2:length(all_vars)
-        new_prefix_costs = Dict{Set{IndexExpr}, Float64}()
-        new_paid_transpose = Dict{Set{IndexExpr}, Bool}()
-        new_optimal_prefix_orders = Dict{Set{IndexExpr}, Vector{IndexExpr}}()
+        new_prefix_costs = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Float64}()
+        new_optimal_prefix_orders = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Vector{IndexExpr}}()
 
-        for (prefix_set, min_cost) in prefix_costs
+        for (prefix_set_and_compat, min_cost) in prefix_costs
+            prefix_set = prefix_set_and_compat[1]
             # We only consider extensions that don't result in cross products
             potential_vars = Set{IndexExpr}()
             for stat in input_stats
@@ -102,34 +110,53 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                     potential_vars = ∪(potential_vars, index_set)
                 end
             end
+
             potential_vars = setdiff(potential_vars, prefix_set)
             for new_var in potential_vars
                 new_prefix_set = union(prefix_set, [new_var])
-                new_prefix_order = [optimal_prefix_orders[prefix_set]..., new_var]
-                new_cost = get_prefix_cost(new_prefix_set, input_stats) + min_cost
-                already_paid = get(paid_transpose, prefix_set, false)
-                is_output_prefix = is_prefix(output_order, new_prefix_order) || is_prefix(new_prefix_order, output_order)
-                new_cost += (!already_paid && !is_output_prefix) * transpose_cost
-#                println("Output Order: ", output_order)
-#                println("New Prefix: ", new_prefix_order)
-#                println("Output Cost: ", (!is_prefix(output_order, new_prefix_order) &&
-#                            !is_prefix(new_prefix_order, output_order)) *
-#                            transpose_cost)
-#                println("Prefix Cost: ", get_prefix_cost(new_prefix_set, input_stats) + min_cost)
-                if !haskey(new_prefix_costs, new_prefix_set) || new_cost < new_prefix_costs[new_prefix_set]
-                    new_prefix_costs[new_prefix_set] = new_cost
-                    new_optimal_prefix_orders[new_prefix_set] = new_prefix_order
-                    new_paid_transpose[new_prefix_set] = (already_paid || is_output_prefix)
+                new_prefix_order = [optimal_prefix_orders[prefix_set_and_compat]..., new_var]
+                prefix_key = if is_prefix(ordered_output_vars, new_prefix_order)
+                    (new_prefix_set, FULL_PREFIX)
+                elseif is_set_prefix(output_vars, new_prefix_order)
+                    (new_prefix_set, SET_PREFIX)
+                else
+                    (new_prefix_set, NO_PREFIX)
+                end
+
+                new_cost = get_prefix_cost(new_prefix_set, new_var, input_stats) + min_cost
+                if new_cost < get(new_prefix_costs, prefix_key, Inf)
+                    new_prefix_costs[prefix_key] = new_cost
+                    new_optimal_prefix_orders[prefix_key] = new_prefix_order
                 end
             end
         end
         prefix_costs = new_prefix_costs
         optimal_prefix_orders = new_optimal_prefix_orders
-        paid_transpose = new_paid_transpose
     end
 
-#    println("Optimal Order: ", optimal_prefix_orders[all_vars])
-    return optimal_prefix_orders[all_vars]
+    # The cost of transposing the output as a second step if we choose to
+    transpose_cost = estimate_nnz(output_stats) * RandomWriteCost
+    # The cost of writing to the output depending on whether the writes are sequential
+    num_writes = get_prefix_iterations(all_vars, input_stats)
+    random_write_cost = num_writes * RandomWriteCost
+    seq_write_cost = num_writes * SeqWriteCost
+
+
+    full_prefix_key = (all_vars, FULL_PREFIX)
+    full_prefix_cost = get(prefix_costs, full_prefix_key, Inf) + seq_write_cost
+    set_prefix_key = (all_vars, SET_PREFIX)
+    set_prefix_cost = get(prefix_costs, set_prefix_key, Inf) + seq_write_cost + transpose_cost
+    no_prefix_key = (all_vars, NO_PREFIX)
+    no_prefix_cost = get(prefix_costs, no_prefix_key, Inf) + random_write_cost
+
+    min_cost = min(full_prefix_cost, set_prefix_cost, no_prefix_cost)
+    if min_cost == full_prefix_cost
+        return optimal_prefix_orders[full_prefix_key]
+    elseif min_cost == set_prefix_cost
+        return optimal_prefix_orders[set_prefix_key]
+    else
+        return optimal_prefix_orders[no_prefix_key]
+    end
 end
 
 # This function takes in an input and replaces it with an input expression which matches the
@@ -143,7 +170,7 @@ function transpose_input(loop_order, input, stats)
     if !is_sorted
         @assert input isa Tensor
         input_indices = get_index_order(stats)
-        expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
+        expr = InputExpr("t_1", input_indices, [t_gallop for _ in input_indices], stats)
         input_dict = Dict()
         input_dict["t_1"] = input
         expr = ReorderExpr(transposed_index_order, expr)
@@ -167,7 +194,7 @@ function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel,
         return kernel
     end
     input_indices = kernel.output_indices
-    expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
+    expr = InputExpr("t_1", input_indices, [t_gallop for _ in input_indices], stats)
     input_dict = Dict()
     input_dict["t_1"] = kernel
     expr = ReorderExpr(transposed_index_order, expr)
@@ -188,7 +215,7 @@ function select_output_format(output_stats::TensorStats,
                                 output_indices::Vector{IndexExpr}
                                 )
     approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
-    if approx_sparsity > .5
+    if approx_sparsity > .05
         return [t_dense for _ in output_indices]
     end
 
@@ -219,9 +246,14 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         input_stats = _recursive_get_stats(sub_expr, [1])
         input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
         loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
-        output_indices = relative_sort(collect(get_index_set(n.stats)), loop_order)
         body_kernel, input_dict = _recursive_get_kernel_root(sub_expr, loop_order, [1])
         kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
+        # Based on the loop order, we attempt to avoid random writes into the output.
+        output_indices = if is_set_prefix(get_index_set(n.stats), loop_order)
+            relative_sort(collect(get_index_set(n.stats)), loop_order)
+        else
+            relative_sort(collect(get_index_set(n.stats)), output_order)
+        end
         output_formats = select_output_format(n.stats, loop_order, output_indices)
         output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
 
@@ -232,6 +264,7 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
                                 output_dims,
                                 get_default_value(n.stats),
                                 loop_order)
+
         kernel = transpose_kernel(output_order, kernel, n.stats)
         validate_kernel(kernel)
         return kernel
@@ -246,11 +279,16 @@ function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; ver
         input_stats = Dict(l_input_stats..., r_input_stats...)
         input_stats_vec = Vector{TensorStats}(collect(values(input_stats)))
         loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
-        output_indices = relative_sort(collect(get_index_set(n.stats)), loop_order)
         l_body_kernel, l_input_dict = _recursive_get_kernel_root(left_expr, loop_order, input_counter)
         r_body_kernel, r_input_dict = _recursive_get_kernel_root(right_expr, loop_order, input_counter)
         kernel_root = OperatorExpr(op, [l_body_kernel, r_body_kernel])
         input_dict = Dict(l_input_dict..., r_input_dict...)
+        # Based on the loop order, we attempt to avoid random writes into the output.
+        output_indices = if is_set_prefix(get_index_set(n.stats), loop_order)
+            relative_sort(collect(get_index_set(n.stats)), loop_order)
+        else
+            relative_sort(collect(get_index_set(n.stats)), output_order)
+        end
         output_formats = select_output_format(n.stats, loop_order, output_indices)
         output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
         kernel = TensorKernel(kernel_root,

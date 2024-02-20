@@ -27,7 +27,7 @@ function _get_index_cost(mult_op, sum_op, index::IndexExpr, inputs::Vector{Union
         join_stat = merge_tensor_stats_join(mult_op, join_stat, edge_cover_stats[i])
     end
     reduce_stat = reduce_tensor_stats(sum_op, setdiff(covered_indices, parent_indices), join_stat)
-    cur_cost = estimate_nnz(reduce_stat) + estimate_nnz(join_stat) + sum([estimate_nnz(stats) for stats in edge_cover_stats])
+    cur_cost = estimate_nnz(reduce_stat)*AllocateCost + estimate_nnz(join_stat) * ComputeCost + sum([estimate_nnz(stats) for stats in edge_cover_stats]) * SeqReadCost
     return cur_cost, edge_cover
 end
 

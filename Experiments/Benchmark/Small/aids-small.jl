@@ -91,7 +91,7 @@ for ST in [DCStats, NaiveStats]
     galley(qt_unbalanced, faq_optimizer=greedy, verbose=0)
     qt_unbalanced_time = @elapsed galley(qt_unbalanced, faq_optimizer=greedy, verbose=verbosity)
     println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
-    time_dict["unbalanced triangle"][ST] = qt_balanced_time
+    time_dict["unbalanced triangle"][ST] = qt_unbalanced_time
 
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
     galley(qp_balanced, faq_optimizer=greedy, verbose=0)

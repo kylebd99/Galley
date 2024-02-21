@@ -16,4 +16,4 @@ end
 
 #run_experiments(experiments)
 
-graph_grouped_box_plot(experiments; grouping=stats_type, filename="subgraph_counting_htd_comparison 2")
+graph_grouped_box_plot(experiments; grouping=description, filename="subgraph_counting_htd_comparison 2")

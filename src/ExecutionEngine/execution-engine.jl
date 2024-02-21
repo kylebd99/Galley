@@ -5,6 +5,17 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Ve
     index_expressions = []
     for i in range(1, length(index_ids))
         index = index_instance(Symbol(index_ids[i]))
+        if read == true
+            if protocols[i] == t_walk
+                index = call_instance(literal_instance(Finch.defaultread), index)
+            elseif protocols[i] == t_gallop
+                index = call_instance(literal_instance(Finch.gallop), index)
+            elseif protocols[i] == t_lead
+                index = call_instance(literal_instance(Finch.lead), index)
+            elseif protocols[i] == t_follow
+                index = call_instance(literal_instance(Finch.follow), index)
+            end
+        end
         push!(index_expressions, index)
     end
     tensor_var = variable_instance(Symbol(tensor_id))

@@ -67,7 +67,7 @@ function query_bowtie(e1, e2, e3, e4, e5, e6)
     return faq
 end
 
-#=
+
 
 time_dict = Dict("balanced triangle"=>Dict(),
                 "unbalanced triangle"=>Dict(),
@@ -117,7 +117,7 @@ for ST in [DCStats, NaiveStats]
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][ST] = qb_unbalanced_time
 end
- =#
+
 
 vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", DCStats)
 main_edge = edges[0]

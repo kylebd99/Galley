@@ -21,67 +21,106 @@ function query_triangle(e1, e2, e3)
 end
 
 
-function query_path(e1, e2, e3, e4)
+
+function finch_triangle(e1, e2, e3)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    e3 = e3.args[2]
+    output = Finch.Scalar(0.0)
+    return @elapsed @finch begin
+        output .= 0
+        for j=_, i=_, k=_
+            output[] += e1[i,j] * e2[k,j] * e3[k, i]
+        end
+    end
+end
+
+function finch_triangle_gallop(e1, e2, e3)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    e3 = e3.args[2]
+    output = Finch.Scalar(0.0)
+    return @elapsed @finch begin
+        output .= 0
+        for j=_, i=_, k=_
+            output[] += e1[gallop(i), gallop(j)] * e2[gallop(k), gallop(j)] * e3[gallop(k), gallop(i)]
+        end
+    end
+end
+
+function query_mm(e1, e2)
     i = IndexExpr("i")
     j = IndexExpr("j")
     k = IndexExpr("k")
-    l = IndexExpr("l")
-    m = IndexExpr("m")
     e1 = e1[i,j]
     e2 = e2[j,k]
-    e3 = e3[k,l]
-    e4 = e4[l,m]
     factors = Set(Factor[Factor(e1, Set(IndexExpr[i, j]), Set(IndexExpr[i, j]), false, deepcopy(e1.stats)),
                      Factor(e2, Set(IndexExpr[j, k]), Set(IndexExpr[j, k]), false, deepcopy(e2.stats)),
-                     Factor(e3, Set(IndexExpr[k, l]), Set(IndexExpr[k, l]), false, deepcopy(e3.stats)),
-                     Factor(e4, Set(IndexExpr[l, m]), Set(IndexExpr[l, m]), false, deepcopy(e4.stats)),
     ])
-
-    faq = FAQInstance(*, +, Set{IndexExpr}(), Set{IndexExpr}([i, j, k, l, m]), factors)
+    faq = FAQInstance(*, +, Set{IndexExpr}(), Set{IndexExpr}([i, j, k]), factors)
     return faq
 end
 
-
-
-function query_bowtie(e1, e2, e3, e4, e5, e6)
-    i = IndexExpr("i")
-    j = IndexExpr("j")
-    k = IndexExpr("k")
-    l = IndexExpr("l")
-    m = IndexExpr("m")
-    e1 = e1[i,j]
-    e2 = e2[j,k]
-    e3 = e3[i,k]
-    e4 = e4[l,m]
-    e5 = e5[l,k]
-    e6 = e6[m,k]
-    factors = Set(Factor[Factor(e1, Set(IndexExpr[i, j]), Set(IndexExpr[i, j]), false, deepcopy(e1.stats)),
-                     Factor(e2, Set(IndexExpr[j, k]), Set(IndexExpr[j, k]), false, deepcopy(e2.stats)),
-                     Factor(e3, Set(IndexExpr[i, k]), Set(IndexExpr[i, k]), false, deepcopy(e3.stats)),
-                     Factor(e4, Set(IndexExpr[l, m]), Set(IndexExpr[l, m]), false, deepcopy(e4.stats)),
-                     Factor(e5, Set(IndexExpr[l, k]), Set(IndexExpr[l, k]), false, deepcopy(e5.stats)),
-                     Factor(e6, Set(IndexExpr[m, k]), Set(IndexExpr[m, k]), false, deepcopy(e6.stats)),
-    ])
-
-    faq = FAQInstance(*, +, Set{IndexExpr}(), Set{IndexExpr}([i, j, k, l, m]), factors)
-    return faq
+function finch_mm(e1, e2)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    output = Finch.Scalar(0.0)
+    return @elapsed @finch begin
+        output .= 0
+        for j=_, i=_, k=_
+            output[] += e1[i,j] * e2[k,j]
+        end
+    end
 end
 
 
+function finch_mm2(e1, e2)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    I = Tensor(Dense(Element(0.0), size(e1)[1]))
+    output = Finch.Scalar(0.0)
+    return @elapsed begin
+        @finch begin
+            I .= 0
+            for j=_, i=_
+                I[j] += e1[i,j]
+            end
+        end
+        @finch begin
+            output .= 0
+            for j=_, k=_
+                output[] += I[j] * e2[k,j]
+            end
+        end
+    end
+end
 
-time_dict = Dict("balanced triangle"=>Dict(),
-                "unbalanced triangle"=>Dict(),
-                "balanced path"=>Dict(),
-                "unbalanced path"=>Dict(),
-                "balanced bowtie"=>Dict(),
-                "unbalanced bowtie"=>Dict(), )
 
 verbosity=3
 vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats)
 main_edge = edges[0]
 
 qt_balanced = query_triangle(main_edge, main_edge, main_edge)
-duckdb_compute_faq(qt_balanced)
+t_duckdb = duckdb_compute_faq(qt_balanced).time
+t_finch = finch_triangle(main_edge, main_edge, main_edge)
+t_finch = finch_triangle(main_edge, main_edge, main_edge)
+t_finch_gallop = finch_triangle_gallop(main_edge, main_edge, main_edge)
+t_finch_gallop = finch_triangle_gallop(main_edge, main_edge, main_edge)
+println("t_duckdb: $(t_duckdb)")
+println("t_finch: $(t_finch)")
+println("t_finch_gallop: $(t_finch_gallop)")
+
+mm_balanced = query_mm(main_edge, main_edge)
+mm_duckdb = duckdb_compute_faq(mm_balanced).time
+mm_finch = finch_mm(main_edge, main_edge)
+mm_finch = finch_mm(main_edge, main_edge)
+mm_finch_materialize = finch_mm2(main_edge, main_edge)
+mm_finch_materialize = finch_mm2(main_edge, main_edge)
+println("mm_duckdb: $(mm_duckdb)")
+println("mm_finch: $(mm_finch)")
+println("mm_finch_materialize: $(mm_finch_materialize)")
+
+
 
 #=
 galley(qt_balanced, faq_optimizer=greedy, verbose=0)

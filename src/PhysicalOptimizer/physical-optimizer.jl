@@ -171,7 +171,7 @@ function transpose_input(loop_order, input, stats)
     if !is_sorted
         @assert input isa Tensor
         input_indices = get_index_order(stats)
-        expr = InputExpr("t_1", input_indices, [t_gallop for _ in input_indices], stats)
+        expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
         input_dict = Dict()
         input_dict["t_1"] = input
         expr = ReorderExpr(transposed_index_order, expr)
@@ -195,7 +195,7 @@ function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel,
         return kernel
     end
     input_indices = kernel.output_indices
-    expr = InputExpr("t_1", input_indices, [t_gallop for _ in input_indices], stats)
+    expr = InputExpr("t_1", input_indices, [SeqWriteCostp for _ in input_indices], stats)
     input_dict = Dict()
     input_dict["t_1"] = kernel
     expr = ReorderExpr(transposed_index_order, expr)

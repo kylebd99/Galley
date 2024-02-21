@@ -50,19 +50,21 @@ end
     parent_indices::Set{IndexExpr}
     child_bags::Set{Bag}
     stats::TensorStats
+    id::UInt64
 
     function Bag(mult_op,
                     sum_op,
                     edge_covers::Set{Factor},
                     covered_indices::Set{IndexExpr},
                     parent_indices::Set{IndexExpr},
-                    child_bags::Set{Bag})
+                    child_bags::Set{Bag},
+                    id::UInt64)
         input_stats::Vector{TensorStats} = cat([f.stats for f in edge_covers], [b.stats for b in child_bags], dims=(1,1))
-        return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices))
+        return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices), id)
     end
 
     function Bag()
-        new(Set(), Set(), Set(), Set(), Set(), TensorStats())
+        new(Set(), Set(), Set(), Set(), Set(), TensorStats(), 0)
     end
 end
 

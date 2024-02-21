@@ -10,8 +10,8 @@ function query_triangle(e1, e2, e3)
     j = IndexExpr("j")
     k = IndexExpr("k")
     e1 = e1[i,j]
-    e2 = e2[j,k]
-    e3 = e3[k,i]
+    e2 = e2[k,j]
+    e3 = e3[i,k]
     factors = Set(Factor[Factor(e1, Set(IndexExpr[i, j]), Set(IndexExpr[i, j]), false, deepcopy(e1.stats)),
                      Factor(e2, Set(IndexExpr[j, k]), Set(IndexExpr[j, k]), false, deepcopy(e2.stats)),
                      Factor(e3, Set(IndexExpr[k, i]), Set(IndexExpr[k, i]), false, deepcopy(e3.stats)),

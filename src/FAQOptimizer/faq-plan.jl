@@ -14,6 +14,7 @@
     all_indices::Set{IndexExpr}
     is_indicator::Bool
     stats::TensorStats
+    id::UInt64
 end
 
 @auto_hash_equals mutable struct FAQInstance

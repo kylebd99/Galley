@@ -151,6 +151,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         end
     end
 
+    factor_counter = 1
     factors = Set{Factor}()
     for v in keys(query_vertices)
         label = query_vertices[v]
@@ -160,7 +161,8 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         idx = query_id_to_idx(v)
         indices = Set([idx])
         vertex_tensor = vertex_vectors[label][idx]
-        vertex_factor = Factor(vertex_tensor, indices, indices, false, deepcopy(vertex_tensor.stats))
+        vertex_factor = Factor(vertex_tensor, indices, indices, false, deepcopy(vertex_tensor.stats), factor_counter)
+        factor_counter += 1
         push!(factors, vertex_factor)
     end
 
@@ -173,7 +175,8 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         r_idx = query_id_to_idx(edge[2])
         indices = Set([l_idx, r_idx])
         edge_tensor = edge_matrices[label][l_idx, r_idx]
-        edge_factor = Factor(edge_tensor, indices, indices, false, deepcopy(edge_tensor.stats))
+        edge_factor = Factor(edge_tensor, indices, indices, false, deepcopy(edge_tensor.stats), factor_counter)
+        factor_counter += 1
         push!(factors, edge_factor)
     end
     faq = FAQInstance(*, +, Set{IndexExpr}(), Set([query_id_to_idx(v) for v in 1:n]), factors)

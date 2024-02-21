@@ -1,6 +1,6 @@
 # This is a good framework for graphing, but we need to make an experiment_params object first
 
-@enum GROUP dataset faq_optimizer query_type stats_type
+@enum GROUP dataset faq_optimizer query_type stats_type description
 
 @enum VALUE runtime
 
@@ -122,6 +122,8 @@ function get_value_from_param(experiment_param::ExperimentParams, value_type::GR
         return experiment_param.faq_optimizer
     elseif value_type == stats_type
         return string(experiment_param.stats_type)
+    elseif value_type == description
+        return experiment_param.description
     else
         # default to grouping by faq_optimizer
         return experiment_param.faq_optimizer

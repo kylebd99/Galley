@@ -7,7 +7,7 @@ const RandomReadCost = 5
 const RandomWriteCost = 5
 
 const ComputeCost = 1
-const AllocateCost = 10
+const AllocateCost = 25
 
 
 function get_prefix_iterations(vars::Set{IndexExpr}, input_stats::Vector{TensorStats})

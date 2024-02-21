@@ -13,17 +13,28 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
             println("Query Path: ", query.query_path)
             num_attempted +=1
             try
-                if experiment.warm_start
-                    println("Warm Start Query Path: ", query.query_path)
-                    galley(query.query; faq_optimizer = experiment.faq_optimizer)
-                end
-                result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=3)
-                push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time), string(result.value)))
-                if !isnothing(query.expected_result)
-                    if all(result.value .== query.expected_result)
-                        num_correct += 1
+                if experiment.use_duckdb
+                    result = duckdb_compute_faq(query.query)
+                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time), string(result.result)))
+                    if !isnothing(query.expected_result)
+                        if result.result == query.expected_result
+                            num_correct += 1
+                        end
+                        num_with_values += 1
                     end
-                    num_with_values += 1
+                else
+                    if experiment.warm_start
+                        println("Warm Start Query Path: ", query.query_path)
+                        galley(query.query; faq_optimizer = experiment.faq_optimizer)
+                    end
+                    result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0)
+                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time), string(result.value)))
+                    if !isnothing(query.expected_result)
+                        if all(result.value .== query.expected_result)
+                            num_correct += 1
+                        end
+                        num_with_values += 1
+                    end
                 end
                 num_completed += 1
             catch e

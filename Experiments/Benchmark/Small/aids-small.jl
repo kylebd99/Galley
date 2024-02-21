@@ -67,7 +67,7 @@ function query_bowtie(e1, e2, e3, e4, e5, e6)
     return faq
 end
 
-
+#=
 
 time_dict = Dict("balanced triangle"=>Dict(),
                 "unbalanced triangle"=>Dict(),
@@ -106,7 +106,7 @@ for ST in [DCStats, NaiveStats]
     time_dict["unbalanced path"][ST] = qp_unbalanced_time
 
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
-    galley(qb_balanced, faq_optimizer=greedy, verbose=verbosity)
+    galley(qb_balanced, faq_optimizer=greedy, verbose=0)
     qb_balanced_time = @elapsed galley(qb_balanced, faq_optimizer=greedy, verbose=verbosity)
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][ST] = qb_balanced_time
@@ -117,6 +117,41 @@ for ST in [DCStats, NaiveStats]
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][ST] = qb_unbalanced_time
 end
+ =#
+
+vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", DCStats)
+main_edge = edges[0]
+
+qt_balanced = query_triangle(main_edge, main_edge, main_edge)
+qt_balanced_time = duckdb_compute_faq(qt_balanced).time
+println("Balanced Triangle [DuckDB]: ", qt_balanced_time)
+time_dict["balanced triangle"][:DuckDB] = qt_balanced_time
+
+qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
+qt_unbalanced_time = duckdb_compute_faq(qt_unbalanced).time
+println("Unbalanced Triangle [DuckDB]: ", qt_unbalanced_time)
+time_dict["unbalanced triangle"][:DuckDB] = qt_unbalanced_time
+
+qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
+qp_balanced_time = duckdb_compute_faq(qp_balanced).time
+println("Balanced Path [DuckDB]: ", qp_balanced_time)
+time_dict["balanced path"][:DuckDB] = qp_balanced_time
+
+qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
+qp_unbalanced_time = duckdb_compute_faq(qp_unbalanced).time
+println("Unbalanced Path [DuckDB]: ", qp_unbalanced_time)
+time_dict["unbalanced path"][:DuckDB] = qp_unbalanced_time
+
+qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
+qb_balanced_time = duckdb_compute_faq(qb_balanced).time
+println("Balanced Bowtie [DuckDB]: ", qb_balanced_time)
+time_dict["balanced bowtie"][:DuckDB] = qb_balanced_time
+
+qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
+qb_unbalanced_time = duckdb_compute_faq(qb_unbalanced).time
+println("Unbalanced Bowtie [DuckDB]: ", qb_unbalanced_time)
+time_dict["unbalanced bowtie"][:DuckDB] = qb_unbalanced_time
+
 
 for qt in keys(time_dict)
     println("Query Type: $(qt)")

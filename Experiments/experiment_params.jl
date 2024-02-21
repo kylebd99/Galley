@@ -15,13 +15,18 @@ struct ExperimentParams
     warm_start::Bool
     faq_optimizer::FAQ_OPTIMIZERS
     stats_type::Type
+    use_duckdb::Bool
+    description::String
 
-    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats)
-        return new(workload, warm_start, faq_optimizer, stats_type)
+    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, description="")
+        return new(workload, warm_start, faq_optimizer, stats_type, use_duckdb, description)
     end
 end
 
 function param_to_results_filename(param::ExperimentParams)
+    if param.use_duckdb
+        return "DuckDB.csv"
+    end
     filename = ""
     filename *= string(param.workload) * "_"
     filename *= string(param.warm_start) * "_"

@@ -134,35 +134,35 @@ for ST in [DCStats, NaiveStats]
 
     dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-    load_to_duckdb(dbconn, qt_balanced)
+    load_to_duckdb(dbconn, qt_unbalanced)
     qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
     time_dict["unbalanced triangle"][string(ST) * "_duckdb"] = qt_unbalanced_time
 
     dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
-    load_to_duckdb(dbconn, qt_balanced)
+    load_to_duckdb(dbconn, qp_balanced)
     qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Balanced Path [$ST]: ", qp_balanced_time)
     time_dict["balanced path"][string(ST) * "_duckdb"] = qp_balanced_time
 
     dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-    load_to_duckdb(dbconn, qt_balanced)
+    load_to_duckdb(dbconn, qp_unbalanced)
     qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Unbalanced Path [$ST]: ", qp_unbalanced_time)
     time_dict["unbalanced path"][string(ST) * "_duckdb"] = qp_unbalanced_time
 
     dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
-    load_to_duckdb(dbconn, qt_balanced)
+    load_to_duckdb(dbconn, qb_balanced)
     qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][string(ST) * "_duckdb"] = qb_balanced_time
 
     dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-    load_to_duckdb(dbconn, qt_balanced)
+    load_to_duckdb(dbconn, qb_unbalanced)
     qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][string(ST) * "_duckdb"] = qb_unbalanced_time
@@ -201,7 +201,6 @@ qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], e
 qb_unbalanced_time = duckdb_compute_faq(qb_unbalanced).time
 println("Unbalanced Bowtie [DuckDB]: ", qb_unbalanced_time)
 time_dict["unbalanced bowtie"][:DuckDB] = qb_unbalanced_time
-
 
 for qt in keys(time_dict)
     println("Query Type: $(qt)")

@@ -17,4 +17,6 @@ end
 
 run_experiments(experiments)
 
-graph_grouped_box_plot(experiments; grouping=description, filename="subgraph_counting_htd_comparison")
+graph_grouped_box_plot(experiments; y_type=overall_time, grouping=description, filename="subgraph_counting_htd_comparison_overall")
+graph_grouped_box_plot(experiments; y_type=opt_time, grouping=description, filename="subgraph_counting_htd_comparison_opt")
+graph_grouped_box_plot(experiments; y_type=execute_time, grouping=description, filename="subgraph_counting_htd_comparison_execute")

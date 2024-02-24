@@ -75,10 +75,23 @@ function galley(expr::LogicalPlanNode; optimize=true, verbose=0, global_index_or
     return result.value
 end
 
-function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, verbose=0)
+function galley(faq_problem::FAQInstance;
+                    faq_optimizer::FAQ_OPTIMIZERS=naive,
+                    dbconn::Union{DuckDB.DB, Nothing}=nothing,
+                    verbose=0)
     verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
     htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
+
+    if !isnothing(dbconn)
+        opt_end = time()
+        result = duckdb_htd_to_output(dbconn, htd)
+        verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
+        verbose >= 1 && println("Time to Insert: ", result.insert_time)
+        verbose >= 1 && println("Time to Execute: ", result.execute_time)
+        return (value=result.value, opt_time=(opt_end-opt_start), execute_time=result.execute_time)
+    end
+
     expr = decomposition_to_logical_plan(htd)
     expr = merge_aggregates(expr)
     _recursive_insert_stats!(expr)
@@ -93,7 +106,7 @@ function galley(faq_problem::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS=naive, v
     result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
     verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
     verbose >= 1 && println("Time to Execute: ", result.time)
-    return result.value
+    return (value=result.value, opt_time=(opt_end-opt_start), execute_time=result.time)
 end
 
 end

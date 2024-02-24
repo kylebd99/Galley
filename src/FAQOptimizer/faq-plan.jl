@@ -14,7 +14,7 @@
     all_indices::Set{IndexExpr}
     is_indicator::Bool
     stats::TensorStats
-    id::UInt64
+    id::Int
 end
 
 @auto_hash_equals mutable struct FAQInstance
@@ -51,7 +51,7 @@ end
     parent_indices::Set{IndexExpr}
     child_bags::Set{Bag}
     stats::TensorStats
-    id::UInt64
+    id::Int
 
     function Bag(mult_op,
                     sum_op,
@@ -59,7 +59,7 @@ end
                     covered_indices::Set{IndexExpr},
                     parent_indices::Set{IndexExpr},
                     child_bags::Set{Bag},
-                    id::UInt64)
+                    id::Int)
         input_stats::Vector{TensorStats} = cat([f.stats for f in edge_covers], [b.stats for b in child_bags], dims=(1,1))
         return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices), id)
     end

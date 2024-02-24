@@ -1,6 +1,6 @@
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
-        results = [("Workload", "QueryType", "QueryPath", "Runtime", "Result")]
+        results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "Result")]
         queries = load_workload(experiment.workload, experiment.stats_type)
         num_attempted = 0
         num_completed = 0
@@ -14,10 +14,12 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
             num_attempted +=1
             try
                 if experiment.use_duckdb
-                    result = duckdb_compute_faq(query.query)
-                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time), string(result.result)))
+                    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+                    load_to_duckdb(dbconn, query.query)
+                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0)
+                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value)))
                     if !isnothing(query.expected_result)
-                        if result.result == query.expected_result
+                        if result.value == query.expected_result
                             num_correct += 1
                         end
                         num_with_values += 1
@@ -27,8 +29,8 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                         println("Warm Start Query Path: ", query.query_path)
                         galley(query.query; faq_optimizer = experiment.faq_optimizer)
                     end
-                    result = @timed galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0)
-                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.time), string(result.value)))
+                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0)
+                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value)))
                     if !isnothing(query.expected_result)
                         if all(result.value .== query.expected_result)
                             num_correct += 1

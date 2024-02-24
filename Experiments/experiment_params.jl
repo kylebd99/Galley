@@ -24,13 +24,11 @@ struct ExperimentParams
 end
 
 function param_to_results_filename(param::ExperimentParams)
-    if param.use_duckdb
-        return "DuckDB.csv"
-    end
     filename = ""
     filename *= string(param.workload) * "_"
     filename *= string(param.warm_start) * "_"
     filename *= string(param.faq_optimizer) * "_"
-    filename *= string(param.stats_type) * ".csv"
+    filename *= string(param.stats_type) *  "_"
+    filename *= string(param.use_duckdb) * ".csv"
     return filename
 end

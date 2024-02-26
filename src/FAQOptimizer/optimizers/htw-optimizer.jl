@@ -72,7 +72,7 @@ function _recursive_hypertree_bag_decomp(mult_op,
                                         parent_vars::Set{IndexExpr},
                                         max_width::Int,
                                         subtree_dict::Dict{Tuple{Set{Factor}, Set{IndexExpr}}, Any},
-                                        bag_counter::Vector{UInt64})
+                                        bag_counter)
     haskey(subtree_dict, (factors, parent_vars)) && return subtree_dict[(factors, parent_vars)]
     V = Set{IndexExpr}(union([f.all_indices for f in factors]...))
     V1 = Set{IndexExpr}()
@@ -113,7 +113,8 @@ function _recursive_hypertree_bag_decomp(mult_op,
             end
 
             if length(remaining_factors) == 0
-                bag = Bag(mult_op, sum_op, complete_edge_cover, V1, parent_vars, Set{Bag}())
+                bag = Bag(mult_op, sum_op, complete_edge_cover, V1, parent_vars, Set{Bag}(), bag_counter[1])
+                bag_counter[1] += 1
                 subtree_dict[(factors, parent_vars)] = bag
                 return bag
             end

@@ -146,6 +146,32 @@ function _collect_factors(bag::Bag)
     return factor_list
 end
 
+function fsparse_fixed(I, V, shape, combine)
+    C = map(tuple, reverse(I)...)
+    updater = false
+    if !issorted(C)
+        P = sortperm(C)
+        C = C[P]
+        V = V[P]
+        updater = true
+    end
+    if !allunique(C)
+        P = unique(p -> C[p], 1:length(C))
+        C = C[P]
+        push!(P, length(I[1]) + 1)
+        V = map((start, stop) -> foldl(combine, @view V[start:stop - 1]), P[1:end - 1], P[2:end])
+        updater = true
+    end
+    if updater
+        I = map(i -> similar(i, length(C)), I)
+        foreach(((p, c),) -> ntuple(n->I[n][p] = c[n], length(I)), enumerate(C))
+        I = reverse(I)
+    else
+        I = map(copy, I)
+    end
+    return fsparse!(I..., V, shape)
+end
+
 # First, insert all of the factors as tables e_1, etc, then recursively compute the bags.
 # Lastly, return the root bag's table in some format.
 function duckdb_htd_to_output(dbconn, htd::HyperTreeDecomposition)
@@ -164,17 +190,18 @@ function duckdb_htd_to_output(dbconn, htd::HyperTreeDecomposition)
 
     output = nothing
     if !isnothing(htd.output_index_order) && length(htd.output_index_order) > 0
+        output_index_order = htd.output_index_order
         I = Tuple([Int[] for _ in htd.output_index_order])
         V = Float64[]
-        M = Tuple(get_dim_size(htd.root_bag.stats, idx) for idx in htd.output_index_order)
+        M = Tuple(get_dim_size(htd.root_bag.stats, idx) for idx in output_index_order)
         for row in DuckDB.execute(dbconn, "SELECT * FROM $(bag_to_table_name(htd.root_bag))")
-            for i in eachindex(htd.output_index_order)
-                idx = htd.output_index_order[i]
+            for i in eachindex(output_index_order)
+                idx = output_index_order[i]
                 push!(I[i], row[Symbol(idx.name)])
             end
             push!(V, row[:v])
         end
-        output = fsparse_parse(I,V, M, +)
+        output = fsparse_fixed(I, V, M, +)
     else
         output = only(DuckDB.execute(dbconn, "SELECT * FROM $(bag_to_table_name(htd.root_bag))"))[:v]
     end

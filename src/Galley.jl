@@ -5,7 +5,7 @@ using AutoHashEquals
 using Combinatorics
 using DataStructures
 using Finch
-using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_parse
+using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
 using Random
 
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,

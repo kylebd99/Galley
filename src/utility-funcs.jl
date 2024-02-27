@@ -135,11 +135,3 @@ function one_off_reduce(op,
     Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
     return output_tensor
 end
-
-#function Base.show(io::IO ,tensor::Tensor)
-#    println(io, "FIBER Type( ", typeof(tensor), ")")
-#end
-
-function Base.print(io::IO ,tensor::Tensor)
-    println(io, "FIBER Type( ", typeof(tensor), ")")
-end

@@ -80,9 +80,13 @@ end
         b_tensor = InputTensor(b_data)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_data), 2)
         faq = FAQInstance(*, +, Set([i,k]), Set([i,j,k]), Set([a_factor, b_factor]), [i, k])
+        dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+        db_faq = deepcopy(faq)
+        load_to_duckdb(dbconn, db_faq)
         correct_matrix = a_matrix * b_matrix
         @test galley(faq; faq_optimizer = naive).value == correct_matrix
         @test galley(faq; faq_optimizer = greedy).value == correct_matrix
+        @test galley(db_faq; faq_optimizer = greedy, dbconn = dbconn).value == correct_matrix
         @test galley(faq; faq_optimizer = hypertree_width).value == correct_matrix
     end
 
@@ -111,9 +115,13 @@ end
         c_tensor = InputTensor(c_data)[k, l]
         c_factor = Factor(c_tensor, Set([k, l]), Set([k, l]), false, NaiveStats([k, l], c_data), 3)
         faq = FAQInstance(*, +, Set([i,l]), Set([i,j,k,l]), Set([a_factor, b_factor, c_factor]), [i, l])
+        dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+        db_faq = deepcopy(faq)
+        load_to_duckdb(dbconn, db_faq)
         correct_matrix = a_matrix * b_matrix * c_matrix
         @test galley(faq; faq_optimizer = naive).value == correct_matrix
         @test galley(faq; faq_optimizer = greedy).value == correct_matrix
+        @test galley(db_faq; faq_optimizer = greedy, dbconn = dbconn).value == correct_matrix
         @test galley(faq; faq_optimizer = hypertree_width).value == correct_matrix
     end
 
@@ -140,9 +148,13 @@ end
         c_tensor = InputTensor(c_data)[i, j]
         c_factor = Factor(c_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], c_data), 3)
         faq = FAQInstance(*, +, Set([i, j]), Set([i,j]), Set([a_factor, b_factor, c_factor]), [i, j])
+        dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+        db_faq = deepcopy(faq)
+        load_to_duckdb(dbconn, db_faq)
         correct_matrix = a_matrix .* b_matrix .* c_matrix
         @test galley(faq; faq_optimizer = naive).value == correct_matrix
         @test galley(faq; faq_optimizer = greedy).value == correct_matrix
+        @test galley(db_faq; faq_optimizer = greedy, dbconn = dbconn).value == correct_matrix
         @test galley(faq; faq_optimizer = hypertree_width).value == correct_matrix
     end
 end

@@ -1,11 +1,22 @@
 using DuckDB
 
+function load_to_duckdb(dbconn::DBInterface.Connection ,faq::FAQInstance)
+    for factor in faq.factors
+        tensor_name = factor_to_table_name(factor)
+        tensor = factor.input.args[2]
+        indices = factor.input.args[1]
+        fill_table(dbconn, tensor, indices, tensor_name)
+        factor.input.args[2] = tensor_name
+    end
+end
+
+
 function tensor_to_vec_of_tuples(t::Tensor)
     return collect(zip(ffindnz(t)...))
 end
 
 function create_table(dbconn, idx_names, table_name)
-    create_str = "CREATE TABLE $table_name ("
+    create_str = "CREATE OR REPLACE TABLE $table_name ("
     prefix = ""
     for idx in idx_names
         create_str *= "$prefix $(idx.name) INT64"
@@ -151,5 +162,21 @@ function duckdb_htd_to_output(dbconn, htd::HyperTreeDecomposition)
     end
     execute_time = @elapsed _duckdb_compute_bag(dbconn, htd.root_bag)
 
-    return (value = only(DuckDB.execute(dbconn, "SELECT * FROM $(bag_to_table_name(htd.root_bag))"))[:v], insert_time = insert_time, execute_time  = execute_time)
+    output = nothing
+    if !isnothing(htd.output_index_order) && length(htd.output_index_order) > 0
+        I = Tuple([Int[] for _ in htd.output_index_order])
+        V = Float64[]
+        M = Tuple(get_dim_size(htd.root_bag.stats, idx) for idx in htd.output_index_order)
+        for row in DuckDB.execute(dbconn, "SELECT * FROM $(bag_to_table_name(htd.root_bag))")
+            for i in eachindex(htd.output_index_order)
+                idx = htd.output_index_order[i]
+                push!(I[i], row[Symbol(idx.name)])
+            end
+            push!(V, row[:v])
+        end
+        output = fsparse_parse(I,V, M, +)
+    else
+        output = only(DuckDB.execute(dbconn, "SELECT * FROM $(bag_to_table_name(htd.root_bag))"))[:v]
+    end
+    return (value = output, insert_time = insert_time, execute_time  = execute_time)
 end

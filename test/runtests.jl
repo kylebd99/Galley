@@ -1,7 +1,9 @@
 using Test
 using Finch
 using SparseArrays
+using DuckDB
 using Galley
+
 
 # run subtests
 #include("basic-tests.jl")

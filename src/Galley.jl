@@ -5,7 +5,7 @@ using AutoHashEquals
 using Combinatorics
 using DataStructures
 using Finch
-using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO
+using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_parse
 using Random
 
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
@@ -25,6 +25,7 @@ export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logica
 export DCStats, NaiveStats, _recursive_insert_stats!, TensorDef, DC
 export naive, hypertree_width, greedy, ordering
 export expr_to_kernel, execute_tensor_kernel
+export load_to_duckdb
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")

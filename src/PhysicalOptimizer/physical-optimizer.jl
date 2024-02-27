@@ -13,7 +13,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         def = get_def(stats)
         def.index_order = input_indices
         input_dict[next_tensor_id] = expr_to_kernel(n, input_indices)
-        kernel_root = InputExpr(next_tensor_id, input_indices, [t_gallop for _ in input_indices], stats)
+        kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for _ in input_indices], stats)
 
     elseif n.head == MapJoin
         op = n.args[1]
@@ -31,7 +31,8 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         stats = deepcopy(n.stats)
         def = get_def(stats)
         def.index_order = relative_sort(def.index_order, reverse(loop_order))
-        kernel_root = InputExpr(next_tensor_id, def.index_order, [t_gallop for _ in def.index_order], stats)
+        protos = input_dict[next_tensor_id] isa Tensor ?  [t_walk for _ in def.index_order] :  [t_walk for _ in def.index_order]
+        kernel_root = InputExpr(next_tensor_id, def.index_order, protos, stats)
     end
     return kernel_root, input_dict
 end
@@ -170,7 +171,7 @@ function transpose_input(loop_order, input, stats)
     if !is_sorted
         @assert input isa Tensor
         input_indices = get_index_order(stats)
-        expr = InputExpr("t_1", input_indices, [t_gallop for _ in input_indices], stats)
+        expr = InputExpr("t_1", input_indices, [t_walk for _ in input_indices], stats)
         input_dict = Dict()
         input_dict["t_1"] = input
         expr = ReorderExpr(transposed_index_order, expr)
@@ -194,7 +195,7 @@ function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel,
         return kernel
     end
     input_indices = kernel.output_indices
-    expr = InputExpr("t_1", input_indices, [t_gallop for _ in input_indices], stats)
+    expr = InputExpr("t_1", input_indices, [SeqWriteCostp for _ in input_indices], stats)
     input_dict = Dict()
     input_dict["t_1"] = kernel
     expr = ReorderExpr(transposed_index_order, expr)

@@ -5,6 +5,17 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Ve
     index_expressions = []
     for i in range(1, length(index_ids))
         index = index_instance(Symbol(index_ids[i]))
+        if read == true
+            if protocols[i] == t_walk
+                index = call_instance(literal_instance(Finch.defaultread), index)
+            elseif protocols[i] == t_gallop
+                index = call_instance(literal_instance(Finch.gallop), index)
+            elseif protocols[i] == t_lead
+                index = call_instance(literal_instance(Finch.lead), index)
+            elseif protocols[i] == t_follow
+                index = call_instance(literal_instance(Finch.follow), index)
+            end
+        end
         push!(index_expressions, index)
     end
     tensor_var = variable_instance(Symbol(tensor_id))
@@ -114,7 +125,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                                 full_prgm)
     printKernel(kernel, verbose)
     start_time = time()
-    output_tensor = Finch.execute(full_prgm, (mode=Finch.FastFinch(),)).output_tensor
+    Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         return output_tensor[]

@@ -151,6 +151,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         end
     end
 
+    factor_counter = 1
     factors = Set{Factor}()
     for v in keys(query_vertices)
         label = query_vertices[v]
@@ -160,7 +161,8 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         idx = query_id_to_idx(v)
         indices = Set([idx])
         vertex_tensor = vertex_vectors[label][idx]
-        vertex_factor = Factor(vertex_tensor, indices, indices, false, deepcopy(vertex_tensor.stats))
+        vertex_factor = Factor(vertex_tensor, indices, indices, false, deepcopy(vertex_tensor.stats), factor_counter)
+        factor_counter += 1
         push!(factors, vertex_factor)
     end
 
@@ -173,7 +175,8 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         r_idx = query_id_to_idx(edge[2])
         indices = Set([l_idx, r_idx])
         edge_tensor = edge_matrices[label][l_idx, r_idx]
-        edge_factor = Factor(edge_tensor, indices, indices, false, deepcopy(edge_tensor.stats))
+        edge_factor = Factor(edge_tensor, indices, indices, false, deepcopy(edge_tensor.stats), factor_counter)
+        factor_counter += 1
         push!(factors, edge_factor)
     end
     faq = FAQInstance(*, +, Set{IndexExpr}(), Set([query_id_to_idx(v) for v in 1:n]), factors)
@@ -241,7 +244,9 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type)
     ]
 
     query_directories[yeast] = ["/yeast"]
+    query_directories[yeast_lite] = ["/yeast-lite"]
     query_directories[hprd] = ["/hprd"]
+    query_directories[hprd_lite] = ["/hprd-lite"]
     query_directories[wordnet] = ["/wordnet"]
     query_directories[youtube] = ["/youtube"]
     query_directories[patents] = ["/patents"]
@@ -251,7 +256,13 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type)
     query_paths = [readdir("Experiments/Data/Subgraph_Queries" * dir, join=true) for dir in query_directories[dataset]]
     query_paths = [(query_paths...)...]
 
-    vertex_vectors, edge_matrices = load_subgraph_dataset(dataset, stats_type)
+    graph_dataset = dataset
+    if dataset == yeast_lite
+        graph_dataset = yeast
+    elseif dataset == hprd_lite
+        graph_dataset = hprd
+    end
+    vertex_vectors, edge_matrices = load_subgraph_dataset(graph_dataset, stats_type)
     all_queries = []
     println("Loading Queries For: ", dataset)
     for query_path in query_paths
@@ -264,7 +275,7 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type)
         query_type = ""
         if dataset == lubm80
             query_type = match(r".*/.*/lubm80_(.*).txt", query_path).captures[1]
-        elseif IS_GCARE_DATASET[dataset]
+        elseif IS_GCARE_DATASET[graph_dataset]
             query_type = match(r".*/.*/(.*)_.*/.*", query_path).captures[1]
         else
             query_type = match(r".*/.*/query_(.*)_.*", query_path).captures[1]

@@ -5,10 +5,8 @@ function faq_to_htd(faq::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS = naive, use
     validate_faq(faq)
     htd = nothing
     if faq_optimizer == naive
-        prune_faq!(faq)
         htd = return naive_decomposition(faq)
     elseif faq_optimizer == hypertree_width
-        prune_faq!(faq)
         htd = return hypertree_width_decomposition(faq)
     elseif faq_optimizer == greedy
         htd = return greedy_decomposition(faq)

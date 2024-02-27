@@ -2,7 +2,7 @@
 # "Constructing Optimal Contraction Trees for Tensor Network Quantum Circuit Simulation"
 # (https://ieeexplore.ieee.org/document/9926353)
 # It splits the optimization process into a heuristic NP-Hard part and a deterministic
-# quadratic part. 
+# quadratic part.
 
 
 function generate_orders(factors::Set{Factor})
@@ -18,7 +18,8 @@ function get_sub_order_cost!(sum_op,
                             costs::Dict{Tuple{Int, Int}, Float64},
                             optimal_subtrees::Dict{Tuple{Int, Int}, Union{Bag, Factor}},
                             i::Int,
-                            j::Int)
+                            j::Int,
+                            bag_counter::Vector{UInt64})
     # Base case where the sub-order is a single tensor
     if i == j
         costs[(i,j)] = estimate_nnz(stats[(i,j)])
@@ -29,12 +30,12 @@ function get_sub_order_cost!(sum_op,
     for k in i : 1 : j-1
         max_k_cost = 0
         if !haskey(costs, (i, k))
-            get_sub_order_cost(sum_op, mult_op, factors, index_ranges, stats, costs, optimal_subtrees, i, k)
+            get_sub_order_cost(sum_op, mult_op, factors, index_ranges, stats, costs, optimal_subtrees, i, k, bag_counter)
             max_k_cost = max(max_k_cost, costs[(i, k)])
         end
 
         if !haskey(costs, (k+1, j))
-            get_sub_order_cost(sum_op, mult_op, factors, index_ranges, stats, costs, optimal_subtrees, k+1, j)
+            get_sub_order_cost(sum_op, mult_op, factors, index_ranges, stats, costs, optimal_subtrees, k+1, j, bag_counter)
             max_k_cost = max(max_k_cost, costs[(k+1, j)])
         end
 
@@ -77,7 +78,8 @@ function get_sub_order_cost!(sum_op,
             stat = stats[(i,j)]
             covered_indices = ∪(get_index_set(stats[(i,k)]), get_index_set(stats[(k+1,j)]))
             parent_indices = aggregated_indices
-            optimal_subtrees[(i,j)]= Bag(edge_cover, covered_indices, parent_indices, child_bags, stat)
+            optimal_subtrees[(i,j)]= Bag(edge_cover, covered_indices, parent_indices, child_bags, stat, bag_counter[1])
+            bag_counter[1] += 1
         end
     end
 end
@@ -103,7 +105,7 @@ function optimal_htd_given_order(sum_op, mult_op, factors::Vector{Factor}, outpu
     end
     costs = Dict{Tuple{Int, Int}, Float64}()
     optimal_subtrees = Dict{Tuple{Int, Int}, Union{Bag, Factor}}()
-
+    bag_counter = [0]
     get_sub_order_cost!(sum_op,
                         mult_op,
                         factors,
@@ -113,7 +115,8 @@ function optimal_htd_given_order(sum_op, mult_op, factors::Vector{Factor}, outpu
                         optimal_subtrees,
                         1,
                         length(factors),
-                        output_indices)
+                        output_indices,
+                        bag_counter)
 
     if optimal_subtrees[(1, length(factors))] isa Factor
         factor = optimal_subtrees[(1, length(factors))]
@@ -121,7 +124,8 @@ function optimal_htd_given_order(sum_op, mult_op, factors::Vector{Factor}, outpu
                                                         factor.all_indices,
                                                         output_indices,
                                                         [],
-                                                        factor.stats)
+                                                        factor.stats,
+                                                        bag_counter[1])
     end
     optimal_htd = HyperTreeDecomposition(mult_op,
                                 sum_op,

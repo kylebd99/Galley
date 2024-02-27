@@ -73,8 +73,7 @@ function get_sparsity_structure(tensor::Tensor)
 
     initializer = declare_instance(variable_instance(:output_tensor), literal_instance(0.0))
     full_prgm = block_instance(initializer, full_prgm)
-
-    output_tensor = Finch.execute(full_prgm).output_tensor
+    Finch.execute(full_prgm)
     return output_tensor
 end
 
@@ -133,13 +132,6 @@ function one_off_reduce(op,
     end
     initializer = declare_instance(output_variable, literal_instance(0.0))
     full_prgm = block_instance(initializer, full_prgm)
-    return Finch.execute(full_prgm, (mode=Finch.FastFinch(),)).output_tensor
-end
-
-#function Base.show(io::IO ,tensor::Tensor)
-#    println(io, "FIBER Type( ", typeof(tensor), ")")
-#end
-
-function Base.print(io::IO ,tensor::Tensor)
-    println(io, "FIBER Type( ", typeof(tensor), ")")
+    Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
+    return output_tensor
 end

@@ -1,11 +1,11 @@
 # This is a good framework for graphing, but we need to make an experiment_params object first
 
-@enum GROUP dataset faq_optimizer query_type stats_type
+@enum GROUP dataset faq_optimizer query_type stats_type description
 
-@enum VALUE runtime
+@enum VALUE execute_time opt_time overall_time
 
 function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams};
-                                        x_type::GROUP=dataset, y_type::VALUE=runtime,
+                                        x_type::GROUP=dataset, y_type::VALUE=overall_time,
                                         grouping::GROUP=faq_optimizer,
                                         x_label=nothing, y_label=nothing, filename=nothing)
     # for now let's just use the dataset as the x-values and the cycle size as the groups
@@ -25,9 +25,13 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
             current_x = x_type == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, x_type)
             current_group = grouping == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, grouping)
             current_y = 0
-            if y_type == runtime
+            if y_type == execute_time
                 current_y = results_df[i, :Runtime]
-            else # y_type == runtime
+            elseif y_type == opt_time
+                current_y = results_df[i, :OptTime]
+            elseif y_type == overall_time
+                current_y = results_df[i, :OptTime] + results_df[i, :Runtime]
+            else # y_type == execute_time
                 current_y = results_df[i, :Runtime]
             end
             # push the errors and their groupings into the correct vector
@@ -79,9 +83,12 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                 current_y = results_df[i, :Estimate] / results_df[i, :TrueCard]
             elseif y_type == memory_footprint
                 current_y = results_df[i, :MemoryFootprint]/(10^6)
-            else
-                     # y_type == runtime
-                current_y = results_df[i, :EstimationTime]
+            elseif y_type == opt_time
+                current_y = results_df[i, :OptTime]
+            elseif y_type == execute_time
+                current_y = results_df[i, :Runtime]
+            else # y_type == overall_time
+                current_y = results_df[i, :OptTime] + results_df[i, :Runtime]
             end
             # push the errors and their groupings into the correct vector
             push!(x_values, current_x)
@@ -105,8 +112,16 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                             ylims=y_lims,
                             legend = :outertopleft,
                             size = (1000, 600))
-    x_label !== nothing && xlabel!(gbplot, x_label)
-    y_label !== nothing && ylabel!(gbplot, y_label)
+    if x_label !== nothing
+        xlabel!(gbplot, x_label)
+    else
+        xlabel!(gbplot, string(x_type))
+    end
+    if y_label !== nothing
+        ylabel!(gbplot, y_label)
+    else
+        ylabel!(gbplot, string(y_type))
+    end
     plotname = (isnothing(filename)) ? results_filename * ".png" : filename * ".png"
     savefig(gbplot, "Experiments/Figures/" * plotname)
 end
@@ -122,6 +137,8 @@ function get_value_from_param(experiment_param::ExperimentParams, value_type::GR
         return experiment_param.faq_optimizer
     elseif value_type == stats_type
         return string(experiment_param.stats_type)
+    elseif value_type == description
+        return experiment_param.description
     else
         # default to grouping by faq_optimizer
         return experiment_param.faq_optimizer

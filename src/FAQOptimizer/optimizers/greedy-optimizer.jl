@@ -59,6 +59,7 @@ function greedy_decomposition(faq::FAQInstance)
         push!(inputs, factor)
     end
     all_indices = union([get_index_set(input.stats) for input in inputs]...)
+    bag_counter = 0
     while all_indices != output_indices
         cheapest_edge_cover = _get_cheapest_edge_cover(mult_op, sum_op, inputs, output_indices)
         edge_cover = Set{Factor}()
@@ -88,7 +89,9 @@ function greedy_decomposition(faq::FAQInstance)
                         edge_cover,
                         covered_indices,
                         parent_indices,
-                        child_bags)
+                        child_bags,
+                        bag_counter)
+        bag_counter += 1
         new_inputs = Union{Factor, Bag}[]
         for i in 1:length(inputs)
             if !(i in cheapest_edge_cover)
@@ -112,7 +115,7 @@ function greedy_decomposition(faq::FAQInstance)
             push!(covered_indices, index)
         end
     end
-    root_bag::Bag = Bag(mult_op, sum_op, edge_covers, covered_indices, output_indices, child_bags)
+    root_bag::Bag = Bag(mult_op, sum_op, edge_covers, covered_indices, output_indices, child_bags, bag_counter)
     htd = HyperTreeDecomposition(mult_op, sum_op, output_indices, root_bag, output_index_order)
     return htd
 end

@@ -125,7 +125,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                                 full_prgm)
     printKernel(kernel, verbose)
     start_time = time()
-    output_tensor = Finch.execute(full_prgm, (mode=Finch.FastFinch(),)).output_tensor
+    Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         return output_tensor[]

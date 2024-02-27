@@ -8,8 +8,8 @@ experiments = ExperimentParams[]
 for dataset in datasets
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=hypertree_width))
-#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, description="Ours"))
-#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, use_duckdb=true, description="Ours + DuckDB"))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, description="Ours"))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, use_duckdb=true, description="Ours + DuckDB"))
     push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive; stats_type=NaiveStats, use_duckdb=true, description="DuckDB"))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=ordering))

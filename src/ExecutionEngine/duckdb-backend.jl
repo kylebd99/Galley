@@ -146,7 +146,7 @@ function _collect_factors(bag::Bag)
     return factor_list
 end
 
-function fsparse_fixed(I, V, shape, combine)
+function fsparse_fixed(I, V, M, combine)
     C = map(tuple, reverse(I)...)
     updater = false
     if !issorted(C)
@@ -169,7 +169,7 @@ function fsparse_fixed(I, V, shape, combine)
     else
         I = map(copy, I)
     end
-    return fsparse!(I..., V, shape)
+    return fsparse!(I..., V, M)
 end
 
 # First, insert all of the factors as tables e_1, etc, then recursively compute the bags.

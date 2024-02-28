@@ -12,6 +12,18 @@ function _get_index_cost(mult_op, sum_op, index::IndexExpr, inputs::Vector{Union
         end
     end
     covered_indices = union([get_index_set(stats) for stats in edge_cover_stats]...)
+
+    # Add any edges which have been inadvertently covered by these additional indices.
+    for i in eachindex(inputs)
+        if i ∈ edge_cover
+            continue
+        end
+        if get_index_set(inputs[i].stats) ⊆ covered_indices
+            push!(edge_cover, i)
+            push!(edge_cover_stats, inputs[i].stats)
+        end
+    end
+
     parent_indices = copy(output_indices)
     for idx in covered_indices
         for i in eachindex(inputs)

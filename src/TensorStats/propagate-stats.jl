@@ -238,7 +238,6 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
     # In order to preserve as much information as possible, we need to infer dcs before
     # filtering out DCs.
-    old_dc_set = copy(stats.dcs)
     inferred_dcs = _infer_dcs(stats.dcs)
     new_dcs_dict = Dict()
     for dc in inferred_dcs
@@ -249,9 +248,6 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
         new_Y_dim_size = get_dim_space_size(stats, new_Y)
 
         new_dc = min(dc.d * summed_X_dim_size, new_Y_dim_size)
-        if new_dc == 1.0 && dc.d > 1 && length(new_Y) > 1
-            println("($(new_X)) min($(dc.d) * $(summed_X_dim_size), $(new_Y_dim_size))")
-        end
         new_key = (X = remaining_Xs, Y = new_Y)
         current_dc = get(new_dcs_dict, new_key, Inf)
         if new_dc < current_dc
@@ -263,21 +259,6 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
         push!(new_dcs, DC(key.X, key.Y, d))
     end
 
-    for dc in old_dc_set
-        for new_dc in new_dcs
-            if get_dc_key(dc) == get_dc_key(new_dc)
-                if new_dc.d == 1.0 && dc.d > 1
-                    println("Reduce Indices: $(reduce_indices) old_dc: $(dc) new_dc: $(new_dc)")
-                    for dc in old_dc_set
-                        println("       Old DC to Check: $(dc)")
-                    end
-                    for dc in inferred_dcs
-                        println("       Inferred DC to Check: $(dc)")
-                    end
-                end
-            end
-        end
-    end
     new_stats = DCStats(new_def, new_dcs)
     return new_stats
 end

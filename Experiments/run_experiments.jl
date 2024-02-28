@@ -29,7 +29,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                         println("Warm Start Query Path: ", query.query_path)
                         galley(query.query; faq_optimizer = experiment.faq_optimizer)
                     end
-                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0)
+                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=1)
                     push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value)))
                     if !isnothing(query.expected_result)
                         if all(result.value .== query.expected_result)

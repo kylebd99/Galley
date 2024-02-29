@@ -60,7 +60,13 @@ end
                     parent_indices::Set{IndexExpr},
                     child_bags::Set{Bag},
                     id::Int)
-        input_stats::Vector{TensorStats} = cat([f.stats for f in edge_covers], [b.stats for b in child_bags], dims=(1,1))
+        input_stats::Vector{TensorStats} = []
+        for f in edge_covers
+            push!(input_stats, f.stats)
+        end
+        for b in child_bags
+            push!(input_stats, b.stats)
+        end
         return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices), id)
     end
 

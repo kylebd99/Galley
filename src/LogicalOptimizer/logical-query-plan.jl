@@ -16,7 +16,8 @@ struct IndexExpr
 end
 Base.convert(::Type{IndexExpr}, x::String) = IndexExpr(x)
 Base.isless(x::IndexExpr, y::IndexExpr) = x.id < y.id
-Base.:(==)(x::IndexExpr, y::IndexExpr) = x.id == y.id && x.name == y.name
+Base.:(==)(x::IndexExpr, y::IndexExpr) = x.id == y.id
+Base.hash(x::IndexExpr) = hash(x.id)
 
 # Here, we define the internal expression type that we use to describe logical query plans.
 # This is the expression type that we will optimize using Metatheory.jl, so it has to conform to

@@ -156,6 +156,53 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000)
     return final_dcs
 end
 
+# When we're only attempting to infer for nnz estimation, we only need to consider
+# left dcs which have X = {}.
+function _infer_dcs_cheap(dcs::Set{DC}; timeout=100000)
+    all_dcs = Dict{DCKey, Float64}()
+    for dc in dcs
+        all_dcs[(X = dc.X, Y = dc.Y)] = dc.d
+    end
+    prev_new_dcs = deepcopy(all_dcs)
+    time = 1
+    finished = false
+    while time < timeout && !finished
+        new_dcs = Dict{DCKey, Float64}()
+        function infer_dc(l, ld, r, rd)
+            if l.Y ⊇ r.X
+                new_key = (X = l.X, Y = setdiff(∪(l.Y, r.Y), l.X))
+                new_degree = ld*rd
+                if get(all_dcs, new_key, Inf) > new_degree &&
+                        get(new_dcs, new_key, Inf) > new_degree
+                    new_dcs[new_key] = new_degree
+                end
+            end
+            time +=1
+        end
+
+        for (l, ld) in all_dcs
+            length(l.X) > 0 && continue
+            for (r, rd) in prev_new_dcs
+                infer_dc(l, ld, r, rd)
+                time > timeout && break
+            end
+            time > timeout && break
+        end
+        prev_new_dcs = new_dcs
+        for (dc_key, dc) in new_dcs
+            all_dcs[dc_key] = dc
+        end
+        if length(prev_new_dcs) == 0
+            finished = true
+        end
+    end
+    final_dcs = Set{DC}()
+    for (dc_key, dc) in all_dcs
+        push!(final_dcs, DC(dc_key.X, dc_key.Y, dc))
+    end
+    return final_dcs
+end
+
 function estimate_nnz(stat::DCStats)
     indices = get_index_set(stat)
     dcs = stat.dcs
@@ -167,7 +214,7 @@ function estimate_nnz(stat::DCStats)
     end
     min_card < Inf && return min_card
 
-    inferred_dcs = _infer_dcs(dcs)
+    inferred_dcs = _infer_dcs_cheap(dcs)
     min_card = Inf
     for dc in inferred_dcs
         if isempty(dc.X) && dc.Y ⊇ indices

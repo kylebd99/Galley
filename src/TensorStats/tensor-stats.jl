@@ -167,7 +167,6 @@ function estimate_nnz(stat::DCStats)
     end
     min_card < Inf && return min_card
 
-    println("Reaching infer on estimation")
     inferred_dcs = _infer_dcs(dcs)
     min_card = Inf
     for dc in inferred_dcs

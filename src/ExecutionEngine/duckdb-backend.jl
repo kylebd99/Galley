@@ -56,7 +56,7 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
 
     bag_table = bag_to_table_name(bag)
     create_table(dbconn, bag.parent_indices, bag_table)
-    child_tables = ∪([bag_to_table_name(b) for b in bag.child_bags], [factor_to_table_name(f) for f in bag.edge_covers])
+
     var_to_covered_var = Dict()
     for var in bag.covered_indices
         for b in bag.child_bags
@@ -74,15 +74,42 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
     end
 
 
+    table_names_and_aliases = ∪([bag_to_table_name(b) for b in bag.child_bags],
+                                ["$(f.input.args[2][1]) as $(factor_to_table_name(f))" for f in bag.edge_covers])
+
+    table_aliases = ∪([bag_to_table_name(b) for b in bag.child_bags],
+                        [factor_to_table_name(f) for f in bag.edge_covers])
+
+    canonical_parent_refs = []
+    for idx in bag.parent_indices
+        finished = false
+        for child_bag in bag.child_bags
+            if idx in child_bag.parent_indices
+                push!(canonical_parent_refs, "$(bag_to_table_name(child_bag)).$idx")
+                finished = true
+                break
+            end
+        end
+        for f in bag.edge_covers
+            finished && break
+            if idx in f.all_indices
+                table_indices = f.input.args[2][2]
+                idx_pos = only(indexin([idx], f.input.args[1]))
+                push!(canonical_parent_refs, "$(factor_to_table_name(f)).$(table_indices[idx_pos])")
+                break
+            end
+        end
+    end
+
     query_str = "INSERT INTO $bag_table \nSELECT "
     prefix = ""
-    for idx in bag.parent_indices
-        query_str *= "$prefix$(var_to_covered_var[idx])"
+    for ref in canonical_parent_refs
+        query_str *= "$prefix$ref"
         prefix = ", "
     end
     query_str *= "$(prefix)SUM("
     prefix = ""
-    for tbl in child_tables
+    for tbl in table_aliases
         query_str *= "$prefix$tbl.v"
         prefix = " * "
     end
@@ -90,33 +117,34 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
 
 
     query_str *= "\nFROM "
-
     prefix = ""
-    for tbl in child_tables
+    for tbl in table_names_and_aliases
         query_str *= "$prefix$tbl"
         prefix = ", "
     end
 
     prefix = "\nWHERE "
     for idx in bag.covered_indices
-        idx_tables = []
+        idx_refs = []
         for f in bag.edge_covers
             if idx in f.all_indices
-                push!(idx_tables, factor_to_table_name(f))
+                table_indices = f.input.args[2][2]
+                idx_pos = only(indexin([idx], f.input.args[1]))
+                push!(idx_refs, "$(factor_to_table_name(f)).$(table_indices[idx_pos])")
             end
         end
         for b in bag.child_bags
             if idx in b.parent_indices
-                push!(idx_tables, bag_to_table_name(b))
+                push!(idx_refs, "$(bag_to_table_name(b)).$idx")
             end
         end
 
-        if length(idx_tables) == 1
+        if length(idx_refs) == 1
             continue
         end
-        base_factor = idx_tables[1]
-        for f in idx_tables[2:end]
-            query_str *= "$prefix$base_factor.$idx = $f.$idx"
+        base_ref = idx_refs[1]
+        for ref in idx_refs[2:end]
+            query_str *= "$prefix$base_ref = $ref"
             prefix = " AND "
         end
     end
@@ -124,16 +152,16 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
     if length(bag.parent_indices) > 0
         query_str *= "\nGROUP BY "
         prefix = ""
-        for idx in bag.parent_indices
-            query_str *= "$prefix$(var_to_covered_var[idx])"
+        for ref in canonical_parent_refs
+            query_str *= "$prefix$ref"
             prefix = ", "
         end
     end
 
     DuckDB.execute(dbconn, query_str)
 
-    for tbl in child_tables
-        DuckDB.execute(dbconn, "DROP TABLE $tbl")
+    for tbl in bag.child_bags
+        DuckDB.execute(dbconn, "DROP TABLE $(bag_to_table_name(tbl))")
     end
 end
 
@@ -205,5 +233,7 @@ function duckdb_htd_to_output(dbconn, htd::HyperTreeDecomposition)
     else
         output = only(DuckDB.execute(dbconn, "SELECT * FROM $(bag_to_table_name(htd.root_bag))"))[:v]
     end
+
+    DuckDB.execute(dbconn, "DROP TABLE $(bag_to_table_name(htd.root_bag))")
     return (value = output, insert_time = insert_time, execute_time  = execute_time)
 end

@@ -6,7 +6,7 @@
 # each edge label as a 0/1 matrix E_ij indicating whether there is an edge from i to j
 # where the edge has the correct label
 
-function load_dataset(path, stats_type; subgraph_matching_data=false)
+function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
     n = 0
     edges::Dict{Tuple{Int, Int}, Int} = Dict()
     vertices::Dict{Int, Array{Int}} = Dict()
@@ -57,6 +57,10 @@ function load_dataset(path, stats_type; subgraph_matching_data=false)
         vertex_vector = Tensor(SparseList(Element(0.0), n))
         copyto!(vertex_vector,  sparsevec(node_ids, values, n))
         vertex_vectors[label] =  InputTensor(vertex_vector, stats_type)[IndexExpr("i")]
+        if !isnothing(dbconn)
+            fill_table(dbconn, vertex_vectors[label].args[2], [IndexExpr("i_1")], vertex_label_to_table(label))
+            vertex_vectors[label].args[2] = (vertex_label_to_table(label), ["i_1"])
+        end
     end
 
     edge_matrices = Dict()
@@ -73,49 +77,56 @@ function load_dataset(path, stats_type; subgraph_matching_data=false)
         edge_matrix = Tensor(SparseList(SparseList(Element(0.0), n), n))
         copyto!(edge_matrix, sparse(i_ids, j_ids, values, n, n))
         edge_matrices[label] = InputTensor(edge_matrix, stats_type)[IndexExpr("i"), IndexExpr("j")]
+        if !isnothing(dbconn)
+            fill_table(dbconn, edge_matrices[label].args[2], [IndexExpr("i_1"), IndexExpr("i_2")], edge_label_to_table(label))
+            edge_matrices[label].args[2] = (edge_label_to_table(label), ["i_1", "i_2"])
+        end
     end
     return vertex_vectors, edge_matrices
 end
 
 
-function load_subgraph_dataset(dataset::WORKLOAD, stats_type::Type)
+function load_subgraph_dataset(dataset::WORKLOAD, stats_type::Type, dbconn)
     if dataset == aids
         aids_data_file_path = "Experiments/Data/Subgraph_Data/aids/aids.txt"
-        return load_dataset(aids_data_file_path, stats_type)
+        return load_dataset(aids_data_file_path, stats_type, dbconn)
     elseif dataset == human
         human_data_file_path = "Experiments/Data/Subgraph_Data/human/human.txt"
-        return load_dataset(human_data_file_path, stats_type)
+        return load_dataset(human_data_file_path, stats_type, dbconn)
     elseif dataset == lubm80
         lubm80_data_file_path = "Experiments/Data/Subgraph_Data/lubm80/lubm80.txt"
-        return load_dataset(lubm80_data_file_path, stats_type)
+        return load_dataset(lubm80_data_file_path, stats_type, dbconn)
     elseif dataset == yago
         yago_data_file_path = "Experiments/Data/Subgraph_Data/yago/yago.txt"
-        return load_dataset(yago_data_file_path, stats_type)
+        return load_dataset(yago_data_file_path, stats_type, dbconn)
     elseif dataset == yeast
         yeast_data_file_path = "Experiments/Data/Subgraph_Data/yeast/yeast.graph"
-        return load_dataset(yeast_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(yeast_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     elseif dataset == hprd
         hprd_data_file_path = "Experiments/Data/Subgraph_Data/hprd/hprd.graph"
-        return load_dataset(hprd_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(hprd_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     elseif dataset == wordnet
         wordnet_data_file_path = "Experiments/Data/Subgraph_Data/wordnet/wordnet.graph"
-        return load_dataset(wordnet_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(wordnet_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     elseif dataset == dblp
         dblp_data_file_path = "Experiments/Data/Subgraph_Data/dblp/dblp.graph"
-        return load_dataset(dblp_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(dblp_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     elseif dataset == youtube
         youtube_data_file_path = "Experiments/Data/Subgraph_Data/youtube/youtube.graph"
-        return load_dataset(youtube_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(youtube_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     elseif dataset == patents
         patents_data_file_path = "Experiments/Data/Subgraph_Data/patents/patents.graph"
-        return load_dataset(patents_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(patents_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     elseif dataset == eu2005
         eu2005_data_file_path = "Experiments/Data/Subgraph_Data/eu2005/eu2005.graph"
-        return load_dataset(eu2005_data_file_path, stats_type, subgraph_matching_data=true)
+        return load_dataset(eu2005_data_file_path, stats_type, dbconn, subgraph_matching_data=true)
     end
 end
 
 query_id_to_idx(i::Int) = IndexExpr("v_" * string(i))
+
+vertex_label_to_table(i) = "v_" * string(i)
+edge_label_to_table(i) = "e_" * string(i)
 
 function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=false)
     n = 0
@@ -184,9 +195,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
 end
 
 
-
-function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type)
-
+function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
     query_directories = Dict()
     query_directories[aids] = ["/aids/Chain_3/",
         "/aids/Chain_6/",
@@ -262,7 +271,8 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type)
     elseif dataset == hprd_lite
         graph_dataset = hprd
     end
-    vertex_vectors, edge_matrices = load_subgraph_dataset(graph_dataset, stats_type)
+
+    vertex_vectors, edge_matrices = load_subgraph_dataset(graph_dataset, stats_type, dbconn)
     all_queries = []
     println("Loading Queries For: ", dataset)
     for query_path in query_paths

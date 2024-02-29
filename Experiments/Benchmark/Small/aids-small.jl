@@ -77,7 +77,7 @@ time_dict = Dict("balanced triangle"=>Dict(),
                 "unbalanced bowtie"=>Dict(), )
 
 verbosity=3
-
+#=
 for ST in [DCStats, NaiveStats]
     vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", ST)
     main_edge = edges[0]
@@ -118,7 +118,7 @@ for ST in [DCStats, NaiveStats]
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][string(ST)] = qb_unbalanced_time
 end
-
+ =#
 
 
 for ST in [DCStats, NaiveStats]

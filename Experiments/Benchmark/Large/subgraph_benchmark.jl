@@ -2,7 +2,7 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-datasets = [aids]
+datasets = [hprd_lite]
 
 experiments = ExperimentParams[]
 for dataset in datasets

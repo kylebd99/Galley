@@ -1,21 +1,17 @@
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
         results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "Result")]
-        queries = load_workload(experiment.workload, experiment.stats_type)
+        dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
+        queries = load_workload(experiment.workload, experiment.stats_type, dbconn)
         num_attempted = 0
         num_completed = 0
         num_correct = 0
         num_with_values = 0
         for query in queries
-#            if any([occursin(x, query.query_type) for x in ["dense", "16", "24", "32"]])
-#                continue
-#            end
             println("Query Path: ", query.query_path)
             num_attempted +=1
             try
                 if experiment.use_duckdb
-                    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
-                    load_to_duckdb(dbconn, query.query)
                     result = galley(query.query; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0)
                     push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value)))
                     if !isnothing(query.expected_result)

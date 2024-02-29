@@ -76,7 +76,7 @@ time_dict = Dict("balanced triangle"=>Dict(),
                 "balanced bowtie"=>Dict(),
                 "unbalanced bowtie"=>Dict(), )
 
-verbosity=3
+verbosity=1
 #=
 for ST in [DCStats, NaiveStats]
     vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", ST)
@@ -120,87 +120,76 @@ for ST in [DCStats, NaiveStats]
 end
  =#
 
-
 for ST in [DCStats, NaiveStats]
-    vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", ST)
+    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+    vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", ST, dbconn)
     main_edge = edges[0]
 
-    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qt_balanced = query_triangle(main_edge, main_edge, main_edge)
-    load_to_duckdb(dbconn, qt_balanced)
     qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Balanced Triangle [$ST]: ", qt_balanced_time)
     time_dict["balanced triangle"][string(ST) * "_duckdb"] = qt_balanced_time
 
-    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-    load_to_duckdb(dbconn, qt_unbalanced)
     qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
     time_dict["unbalanced triangle"][string(ST) * "_duckdb"] = qt_unbalanced_time
 
-    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
-    load_to_duckdb(dbconn, qp_balanced)
     qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Balanced Path [$ST]: ", qp_balanced_time)
     time_dict["balanced path"][string(ST) * "_duckdb"] = qp_balanced_time
 
-    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-    load_to_duckdb(dbconn, qp_unbalanced)
     qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Unbalanced Path [$ST]: ", qp_unbalanced_time)
     time_dict["unbalanced path"][string(ST) * "_duckdb"] = qp_unbalanced_time
 
-    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
-    load_to_duckdb(dbconn, qb_balanced)
     qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][string(ST) * "_duckdb"] = qb_balanced_time
 
-    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
     qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-    load_to_duckdb(dbconn, qb_unbalanced)
     qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity).execute_time
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][string(ST) * "_duckdb"] = qb_unbalanced_time
 end
 
-
-vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", DCStats)
+dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats, dbconn)
 main_edge = edges[0]
 
+
 qt_balanced = query_triangle(main_edge, main_edge, main_edge)
-qt_balanced_time = duckdb_compute_faq(qt_balanced).time
+qt_balanced_time = galley(qt_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity).execute_time
 println("Balanced Triangle [DuckDB]: ", qt_balanced_time)
-time_dict["balanced triangle"][:DuckDB] = qt_balanced_time
+time_dict["balanced triangle"]["DuckDB"] = qt_balanced_time
 
 qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-qt_unbalanced_time = duckdb_compute_faq(qt_unbalanced).time
+qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity).execute_time
 println("Unbalanced Triangle [DuckDB]: ", qt_unbalanced_time)
-time_dict["unbalanced triangle"][:DuckDB] = qt_unbalanced_time
+time_dict["unbalanced triangle"]["DuckDB"] = qt_unbalanced_time
 
 qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
-qp_balanced_time = duckdb_compute_faq(qp_balanced).time
+qp_balanced_time = galley(qp_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity).execute_time
 println("Balanced Path [DuckDB]: ", qp_balanced_time)
-time_dict["balanced path"][:DuckDB] = qp_balanced_time
+time_dict["balanced path"]["DuckDB"] = qp_balanced_time
 
 qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-qp_unbalanced_time = duckdb_compute_faq(qp_unbalanced).time
+qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity).execute_time
 println("Unbalanced Path [DuckDB]: ", qp_unbalanced_time)
-time_dict["unbalanced path"][:DuckDB] = qp_unbalanced_time
+time_dict["unbalanced path"]["DuckDB"] = qp_unbalanced_time
 
 qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
-qb_balanced_time = duckdb_compute_faq(qb_balanced).time
+qb_balanced_time = galley(qb_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity).execute_time
 println("Balanced Bowtie [DuckDB]: ", qb_balanced_time)
-time_dict["balanced bowtie"][:DuckDB] = qb_balanced_time
+time_dict["balanced bowtie"]["DuckDB"] = qb_balanced_time
 
 qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-qb_unbalanced_time = duckdb_compute_faq(qb_unbalanced).time
+qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity).execute_time
 println("Unbalanced Bowtie [DuckDB]: ", qb_unbalanced_time)
-time_dict["unbalanced bowtie"][:DuckDB] = qb_unbalanced_time
+time_dict["unbalanced bowtie"]["DuckDB"] = qb_unbalanced_time
 
 for qt in keys(time_dict)
     println("Query Type: $(qt)")

@@ -1,5 +1,10 @@
 using DuckDB
 
+struct DuckDBTensor
+    name::String
+    columns::Vector{String}
+end
+
 function load_to_duckdb(dbconn::DBInterface.Connection ,faq::FAQInstance)
     for factor in faq.factors
         tensor_name = factor_to_table_name(factor)
@@ -75,7 +80,7 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
 
 
     table_names_and_aliases = ∪([bag_to_table_name(b) for b in bag.child_bags],
-                                ["$(f.input.args[2][1]) as $(factor_to_table_name(f))" for f in bag.edge_covers])
+                                ["$(f.input.args[2].name) as $(factor_to_table_name(f))" for f in bag.edge_covers])
 
     table_aliases = ∪([bag_to_table_name(b) for b in bag.child_bags],
                         [factor_to_table_name(f) for f in bag.edge_covers])
@@ -93,7 +98,7 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
         for f in bag.edge_covers
             finished && break
             if idx in f.all_indices
-                table_indices = f.input.args[2][2]
+                table_indices = f.input.args[2].columns
                 idx_pos = only(indexin([idx], f.input.args[1]))
                 push!(canonical_parent_refs, "$(factor_to_table_name(f)).$(table_indices[idx_pos])")
                 break
@@ -128,7 +133,7 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
         idx_refs = []
         for f in bag.edge_covers
             if idx in f.all_indices
-                table_indices = f.input.args[2][2]
+                table_indices = f.input.args[2].columns
                 idx_pos = only(indexin([idx], f.input.args[1]))
                 push!(idx_refs, "$(factor_to_table_name(f)).$(table_indices[idx_pos])")
             end

@@ -2,7 +2,7 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-datasets = [hprd_lite]
+datasets = [yeast_lite]
 
 experiments = ExperimentParams[]
 for dataset in datasets
@@ -17,6 +17,6 @@ end
 
 run_experiments(experiments)
 
-graph_grouped_box_plot(experiments; y_type=overall_time, grouping=description, filename="2subgraph_counting_htd_comparison_overall")
-graph_grouped_box_plot(experiments; y_type=opt_time, grouping=description, filename="2subgraph_counting_htd_comparison_opt")
-graph_grouped_box_plot(experiments; y_type=execute_time, grouping=description, filename="2subgraph_counting_htd_comparison_execute")
+graph_grouped_box_plot(experiments; y_type=overall_time, grouping=description, filename="3subgraph_counting_htd_comparison_overall")
+graph_grouped_box_plot(experiments; y_type=opt_time, grouping=description, filename="3subgraph_counting_htd_comparison_opt")
+graph_grouped_box_plot(experiments; y_type=execute_time, grouping=description, filename="3subgraph_counting_htd_comparison_execute")

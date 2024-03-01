@@ -12,7 +12,7 @@ function _reachable_set(v::IndexExpr, sep::Set{IndexExpr}, E::Dict{IndexExpr, Se
     return setdiff(visited_vars, sep)
 end
 
-function _get_components(sep::Set{IndexExpr}, factors::Set{Factor})
+function _get_components(sep::Set{IndexExpr}, factors::Set{Factor{ST}}) where ST
     E::Dict{IndexExpr, Set{IndexExpr}} = _factors_to_adjacency_dict(factors)
     undecided_vars = setdiff(Set(keys(E)), sep)
     components = []
@@ -25,7 +25,7 @@ function _get_components(sep::Set{IndexExpr}, factors::Set{Factor})
     return components
 end
 
-function _factors_to_adjacency_dict(factors::Set{Factor})
+function _factors_to_adjacency_dict(factors::Set{Factor{ST}}) where ST
     adjacency_dict::Dict{IndexExpr, Set{IndexExpr}} = Dict()
     for factor in factors
         for v1 in factor.all_indices
@@ -40,18 +40,18 @@ function _factors_to_adjacency_dict(factors::Set{Factor})
     return adjacency_dict
 end
 
-function _check_for_cross_products(factors::Vector{Factor})
+function _check_for_cross_products(factors::Vector{Factor{ST}}) where ST
     V = Set{IndexExpr}(union([f.all_indices for f in factors]...))
     connected_vars = _get_components(Set{IndexExpr}(), factors)[1]
     return V != connected_vars
 end
 
-function get_valid_subsets(factors::Set{Factor}, width, factor_graph::Dict{Factor, Vector{Factor}})
-    factor_sets_by_width = Dict{Int, Set{Set{Factor}}}()
-    prev_width_sets::Set{Set{Factor}} = Set{Set{Factor}}([Set([factor]) for factor in factors])
+function get_valid_subsets(factors::Set{Factor{ST}}, width, factor_graph::Dict{Factor{ST}, Vector{Factor{ST}}}) where ST
+    factor_sets_by_width = Dict{Int, Set{Set{Factor{ST}}}}()
+    prev_width_sets::Set{Set{Factor{ST}}} = Set{Set{Factor{ST}}}([Set([factor]) for factor in factors])
     factor_sets_by_width[1] = prev_width_sets
     for i in 2:width
-        new_width_sets = Set{Set{Factor}}()
+        new_width_sets = Set{Set{Factor{ST}}}()
         for factor_set in prev_width_sets
             neighbors = ∪([factor_graph[factor] for factor in factor_set]...)
             for neighbor in neighbors
@@ -67,12 +67,12 @@ end
 
 function _recursive_hypertree_bag_decomp(mult_op,
                                         sum_op,
-                                        factors::Set{Factor},
-                                        factor_sets_by_width::Dict{Int, Set{Set{Factor}}},
+                                        factors::Set{Factor{ST}},
+                                        factor_sets_by_width::Dict{Int, Set{Set{Factor{ST}}}},
                                         parent_vars::Set{IndexExpr},
                                         max_width::Int,
-                                        subtree_dict::Dict{Tuple{Set{Factor}, Set{IndexExpr}}, Any},
-                                        bag_counter)
+                                        subtree_dict::Dict{Tuple{Set{Factor{ST}}, Set{IndexExpr}}, Any},
+                                        bag_counter) where ST
     haskey(subtree_dict, (factors, parent_vars)) && return subtree_dict[(factors, parent_vars)]
     V = Set{IndexExpr}(union([f.all_indices for f in factors]...))
     V1 = Set{IndexExpr}()
@@ -102,8 +102,8 @@ function _recursive_hypertree_bag_decomp(mult_op,
             end
             not_connected && continue
 
-            complete_edge_cover = Set{Factor}()
-            remaining_factors = Set{Factor}()
+            complete_edge_cover = Set{Factor{ST}}()
+            remaining_factors = Set{Factor{ST}}()
             for factor in factors
                 if factor.all_indices ⊆ V1
                     push!(complete_edge_cover, factor)
@@ -113,17 +113,17 @@ function _recursive_hypertree_bag_decomp(mult_op,
             end
 
             if length(remaining_factors) == 0
-                bag = Bag(mult_op, sum_op, complete_edge_cover, V1, parent_vars, Set{Bag}(), bag_counter[1])
+                bag = Bag(mult_op, sum_op, complete_edge_cover, V1, parent_vars, Set{Bag{ST}}(), bag_counter[1])
                 bag_counter[1] += 1
                 subtree_dict[(factors, parent_vars)] = bag
                 return bag
             end
 
             components = _get_components(V1, remaining_factors)
-            child_trees = Set{Bag}()
+            child_trees = Set{Bag{ST}}()
             invalid_cover = false
             for component in components
-                component_edges = Set{Factor}()
+                component_edges = Set{Factor{ST}}()
                 for factor in remaining_factors
                     if length(intersect(factor.all_indices, component))  > 0
                         push!(component_edges, factor)
@@ -149,14 +149,15 @@ end
 
 function hypertree_width_decomposition(faq::FAQInstance; verbose=0)
     verbose > 2 && println("Beginning HTD")
+    ST = typeof(first(faq.factors).stats)
     mult_op = faq.mult_op
     sum_op = faq.sum_op
     output_indices = faq.output_indices
     output_index_order = faq.output_index_order
-    factors = Set{Factor}(faq.factors)
+    factors = Set{Factor{ST}}(faq.factors)
 
     verbose > 2 && println("Making Factor Graph")
-    factor_graph = Dict{Factor, Vector{Factor}}()
+    factor_graph = Dict{Factor{ST}, Vector{Factor{ST}}}()
     for factor in factors
         neighbors = Factor[]
         for factor2 in factors
@@ -171,7 +172,7 @@ function hypertree_width_decomposition(faq::FAQInstance; verbose=0)
     end
     verbose > 2 && println("Done Making Factor Graph")
     start_time = time()
-    subtree_dict = Dict{Tuple{Set{Factor}, Set{IndexExpr}}, Any}()
+    subtree_dict = Dict{Tuple{Set{Factor{ST}}, Set{IndexExpr}}, Any}()
     for max_width in 1:length(factors)
         verbose > 2 && println("Length: ", time() - start_time)
         verbose > 2 && println("Max Width: ", max_width)

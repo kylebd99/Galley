@@ -11,7 +11,7 @@ function load_to_duckdb(dbconn::DBInterface.Connection ,faq::FAQInstance)
         tensor = factor.input.args[2]
         indices = factor.input.args[1]
         fill_table(dbconn, tensor, indices, tensor_name)
-        factor.input.args[2] = tensor_name
+        factor.input.args[2] = DuckDBTensor(tensor_name, [idx.name for idx in indices])
     end
 end
 
@@ -35,8 +35,6 @@ function fill_table(dbconn, tensor, idx_names, table_name)
     create_table(dbconn, idx_names, table_name)
     appender = DuckDB.Appender(dbconn, "$table_name")
     data = tensor_to_vec_of_tuples(tensor)
-#    println("$table_name Length: $(length(data)), countstored: $(countstored(tensor)), indices: $(idx_names)")
-
     for row in data
         for val in row
             DuckDB.append(appender, val)
@@ -77,7 +75,6 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
             end
         end
     end
-
 
     table_names_and_aliases = ∪([bag_to_table_name(b) for b in bag.child_bags],
                                 ["$(f.input.args[2].name) as $(factor_to_table_name(f))" for f in bag.edge_covers])

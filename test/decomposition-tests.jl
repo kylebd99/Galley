@@ -23,7 +23,7 @@ end
         b_tensor = InputTensor(b_data)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_data), 2)
 
-        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}(), 1)
+        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag{NaiveStats}}(), 1)
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
         correct_plan_1 = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
         correct_plan_2 = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, b_tensor, a_tensor))
@@ -48,7 +48,7 @@ end
         copyto!(b_data, b_matrix)
         b_tensor = InputTensor(b_data)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_data), 2)
-        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}(), 1)
+        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag{NaiveStats}}(), 1)
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
         correct_plan = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
         plan = decomposition_to_logical_plan(htd)

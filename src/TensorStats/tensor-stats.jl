@@ -188,6 +188,16 @@ function _infer_dcs_cheap(dcs::Set{DC}; timeout=100000)
             end
             time > timeout && break
         end
+
+        for (l, ld) in prev_new_dcs
+            length(l.X) > 0 && continue
+            for (r, rd) in all_dcs
+                infer_dc(l, ld, r, rd)
+                time > timeout && break
+            end
+            time > timeout && break
+        end
+
         prev_new_dcs = new_dcs
         for (dc_key, dc) in new_dcs
             all_dcs[dc_key] = dc

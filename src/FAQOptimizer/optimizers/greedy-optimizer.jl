@@ -96,6 +96,7 @@ function greedy_decomposition(faq::FAQInstance)
                 end
             end
         end
+        condense_stats(cheapest_stat)
         new_bag = Bag(edge_cover,
                         covered_indices,
                         parent_indices,

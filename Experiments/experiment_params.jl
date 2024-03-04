@@ -18,10 +18,11 @@ struct ExperimentParams
     faq_optimizer::FAQ_OPTIMIZERS
     stats_type::Type
     use_duckdb::Bool
+    timeout::Float64
     description::String
 
-    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, description="")
-        return new(workload, warm_start, faq_optimizer, stats_type, use_duckdb, description)
+    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, timeout=60*5, description="")
+        return new(workload, warm_start, faq_optimizer, stats_type, use_duckdb, timeout, description)
     end
 end
 

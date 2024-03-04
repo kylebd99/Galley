@@ -1,6 +1,28 @@
+macro timeout(seconds, expr_to_run, expr_when_fails)
+    quote
+        tsk = @task $(esc(expr_to_run))
+        schedule(tsk)
+        num_checks = $(esc(seconds))*10
+        for i in 1:num_checks
+            sleep(.1)
+            if istaskdone(tsk)
+                break
+            end
+        end
+        if !istaskdone(tsk)
+            schedule(tsk, InterruptException(), error=true)
+        end
+        try
+            fetch(tsk)
+        catch
+            $(esc(expr_when_fails))
+        end
+    end
+end
+
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
-        results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "Result")]
+        results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "Result", "Failed")]
         dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
         queries = load_workload(experiment.workload, experiment.stats_type, dbconn)
         num_attempted = 0
@@ -12,29 +34,39 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
             num_attempted +=1
             try
                 if experiment.use_duckdb
-                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0)
-                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value)))
-                    if !isnothing(query.expected_result)
-                        if result.value == query.expected_result
-                            num_correct += 1
+                    result = @timeout experiment.timeout galley(query.query; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0) "failed"
+                    if result == "failed"
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", string(true)))
+                    else
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value), string(false)))
+                        if !isnothing(query.expected_result)
+                            if result.value == query.expected_result
+                                num_correct += 1
+                            end
+                            num_with_values += 1
                         end
-                        num_with_values += 1
+                        num_completed += 1
                     end
                 else
                     if experiment.warm_start
                         println("Warm Start Query Path: ", query.query_path)
                         galley(query.query; faq_optimizer = experiment.faq_optimizer)
                     end
-                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=1)
-                    push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value)))
-                    if !isnothing(query.expected_result)
-                        if all(result.value .== query.expected_result)
-                            num_correct += 1
+                    result = @timeout experiment.timeout galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=1) "failed"
+                    if result == "failed"
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", string(true)))
+                    else
+                        println(result)
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value), string(false)))
+                        if !isnothing(query.expected_result)
+                            if all(result.value .== query.expected_result)
+                                num_correct += 1
+                            end
+                            num_with_values += 1
                         end
-                        num_with_values += 1
+                        num_completed += 1
                     end
                 end
-                num_completed += 1
             catch e
                 throw(e)
                 println("Error Occurred: ", e)

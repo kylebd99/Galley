@@ -1,21 +1,42 @@
+
+# A subset of the allowed level formats provided by the Finch API
+@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
+
 # This struct holds the high-level definition of a tensor. This information should be
 # agnostic to the statistics used for cardinality estimation.
 @auto_hash_equals mutable struct TensorDef
     index_set::Set{IndexExpr}
     dim_sizes::Dict{IndexExpr, Int}
     default_value::Any
+    level_formats::Union{Nothing, Vector{LevelFormat}}
     index_order::Union{Nothing, Vector{IndexExpr}}
 end
-TensorDef(default) = TensorDef(Set(), Dict(), default, nothing)
+TensorDef(default) = TensorDef(Set(), Dict(), default, nothing, nothing)
+
+function level_to_enum(lvl)
+    if typeof(lvl) <: SparseListLevel
+        return t_sparse_list
+    elseif typeof(lvl) <: SparseHashLevel
+        return t_hash
+    elseif typeof(lvl) <: DenseLevel
+        return t_dense
+    else
+        throw(Base.error("Level Not Recognized"))
+    end
+end
 
 function TensorDef(indices::Vector{IndexExpr}, tensor::Tensor)
     shape_tuple = size(tensor)
     dim_size = Dict()
+    level_formats = LevelFormat[]
+    current_lvl = tensor.lvl
     for i in 1:length(indices)
         dim_size[indices[i]] = shape_tuple[i]
+        push!(level_formats, level_to_enum(current_lvl))
+        current_lvl = current_lvl.lvl
     end
     default_value = Finch.default(tensor)
-    return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, indices)
+    return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, level_formats, indices)
 end
 
 function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
@@ -34,7 +55,7 @@ function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
         new_dim_sizes[rename_dict[idx]] = size
     end
 
-    return TensorDef(new_index_set, new_dim_sizes, def.default_value, indices)
+    return TensorDef(new_index_set, new_dim_sizes, def.default_value, def.level_formats, indices)
 end
 
 get_dim_sizes(def::TensorDef) = def.dim_sizes
@@ -42,6 +63,7 @@ get_dim_size(def::TensorDef, idx::IndexExpr) = def.dim_sizes[idx]
 get_index_set(def::TensorDef) = def.index_set
 get_index_order(def::TensorDef) = def.index_order
 get_default_value(def::TensorDef) = def.default_value
+get_index_format(def::TensorDef, idx::IndexExpr) = def.level_formats[findfirst(x->x==idx, def.index_order)]
 
 function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
     dim_space_size = 1
@@ -59,7 +81,7 @@ get_dim_size(stat::TensorStats, idx::IndexExpr) = get_dim_size(get_def(stat), id
 get_index_set(stat::TensorStats) = get_index_set(get_def(stat))
 get_index_order(stat::TensorStats) = get_index_order(get_def(stat))
 get_default_value(stat::TensorStats) = get_default_value(get_def(stat))
-
+get_index_format(stat::TensorStats, idx::IndexExpr) = get_index_format(get_def(stat), idx)
 
 
 #################  NaiveStats Definition ###################################################
@@ -83,7 +105,7 @@ function NaiveStats(indices::Vector{IndexExpr}, tensor::Tensor)
 end
 
 function NaiveStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
     return NaiveStats(def, 1)
 end
 
@@ -267,7 +289,7 @@ function DCStats(indices::Vector{IndexExpr}, tensor::Tensor)
 end
 
 function DCStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
     return DCStats(def, Set([DC(Set(), Set(), 1)]))
 end
 

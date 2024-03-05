@@ -30,7 +30,7 @@ function merge_tensor_def_join(op, all_defs::Vector{TensorDef})
             end
         end
     end
-    return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing)
+    return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing, nothing)
 end
 
 
@@ -45,7 +45,7 @@ function merge_tensor_def_union(op, all_defs::Vector{TensorDef})
             end
         end
     end
-    return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing)
+    return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing, nothing)
 end
 
 function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
@@ -69,7 +69,7 @@ function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
     for index in new_index_set
         new_dim_sizes[index] = def.dim_sizes[index]
     end
-    return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing)
+    return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing, nothing)
 end
 
 # This function determines whether a binary operation is union-like or join-like and creates

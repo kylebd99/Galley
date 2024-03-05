@@ -96,7 +96,7 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
             finished && break
             if idx in f.all_indices
                 table_indices = f.input.args[2].columns
-                idx_pos = only(indexin([idx], f.input.args[1]))
+                idx_pos = findfirst(x->x==idx, f.input.args[1])
                 push!(canonical_parent_refs, "$(factor_to_table_name(f)).$(table_indices[idx_pos])")
                 break
             end
@@ -131,7 +131,7 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
         for f in bag.edge_covers
             if idx in f.all_indices
                 table_indices = f.input.args[2].columns
-                idx_pos = only(indexin([idx], f.input.args[1]))
+                idx_pos =findfirst(x->x==idx, f.input.args[1])
                 push!(idx_refs, "$(factor_to_table_name(f)).$(table_indices[idx_pos])")
             end
         end

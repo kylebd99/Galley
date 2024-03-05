@@ -7,8 +7,6 @@ TensorId = String
 # This defines the list of access protocols allowed by the Finch API
 @enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4
 
-# The set of allowed level formats provided by the Finch API
-@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
 
 mutable struct InputExpr <: TensorExpression
     tensor_id::TensorId

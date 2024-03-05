@@ -13,7 +13,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         def = get_def(stats)
         def.index_order = input_indices
         input_dict[next_tensor_id] = expr_to_kernel(n, input_indices)
-        kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for _ in input_indices], stats)
+        kernel_root = InputExpr(next_tensor_id, input_indices, [t_walk for idx in input_indices], stats)
 
     elseif n.head == MapJoin
         op = n.args[1]
@@ -31,7 +31,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
         stats = deepcopy(n.stats)
         def = get_def(stats)
         def.index_order = relative_sort(def.index_order, reverse(loop_order))
-        protos = input_dict[next_tensor_id] isa Tensor ?  [t_walk for _ in def.index_order] :  [t_walk for _ in def.index_order]
+        protos = input_dict[next_tensor_id] isa Tensor ?  [get_index_format(stats, idx) == t_sparse_list ? t_gallop : t_walk for idx in def.index_order ] :  [t_walk for _ in def.index_order]
         kernel_root = InputExpr(next_tensor_id, def.index_order, protos, stats)
     end
     return kernel_root, input_dict

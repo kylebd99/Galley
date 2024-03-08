@@ -5,7 +5,7 @@ abstract type TensorExpression end
 TensorId = String
 
 # This defines the list of access protocols allowed by the Finch API
-@enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4
+@enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4 t_default = 5
 
 
 mutable struct InputExpr <: TensorExpression

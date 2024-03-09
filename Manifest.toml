@@ -369,9 +369,9 @@ weakdeps = ["PDMats", "SparseArrays", "Statistics"]
 
 [[deps.Finch]]
 deps = ["AbstractTrees", "CIndices", "Compat", "DataStructures", "JSON", "LinearAlgebra", "PrecompileTools", "Random", "Requires", "RewriteTools", "SyntaxInterface"]
-git-tree-sha1 = "5fb95aad5b57d6c874f4c97a7ed6dfb029f80140"
+git-tree-sha1 = "5a11efa10f7715cf597555d4e0ec4341b07dccad"
 uuid = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"
-version = "0.6.13"
+version = "0.6.15"
 
     [deps.Finch.extensions]
     HDF5Ext = "HDF5"

@@ -22,6 +22,9 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
 
         # keep track of the data points
         for i in 1:nrow(results_df)
+            if results_df[i, :Failed]
+                continue
+            end
             current_x = x_type == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, x_type)
             current_group = grouping == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, grouping)
             current_y = 0
@@ -76,6 +79,9 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
         println(results_df)
         # keep track of the data points
         for i in 1:nrow(results_df)
+            if results_df[i, :Failed]
+                continue
+            end
             current_x = x_type == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, x_type)
             current_group = grouping == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, grouping)
             current_y = 0

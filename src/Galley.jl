@@ -7,7 +7,7 @@ using DataStructures
 using Finch
 using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
 using Random
-
+using Profile
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
                         access_instance,  assign_instance, loop_instance, declare_instance,
                         block_instance, define_instance, call_instance, freeze_instance,
@@ -25,7 +25,7 @@ export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logica
 export DCStats, NaiveStats, _recursive_insert_stats!, TensorDef, DC
 export naive, hypertree_width, greedy, ordering
 export expr_to_kernel, execute_tensor_kernel
-export load_to_duckdb
+export load_to_duckdb, DuckDBTensor
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
@@ -82,6 +82,7 @@ function galley(faq_problem::FAQInstance;
                     verbose=0)
     verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
+
     htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
 
     if !isnothing(dbconn)
@@ -90,7 +91,9 @@ function galley(faq_problem::FAQInstance;
         verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
         verbose >= 1 && println("Time to Insert: ", result.insert_time)
         verbose >= 1 && println("Time to Execute: ", result.execute_time)
-        return (value=result.value, opt_time=(opt_end-opt_start), execute_time=result.execute_time)
+        return (value=result.value,
+                    opt_time=(opt_end-opt_start + result.opt_time),
+                    execute_time=result.execute_time)
     end
 
     expr = decomposition_to_logical_plan(htd)

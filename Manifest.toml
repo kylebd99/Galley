@@ -2,7 +2,7 @@
 
 julia_version = "1.9.2"
 manifest_format = "2.0"
-project_hash = "414c2b8fe5cf51292647271ee1f85fd54da9b765"
+project_hash = "3df628c871c542d12e5d1434684190abd0b044f9"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -369,9 +369,9 @@ weakdeps = ["PDMats", "SparseArrays", "Statistics"]
 
 [[deps.Finch]]
 deps = ["AbstractTrees", "CIndices", "Compat", "DataStructures", "JSON", "LinearAlgebra", "PrecompileTools", "Random", "Requires", "RewriteTools", "SyntaxInterface"]
-git-tree-sha1 = "5fb95aad5b57d6c874f4c97a7ed6dfb029f80140"
+git-tree-sha1 = "5a11efa10f7715cf597555d4e0ec4341b07dccad"
 uuid = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"
-version = "0.6.13"
+version = "0.6.15"
 
     [deps.Finch.extensions]
     HDF5Ext = "HDF5"

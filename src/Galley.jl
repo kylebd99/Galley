@@ -87,6 +87,7 @@ function galley(faq_problem::FAQInstance;
     if !isnothing(dbconn)
         opt_end = time()
         result = duckdb_htd_to_output(dbconn, htd)
+        verbose >= 1 && println("Plan: ", expr)
         verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
         verbose >= 1 && println("Time to Insert: ", result.insert_time)
         verbose >= 1 && println("Time to Execute: ", result.execute_time)

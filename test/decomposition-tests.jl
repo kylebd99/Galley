@@ -23,7 +23,7 @@ end
         b_tensor = InputTensor(b_data)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_data), 2)
 
-        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}(), 1)
+        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag{NaiveStats}}(), 1)
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
         correct_plan_1 = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
         correct_plan_2 = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, b_tensor, a_tensor))
@@ -38,19 +38,24 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
 
-        a_matrix = [1 0; 0 1]
-        a_data = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        m,n = 100, 1000
+        p = .005
+        T = Int64
+
+        a_matrix =  abs.(sprand(T, m, n, p) .% 100)
+        a_data = Tensor(SparseList(SparseList(Element(zero(T)), m), n))
         copyto!(a_data, a_matrix)
+        a_data = dropdefaults(a_data)
         a_tensor = InputTensor(a_data)[i, j]
         a_factor = Factor(a_tensor, Set([i, j]), Set([i, j]), false, NaiveStats([i, j], a_data), 1)
-        b_matrix = [0 1; 1 0]
-        b_data = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
+        b_matrix =  abs.(sprand(T, n, m, p) .% 100)
+        b_data = Tensor(SparseList(SparseList(Element(zero(T)), n), m))
         copyto!(b_data, b_matrix)
+        b_data = dropdefaults(b_data)
         b_tensor = InputTensor(b_data)[j, k]
         b_factor = Factor(b_tensor, Set([j, k]), Set([j, k]), false, NaiveStats([j,k], b_data), 2)
-        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag}(), 1)
+        bag = Bag(*, +, Set([a_factor, b_factor]), Set([i, j, k]), Set([i, k]), Set{Bag{NaiveStats}}(), 1)
         htd = HyperTreeDecomposition(*, +, Set([i, k]), bag, nothing)
-        correct_plan = Aggregate(+, Set{IndexExpr}([j]), MapJoin(*, a_tensor, b_tensor))
         plan = decomposition_to_logical_plan(htd)
         _recursive_insert_stats!(plan)
         output_order = [i, k]

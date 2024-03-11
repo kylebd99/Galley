@@ -1,21 +1,44 @@
+
+# A subset of the allowed level formats provided by the Finch API
+@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
+
 # This struct holds the high-level definition of a tensor. This information should be
 # agnostic to the statistics used for cardinality estimation.
 @auto_hash_equals mutable struct TensorDef
     index_set::Set{IndexExpr}
     dim_sizes::Dict{IndexExpr, Int}
     default_value::Any
+    level_formats::Union{Nothing, Vector{LevelFormat}}
     index_order::Union{Nothing, Vector{IndexExpr}}
 end
-TensorDef(default) = TensorDef(Set(), Dict(), default, nothing)
+TensorDef(default) = TensorDef(Set(), Dict(), default, nothing, nothing)
+
+function level_to_enum(lvl)
+    if typeof(lvl) <: SparseListLevel
+        return t_sparse_list
+    elseif typeof(lvl) <: SparseHashLevel
+        return t_hash
+    elseif typeof(lvl) <: DenseLevel
+        return t_dense
+    else
+        throw(Base.error("Level Not Recognized"))
+    end
+end
 
 function TensorDef(indices::Vector{IndexExpr}, tensor::Tensor)
     shape_tuple = size(tensor)
     dim_size = Dict()
+    level_formats = LevelFormat[]
+    current_lvl = tensor.lvl
     for i in 1:length(indices)
         dim_size[indices[i]] = shape_tuple[i]
+        push!(level_formats, level_to_enum(current_lvl))
+        current_lvl = current_lvl.lvl
     end
+    # Because levels are built outside-in, we need to reverse this.
+    level_formats = reverse(level_formats)
     default_value = Finch.default(tensor)
-    return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, indices)
+    return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, level_formats, indices)
 end
 
 function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
@@ -34,7 +57,7 @@ function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
         new_dim_sizes[rename_dict[idx]] = size
     end
 
-    return TensorDef(new_index_set, new_dim_sizes, def.default_value, indices)
+    return TensorDef(new_index_set, new_dim_sizes, def.default_value, def.level_formats, indices)
 end
 
 get_dim_sizes(def::TensorDef) = def.dim_sizes
@@ -42,6 +65,7 @@ get_dim_size(def::TensorDef, idx::IndexExpr) = def.dim_sizes[idx]
 get_index_set(def::TensorDef) = def.index_set
 get_index_order(def::TensorDef) = def.index_order
 get_default_value(def::TensorDef) = def.default_value
+get_index_format(def::TensorDef, idx::IndexExpr) = def.level_formats[findfirst(x->x==idx, def.index_order)]
 
 function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
     dim_space_size = 1
@@ -59,6 +83,8 @@ get_dim_size(stat::TensorStats, idx::IndexExpr) = get_dim_size(get_def(stat), id
 get_index_set(stat::TensorStats) = get_index_set(get_def(stat))
 get_index_order(stat::TensorStats) = get_index_order(get_def(stat))
 get_default_value(stat::TensorStats) = get_default_value(get_def(stat))
+get_index_format(stat::TensorStats, idx::IndexExpr) = get_index_format(get_def(stat), idx)
+
 
 #################  NaiveStats Definition ###################################################
 
@@ -69,6 +95,7 @@ end
 
 get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats) = stat.cardinality
+condense_stats(stat::NaiveStats) = stat
 
 NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
@@ -80,7 +107,7 @@ function NaiveStats(indices::Vector{IndexExpr}, tensor::Tensor)
 end
 
 function NaiveStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
     return NaiveStats(def, 1)
 end
 
@@ -109,51 +136,90 @@ end
 DCStats(default) = DCStats(TensorDef(default), Set())
 get_def(stat::DCStats) = stat.def
 
-function _infer_dcs(dcs::Set{DC}; timeout=100000)
-    all_dcs = Dict()
+DCKey = NamedTuple{(:X, :Y), Tuple{Set{IndexExpr}, Set{IndexExpr}}}
+
+# When we're only attempting to infer for nnz estimation, we only need to consider
+# left dcs which have X = {}.
+function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
+    all_dcs = Dict{DCKey, Float64}()
     for dc in dcs
-        all_dcs[(X = dc.X, Y = dc.Y)] = dc
+        all_dcs[(X = dc.X, Y = dc.Y)] = dc.d
     end
     prev_new_dcs = deepcopy(all_dcs)
-    new_dcs = Dict()
     time = 1
     finished = false
     while time < timeout && !finished
-        function infer_dc(l, r)
+        new_dcs = Dict{DCKey, Float64}()
+        function infer_dc(l, ld, r, rd)
             if l.Y ⊇ r.X
                 new_key = (X = l.X, Y = setdiff(∪(l.Y, r.Y), l.X))
-                new_degree = l.d*r.d
-                if get(all_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree &&
-                        get(new_dcs, new_key, DC(new_key.X, new_key.Y, Inf)).d > new_degree
-                    new_dcs[new_key] = DC(new_key.X, new_key.Y, new_degree)
+                new_degree = ld*rd
+                if get(all_dcs, new_key, Inf) > new_degree &&
+                        get(new_dcs, new_key, Inf) > new_degree
+                    new_dcs[new_key] = new_degree
                 end
             end
             time +=1
         end
 
-        for l in values(all_dcs)
-            for r in values(prev_new_dcs)
-                infer_dc(l,r)
-                infer_dc(r,l)
+        for (l, ld) in all_dcs
+            cheap && length(l.X) > 0 && continue
+            for (r, rd) in prev_new_dcs
+                infer_dc(l, ld, r, rd)
                 time > timeout && break
             end
             time > timeout && break
         end
-        prev_new_dcs = new_dcs
-        for dc in values(new_dcs)
-            all_dcs[get_dc_key(dc)] = dc
+
+        for (l, ld) in prev_new_dcs
+            cheap && length(l.X) > 0 && continue
+            for (r, rd) in all_dcs
+                infer_dc(l, ld, r, rd)
+                time > timeout && break
+            end
+            time > timeout && break
         end
-        new_dcs = Dict()
+
+        prev_new_dcs = new_dcs
+        for (dc_key, dc) in new_dcs
+            all_dcs[dc_key] = dc
+        end
         if length(prev_new_dcs) == 0
             finished = true
         end
     end
     final_dcs = Set{DC}()
-    for dc in values(all_dcs)
-        push!(final_dcs, dc)
+    for (dc_key, dc) in all_dcs
+        push!(final_dcs, DC(dc_key.X, dc_key.Y, dc))
     end
     return final_dcs
 end
+
+function condense_stats(stat::DCStats)
+    current_indices = get_index_set(stat)
+    inferred_dcs = _infer_dcs(stat.dcs; cheap=false)
+    min_dcs = Dict()
+    for dc in inferred_dcs
+        valid = true
+        for x in dc.X
+            if !(x in current_indices)
+                valid = false
+                break
+            end
+        end
+        valid == false && break
+        new_Y = dc.Y ∩ current_indices
+        min_dcs[(dc.X, new_Y)] = min(get(min_dcs, (dc.X, new_Y), Inf), dc.d)
+    end
+
+    end_dcs = Set{DC}()
+    for (dc_key, d) in min_dcs
+        push!(end_dcs, DC(dc_key[1], dc_key[2], d))
+    end
+    stat.dcs = end_dcs
+end
+
+
 
 function estimate_nnz(stat::DCStats)
     indices = get_index_set(stat)
@@ -166,7 +232,7 @@ function estimate_nnz(stat::DCStats)
     end
     min_card < Inf && return min_card
 
-    inferred_dcs = _infer_dcs(dcs)
+    inferred_dcs = _infer_dcs(dcs; cheap=true)
     min_card = Inf
     for dc in inferred_dcs
         if isempty(dc.X) && dc.Y ⊇ indices
@@ -225,7 +291,7 @@ function DCStats(indices::Vector{IndexExpr}, tensor::Tensor)
 end
 
 function DCStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
     return DCStats(def, Set([DC(Set(), Set(), 1)]))
 end
 

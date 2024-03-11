@@ -14,7 +14,7 @@ end
         i = IndexExpr("i")
         j = IndexExpr("j")
         dims = Dict(i=>1000, j=>1000)
-        def = TensorDef(Set([i,j]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j]), dims, 0.0, nothing, nothing)
         dcs = Set([DC(Set([i]), Set([j]), 5),
                  DC(Set([j]), Set([i]), 25),
                  DC(Set(), Set([i, j]), 50),
@@ -28,7 +28,7 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
         dims = Dict(i=>1000, j=>1000, k=>1000)
-        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing, nothing)
         dcs = Set([
                  DC(Set([j]), Set([k]), 5),
                  DC(Set(), Set([i, j]), 50),
@@ -43,7 +43,7 @@ end
         k = IndexExpr("k")
         l = IndexExpr("l")
         dims = Dict(i=>1000, j=>1000, k=>1000, l=>1000)
-        def = TensorDef(Set([i,j,k,l]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k,l]), dims, 0.0, nothing, nothing)
         dcs = Set([
                 DC(Set(), Set([i, j]), 50),
                 DC(Set([j]), Set([k]), 5),
@@ -58,7 +58,7 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
         dims = Dict(i=>1000, j=>1000, k=>1000)
-        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing, nothing)
         dcs = Set([
                 DC(Set(), Set([i, j]), 50),
                 DC(Set([i]), Set([j]), 5),
@@ -79,7 +79,7 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
         dims = Dict(i=>1000, j=>1000, k=>1000)
-        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing, nothing)
         # In this version, |R(i,j)| = 1
         dcs = Set([
                 DC(Set(), Set([i, j]), 1),
@@ -101,7 +101,7 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
         dims = Dict(i=>1000, j=>1000, k=>1000)
-        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing, nothing)
         dcs = Set([
                 DC(Set(), Set([i, j]), 50),
                 DC(Set([i]), Set([j]), 5),
@@ -123,7 +123,7 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
         dims = Dict(i=>1000, j=>1000, k=>1000)
-        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing, nothing)
         dcs = Set([
                     DC(Set(), Set([i, j]), 1),
                     DC(Set([i]), Set([j]), 1),
@@ -145,7 +145,7 @@ end
         j = IndexExpr("j")
         k = IndexExpr("k")
         dims = Dict(i=>1000, j=>1000, k=>1000)
-        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing)
+        def = TensorDef(Set([i,j,k]), dims, 0.0, nothing, nothing)
         dcs = Set([
                     DC(Set(), Set([i, j]), 1),
                     DC(Set([i]), Set([j]), 1),

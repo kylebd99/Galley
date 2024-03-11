@@ -1,8 +1,8 @@
 # This file is the entrance point to FAQ decompositions. First, it does some simple
 # optimizations to make the problem smaller, then it hands it off to an HTD algorithm.
 
-function faq_to_htd(faq::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS = naive, use_validation = true)
-    validate_faq(faq)
+function faq_to_htd(faq::FAQInstance; faq_optimizer::FAQ_OPTIMIZERS = naive, use_validation = false)
+    use_validation && validate_faq(faq)
     htd = nothing
     if faq_optimizer == naive
         htd = return naive_decomposition(faq)

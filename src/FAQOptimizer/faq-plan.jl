@@ -8,12 +8,12 @@
 # its variables, called an indicator factor. In this case, we refer to it as ψ_i, and it is
 # either 0 or 1 depending on whether there exists a non-zero completion of the variables in φ_i.
 
-@auto_hash_equals mutable struct Factor
+@auto_hash_equals mutable struct Factor{ST<:TensorStats}
     input::LogicalPlanNode
     active_indices::Set{IndexExpr}
     all_indices::Set{IndexExpr}
     is_indicator::Bool
-    stats::TensorStats
+    stats::ST
     id::Int
 end
 
@@ -22,14 +22,14 @@ end
     sum_op::Function
     output_indices::Set{IndexExpr}
     input_indices::Set{IndexExpr}
-    factors::Set{Factor}
+    factors::Set
     output_index_order::Vector{IndexExpr}
     function FAQInstance(
         mult_op::Function,
         sum_op::Function,
         output_indices::Set{IndexExpr},
         input_indices::Set{IndexExpr},
-        factors::Set{Factor})
+        factors::Set)
         return new(mult_op, sum_op, output_indices, input_indices, factors, collect(output_indices))
     end
 
@@ -38,34 +38,42 @@ end
         sum_op::Function,
         output_indices::Set{IndexExpr},
         input_indices::Set{IndexExpr},
-        factors::Set{Factor},
+        factors::Set,
         output_index_order::Union{Nothing, Vector{IndexExpr}})
         return new(mult_op, sum_op, output_indices, input_indices, factors, output_index_order)
     end
 
 end
 
-@auto_hash_equals mutable struct Bag
-    edge_covers::Set{Factor}
+@auto_hash_equals mutable struct Bag{ST<:TensorStats}
+    edge_covers::Set{Factor{ST}}
     covered_indices::Set{IndexExpr}
     parent_indices::Set{IndexExpr}
-    child_bags::Set{Bag}
-    stats::TensorStats
+    child_bags::Set{Bag{ST}}
+    stats::ST
     id::Int
+
+    function Bag(edge_covers::Set{Factor{ST}}, covered_indices::Set{IndexExpr},
+        parent_indices::Set{IndexExpr}, child_bags::Set{Bag{ST}},
+        stats::ST, id::Int) where ST
+        return new{ST}(edge_covers, covered_indices, parent_indices, child_bags, stats, id)
+    end
 
     function Bag(mult_op,
                     sum_op,
-                    edge_covers::Set{Factor},
+                    edge_covers::Set{Factor{ST}},
                     covered_indices::Set{IndexExpr},
                     parent_indices::Set{IndexExpr},
-                    child_bags::Set{Bag},
-                    id::Int)
-        input_stats::Vector{TensorStats} = cat([f.stats for f in edge_covers], [b.stats for b in child_bags], dims=(1,1))
-        return new(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices), id)
-    end
-
-    function Bag()
-        new(Set(), Set(), Set(), Set(), Set(), TensorStats(), 0)
+                    child_bags::Set{Bag{ST}},
+                    id::Int) where ST
+        input_stats = ST[]
+        for f in edge_covers
+            push!(input_stats, f.stats)
+        end
+        for b in child_bags
+            push!(input_stats, b.stats)
+        end
+        return new{ST}(edge_covers, covered_indices, parent_indices, child_bags, get_bag_stats(mult_op, sum_op, input_stats, parent_indices), id)
     end
 end
 

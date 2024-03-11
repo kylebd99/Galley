@@ -52,9 +52,9 @@ factor_to_table_name(factor::Factor) = "f_$(factor.id)"
 # database under the name "b_$(bag.id)". It then drops the child bag's tables to reduce
 # memory consumption.
 function _duckdb_compute_bag(dbconn, bag::Bag)
-
+    opt_time = 0
     for b in bag.child_bags
-        _duckdb_compute_bag(dbconn, b)
+        opt_time += _duckdb_compute_bag(dbconn, b)
     end
 
     bag_table = bag_to_table_name(bag)
@@ -160,11 +160,16 @@ function _duckdb_compute_bag(dbconn, bag::Bag)
         end
     end
 
+    explain_str = "Explain $query_str"
+    opt_time += @elapsed DuckDB.execute(dbconn, explain_str)
+
+
     DuckDB.execute(dbconn, query_str)
 
     for tbl in bag.child_bags
         DuckDB.execute(dbconn, "DROP TABLE $(bag_to_table_name(tbl))")
     end
+    return opt_time
 end
 
 function _collect_factors(bag::Bag)
@@ -216,7 +221,10 @@ function duckdb_htd_to_output(dbconn, htd::HyperTreeDecomposition)
             end
         end
     end
-    execute_time = @elapsed _duckdb_compute_bag(dbconn, htd.root_bag)
+    result = @timed _duckdb_compute_bag(dbconn, htd.root_bag)
+    opt_time = result.value
+    execute_time = result.time - opt_time
+
 
     output = nothing
     if !isnothing(htd.output_index_order) && length(htd.output_index_order) > 0
@@ -237,5 +245,5 @@ function duckdb_htd_to_output(dbconn, htd::HyperTreeDecomposition)
     end
 
     DuckDB.execute(dbconn, "DROP TABLE $(bag_to_table_name(htd.root_bag))")
-    return (value = output, insert_time = insert_time, execute_time  = execute_time)
+    return (value = output, insert_time = insert_time, execute_time  = execute_time, opt_time = opt_time)
 end

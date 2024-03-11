@@ -35,6 +35,8 @@ function TensorDef(indices::Vector{IndexExpr}, tensor::Tensor)
         push!(level_formats, level_to_enum(current_lvl))
         current_lvl = current_lvl.lvl
     end
+    # Because levels are built outside-in, we need to reverse this.
+    level_formats = reverse(level_formats)
     default_value = Finch.default(tensor)
     return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, level_formats, indices)
 end

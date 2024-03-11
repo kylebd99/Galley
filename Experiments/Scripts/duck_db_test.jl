@@ -42,10 +42,28 @@ function finch_triangle_gallop(e1, e2, e3)
     return @elapsed @finch begin
         output .= 0
         for j=_, i=_, k=_
-            output[] += e1[gallop(i), gallop(j)] * e2[gallop(k), gallop(j)] * e3[gallop(k), gallop(i)]
+            output[] += e1[gallop(i), j] * e2[gallop(k), j] * e3[gallop(k), i]
         end
     end
 end
+
+
+function finch_triangle_follow(e1, e2, e3)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    e3 = e3.args[2]
+    e4 = Tensor(DenseLevel(SparseHashLevel{1}(Element(0.0))))
+    @finch (e4 .= 0; for j=_, i=_ e4[i,j] = e3[i,j]; end)
+    output = Finch.Scalar(0.0)
+    return @elapsed @finch begin
+        output .= 0
+        for j=_, i=_, k=_
+            output[] += e1[i, j] * e2[k,  j] * e4[follow(k), follow(i)]
+        end
+    end
+end
+
+
 
 function query_mm(e1, e2)
     i = IndexExpr("i")
@@ -154,7 +172,7 @@ function finch_mm_proper_gustavsons(e1, e2)
         C .= 0
         for j=_
             w .= 0
-            for k=_, i=_; w[i] += E1[i, k] * E2[k, j] end
+            for k=_, i=_; w[i] += E1[i, follow(k)] * E2[gallop(k), j] end
             for i=_; C[i, j] = w[i] end
         end
     end
@@ -206,9 +224,11 @@ function query_mm_proper(e1, e2)
 end
 
 verbosity=3
-vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats)
+vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats, nothing)
 main_edge = edges[0]
-#=
+
+t_finch_follow = finch_triangle_follow(main_edge, main_edge, main_edge)
+t_finch_follow = finch_triangle_follow(main_edge, main_edge, main_edge)
 qt_balanced = query_triangle(main_edge, main_edge, main_edge)
 t_duckdb = duckdb_compute_faq(qt_balanced).time
 t_finch = finch_triangle(main_edge, main_edge, main_edge)
@@ -218,7 +238,8 @@ t_finch_gallop = finch_triangle_gallop(main_edge, main_edge, main_edge)
 println("t_duckdb: $(t_duckdb)")
 println("t_finch: $(t_finch)")
 println("t_finch_gallop: $(t_finch_gallop)")
- =#
+println("t_finch_follow: $(t_finch_follow)")
+
 mm_balanced = query_mm(main_edge, main_edge)
 mm_duckdb = duckdb_compute_faq(mm_balanced).time
 mm_finch = finch_mm(main_edge, main_edge)
@@ -242,5 +263,5 @@ mm_finch_gustavsons = finch_mm_proper_gustavsons(main_edge, main_edge)
 println("mm_duckdb: $(mm_duckdb)")
 println("mm_finch: $(mm_finch)")
 #println("mm_finch_inner: $(mm_finch_inner)")
-println("mm_finch_dcsc: $(mm_finch_dcsc)")
+#println("mm_finch_dcsc: $(mm_finch_dcsc)")
 println("mm_finch_gustavsons: $(mm_finch_gustavsons)")

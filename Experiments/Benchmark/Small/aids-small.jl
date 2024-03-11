@@ -206,12 +206,14 @@ end
 
 
 using StatsPlots
+ENV["GKSwstype"]="100"
 gbplot = StatsPlots.groupedbar(Xs,
                                 execute_times,
                                 group = groups,
                                 yscale =:log10,
+                                ylims=[10^-3, 1],
                                 legend = :outertopleft,
-                                size = (1000, 600))
+                                size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Execution Time")
 savefig(gbplot, "Experiments/Figures/aids_small_execute.png")
@@ -220,8 +222,9 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 opt_times,
                                 group = groups,
                                 yscale =:log10,
+                                ylims=[10^-4, 1],
                                 legend = :outertopleft,
-                                size = (1000, 600))
+                                size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Optimization Time")
 savefig(gbplot, "Experiments/Figures/aids_small_opt.png")

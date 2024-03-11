@@ -2,13 +2,13 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-datasets = [hprd_lite]
+datasets = [aids]
 
 experiments = ExperimentParams[]
 for dataset in datasets
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=hypertree_width))
-#    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, description="Ours", timeout=500))
+    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, description="Ours", timeout=500))
     push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, use_duckdb=true, description="Ours + DuckDB", timeout=500))
     push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=naive; stats_type=NaiveStats, use_duckdb=true, description="DuckDB", timeout=500))
 #    push!(experiments, ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=NaiveStats))

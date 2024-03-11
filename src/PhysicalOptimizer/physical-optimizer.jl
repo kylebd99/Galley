@@ -41,7 +41,7 @@ end
 
 function select_leader_protocol(format::LevelFormat)
     if format == t_sparse_list
-        return t_gallop
+        return t_walk
     elseif format == t_dense
         return t_default
     elseif format == t_hash
@@ -53,7 +53,7 @@ function select_follower_protocol(format::LevelFormat)
     if format == t_sparse_list
         return t_default
     elseif format == t_dense
-        return t_default
+        return t_follow
     elseif format == t_hash
         return t_default
     end
@@ -78,7 +78,7 @@ function modify_protocols!(input_exprs::Vector{InputExpr})
             push!(costs, size_after_var/size_before_var)
         end
         min_cost = minimum(costs)
-        needs_leader = true
+        needs_leader = length(relevant_inputs) > 1
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]
             var_index = findfirst(x->x==var, input.input_indices)
@@ -246,6 +246,7 @@ function transpose_input(loop_order, input, stats)
         input_dict["t_1"] = input
         expr = ReorderExpr(transposed_index_order, expr)
         output_formats = [t_sparse_list for _ in 1:length(transposed_index_order)]
+        output_formats[length(output_formats)] = t_dense
         output_dims = [get_dim_size(stats, idx) for idx in transposed_index_order]
         input = TensorKernel(expr,
                                 input_dict,

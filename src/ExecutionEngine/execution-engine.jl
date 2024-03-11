@@ -1,5 +1,5 @@
 # This file performs the actual execution of physical query plan.
-function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Vector{AccessProtocol}; read=true)
+function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols; read=true)
     mode = read ? Reader() : Updater()
     mode = literal_instance(mode)
     index_expressions = []
@@ -7,13 +7,13 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols::Ve
         index = index_instance(Symbol(index_ids[i]))
         if read == true
             if protocols[i] == t_walk
-                index = call_instance(literal_instance(Finch.walk), index)
+                index = call_instance(literal_instance(walk), index)
             elseif protocols[i] == t_gallop
-                index = call_instance(literal_instance(Finch.gallop), index)
+                index = call_instance(literal_instance(gallop), index)
             elseif protocols[i] == t_lead
-                index = call_instance(literal_instance(Finch.lead), index)
+                index = call_instance(literal_instance(lead), index)
             elseif protocols[i] == t_follow
-                index = call_instance(literal_instance(Finch.follow), index)
+                index = call_instance(literal_instance(follow), index)
             end
         end
         push!(index_expressions, index)
@@ -68,7 +68,9 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             else
                 if verbose >= 3
                     println("Stats Type: ", typeof(node.stats))
-                    println("Indices:  ", get_index_set(node.stats))
+                    println("Indices:  ", get_index_order(node.stats))
+                    println("Level Formats:  ", [get_index_format(node.stats, idx) for idx in node.input_indices])
+                    println("Protocols:  ", node.input_protocols)
                     println("Expected Output Tensor Size: ", estimate_nnz(node.stats))
                     println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
                 end

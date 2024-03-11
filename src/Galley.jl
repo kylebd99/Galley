@@ -91,7 +91,9 @@ function galley(faq_problem::FAQInstance;
         verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
         verbose >= 1 && println("Time to Insert: ", result.insert_time)
         verbose >= 1 && println("Time to Execute: ", result.execute_time)
-        return (value=result.value, opt_time=(opt_end-opt_start), execute_time=result.execute_time)
+        return (value=result.value,
+                    opt_time=(opt_end-opt_start + result.opt_time),
+                    execute_time=result.execute_time)
     end
 
     expr = decomposition_to_logical_plan(htd)

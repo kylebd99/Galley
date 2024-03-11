@@ -84,6 +84,8 @@ function galley(faq_problem::FAQInstance;
     opt_start = time()
 
     htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
+    expr = decomposition_to_logical_plan(htd)
+    _recursive_insert_stats!(expr)
 
     if !isnothing(dbconn)
         opt_end = time()
@@ -97,8 +99,6 @@ function galley(faq_problem::FAQInstance;
                     execute_time=result.execute_time)
     end
 
-    expr = decomposition_to_logical_plan(htd)
-    expr = merge_aggregates(expr)
     _recursive_insert_stats!(expr)
     verbose >= 1 && println("Plan: ", expr)
     output_index_order = htd.output_index_order

@@ -316,6 +316,10 @@ function select_output_format(output_stats::TensorStats,
                                 loop_order::Vector{IndexExpr},
                                 output_indices::Vector{IndexExpr}
                                 )
+    if length(output_indices) == 0
+        return LevelFormat[]
+    end
+
     approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
     if approx_sparsity > .01
         return [t_dense for _ in output_indices]

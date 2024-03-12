@@ -34,6 +34,49 @@ function finch_triangle(e1, e2, e3)
     end
 end
 
+
+function finch_triangle_dcsc(e1, e2, e3)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    e3 = e3.args[2]
+    E1 = Finch.Tensor(SparseList(SparseList(Element(0.0), size(e1)[1]), size(e1)[2]))
+    E2 = Finch.Tensor(SparseList(SparseList(Element(0.0), size(e2)[1]), size(e2)[2]))
+    E3 = Finch.Tensor(SparseList(SparseList(Element(0.0), size(e3)[1]), size(e3)[2]))
+    Finch.copyto!(E1, e1)
+    Finch.copyto!(E2, e2)
+    Finch.copyto!(E3, e3)
+
+    output = Finch.Scalar(0.0)
+    return @elapsed @finch begin
+        output .= 0
+        for j=_, i=_, k=_
+            output[] += E1[i,j] * E2[k,j] * E3[k, i]
+        end
+    end
+end
+
+
+function finch_triangle_dcsc_gallop(e1, e2, e3)
+    e1 = e1.args[2]
+    e2 = e2.args[2]
+    e3 = e3.args[2]
+    E1 = Finch.Tensor(SparseList(SparseList(Element(0.0), size(e1)[1]), size(e1)[2]))
+    E2 = Finch.Tensor(SparseList(SparseList(Element(0.0), size(e2)[1]), size(e2)[2]))
+    E3 = Finch.Tensor(SparseList(SparseList(Element(0.0), size(e3)[1]), size(e3)[2]))
+    Finch.copyto!(E1, e1)
+    Finch.copyto!(E2, e2)
+    Finch.copyto!(E3, e3)
+
+    output = Finch.Scalar(0.0)
+    return @elapsed @finch begin
+        output .= 0
+        for j=_, i=_, k=_
+            output[] += E1[gallop(i),j] * E2[k,j] * E3[k, gallop(i)]
+        end
+    end
+end
+
+
 function finch_triangle_gallop(e1, e2, e3)
     e1 = e1.args[2]
     e2 = e2.args[2]
@@ -227,18 +270,21 @@ verbosity=3
 vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats, nothing)
 main_edge = edges[0]
 
-t_finch_follow = finch_triangle_follow(main_edge, main_edge, main_edge)
-t_finch_follow = finch_triangle_follow(main_edge, main_edge, main_edge)
 qt_balanced = query_triangle(main_edge, main_edge, main_edge)
 t_duckdb = duckdb_compute_faq(qt_balanced).time
 t_finch = finch_triangle(main_edge, main_edge, main_edge)
 t_finch = finch_triangle(main_edge, main_edge, main_edge)
 t_finch_gallop = finch_triangle_gallop(main_edge, main_edge, main_edge)
 t_finch_gallop = finch_triangle_gallop(main_edge, main_edge, main_edge)
+t_finch_dcsc = finch_triangle_dcsc(main_edge, main_edge, main_edge)
+t_finch_dcsc = finch_triangle_dcsc(main_edge, main_edge, main_edge)
+t_finch_dcsc_gallop = finch_triangle_dcsc_gallop(main_edge, main_edge, main_edge)
+t_finch_dcsc_gallop = finch_triangle_dcsc_gallop(main_edge, main_edge, main_edge)
 println("t_duckdb: $(t_duckdb)")
 println("t_finch: $(t_finch)")
 println("t_finch_gallop: $(t_finch_gallop)")
-println("t_finch_follow: $(t_finch_follow)")
+println("t_finch_dcsc: $(t_finch_dcsc)")
+println("t_finch_dcsc_gallop: $(t_finch_dcsc_gallop)")
 
 mm_balanced = query_mm(main_edge, main_edge)
 mm_duckdb = duckdb_compute_faq(mm_balanced).time
@@ -254,14 +300,8 @@ mm_balanced = query_mm_proper(main_edge, main_edge)
 mm_duckdb = duckdb_compute_faq(mm_balanced).time
 mm_finch = finch_mm_proper(main_edge, main_edge)
 mm_finch = finch_mm_proper(main_edge, main_edge)
-#mm_finch_inner = finch_mm_proper_inner(main_edge, main_edge)
-#mm_finch_inner = finch_mm_proper_inner(main_edge, main_edge)
-#mm_finch_dcsc = finch_mm_proper_dcsc(main_edge, main_edge)
-#mm_finch_dcsc = finch_mm_proper_dcsc(main_edge, main_edge)
-mm_finch_gustavsons = finch_mm_proper_gustavsons(main_edge, main_edge)
-mm_finch_gustavsons = finch_mm_proper_gustavsons(main_edge, main_edge)
+mm_finch_dcsc = finch_mm_proper_dcsc(main_edge, main_edge)
+mm_finch_dcsc = finch_mm_proper_dcsc(main_edge, main_edge)
 println("mm_duckdb: $(mm_duckdb)")
 println("mm_finch: $(mm_finch)")
-#println("mm_finch_inner: $(mm_finch_inner)")
-#println("mm_finch_dcsc: $(mm_finch_dcsc)")
-println("mm_finch_gustavsons: $(mm_finch_gustavsons)")
+println("mm_finch_dcsc: $(mm_finch_dcsc)")

@@ -71,52 +71,37 @@ time_dict = Dict("balanced triangle"=>Dict(),
                 "balanced bowtie"=>Dict(),
                 "unbalanced bowtie"=>Dict(), )
 
-verbosity = 3
+verbosity=1
 
 for ST in [DCStats, NaiveStats]
-    vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", ST, nothing)
+    vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/yeast/yeast.graph", ST, nothing,subgraph_matching_data=true)
     main_edge = edges[0]
 
     qt_balanced = query_triangle(main_edge, main_edge, main_edge)
+    galley(qt_balanced, faq_optimizer=greedy, verbose=0)
     qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, verbose=verbosity)
     qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, verbose=verbosity)
     println("Balanced Triangle [$ST]: ", qt_balanced_time)
     time_dict["balanced triangle"][string(ST)] = qt_balanced_time
 
-    qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, verbose=verbosity)
-    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, verbose=verbosity)
-    println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
-    time_dict["unbalanced triangle"][string(ST)] = qt_unbalanced_time
-
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
+    galley(qp_balanced, faq_optimizer=greedy, verbose=0)
     qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, verbose=verbosity)
     qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, verbose=verbosity)
     println("Balanced Path [$ST]: ", qp_balanced_time)
     time_dict["balanced path"][string(ST)] = qp_balanced_time
 
-    qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, verbose=verbosity)
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, verbose=verbosity)
-    println("Unbalanced Path [$ST]: ", qp_unbalanced_time)
-    time_dict["unbalanced path"][string(ST)] = qp_unbalanced_time
-
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
+    galley(qb_balanced, faq_optimizer=greedy, verbose=0)
     qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, verbose=verbosity)
     qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, verbose=verbosity)
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][string(ST)] = qb_balanced_time
-
-    qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, verbose=verbosity)
-    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, verbose=verbosity)
-    println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
-    time_dict["unbalanced bowtie"][string(ST)] = qb_unbalanced_time
 end
 
 for ST in [DCStats, NaiveStats]
     dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
-    vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", ST, dbconn)
+    vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/yeast/yeast.graph", ST, dbconn,subgraph_matching_data=true)
     main_edge = edges[0]
 
     qt_balanced = query_triangle(main_edge, main_edge, main_edge)
@@ -125,39 +110,21 @@ for ST in [DCStats, NaiveStats]
     println("Balanced Triangle [$ST]: ", qt_balanced_time)
     time_dict["balanced triangle"][string(ST) * "_duckdb"] = qt_balanced_time
 
-    qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
-    time_dict["unbalanced triangle"][string(ST) * "_duckdb"] = qt_unbalanced_time
-
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
     qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
     qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
     println("Balanced Path [$ST]: ", qp_balanced_time)
     time_dict["balanced path"][string(ST) * "_duckdb"] = qp_balanced_time
 
-    qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    println("Unbalanced Path [$ST]: ", qp_unbalanced_time)
-    time_dict["unbalanced path"][string(ST) * "_duckdb"] = qp_unbalanced_time
-
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
     qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
     qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][string(ST) * "_duckdb"] = qb_balanced_time
-
-    qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
-    time_dict["unbalanced bowtie"][string(ST) * "_duckdb"] = qb_unbalanced_time
 end
 
 dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
-vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats, dbconn)
+vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/yeast/yeast.graph", NaiveStats, dbconn,subgraph_matching_data=true)
 main_edge = edges[0]
 
 qt_balanced = query_triangle(main_edge, main_edge, main_edge)
@@ -166,35 +133,17 @@ qt_balanced_time = galley(qt_balanced, faq_optimizer=naive, dbconn=dbconn, verbo
 println("Balanced Triangle [DuckDB]: ", qt_balanced_time)
 time_dict["balanced triangle"]["DuckDB"] = qt_balanced_time
 
-qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
-qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
-println("Unbalanced Triangle [DuckDB]: ", qt_unbalanced_time)
-time_dict["unbalanced triangle"]["DuckDB"] = qt_unbalanced_time
-
 qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
 qp_balanced_time = galley(qp_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
 qp_balanced_time = galley(qp_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
 println("Balanced Path [DuckDB]: ", qp_balanced_time)
 time_dict["balanced path"]["DuckDB"] = qp_balanced_time
 
-qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
-qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
-println("Unbalanced Path [DuckDB]: ", qp_unbalanced_time)
-time_dict["unbalanced path"]["DuckDB"] = qp_unbalanced_time
-
 qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
 qb_balanced_time = galley(qb_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
 qb_balanced_time = galley(qb_balanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
 println("Balanced Bowtie [DuckDB]: ", qb_balanced_time)
 time_dict["balanced bowtie"]["DuckDB"] = qb_balanced_time
-
-qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
-qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=naive, dbconn=dbconn, verbose=verbosity)
-println("Unbalanced Bowtie [DuckDB]: ", qb_unbalanced_time)
-time_dict["unbalanced bowtie"]["DuckDB"] = qb_unbalanced_time
 
 for qt in keys(time_dict)
     println("Query Type: $(qt)")
@@ -223,12 +172,12 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 execute_times,
                                 group = groups,
                                 yscale =:log10,
-                                ylims=[10^-3, 1],
+                                ylims=[10^-3, 10^2],
                                 legend = :outertopleft,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Execution Time")
-savefig(gbplot, "Experiments/Figures/aids_small_execute.png")
+savefig(gbplot, "Experiments/Figures/yeast_small_execute.png")
 
 gbplot = StatsPlots.groupedbar(Xs,
                                 opt_times,
@@ -239,4 +188,4 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Optimization Time")
-savefig(gbplot, "Experiments/Figures/aids_small_opt.png")
+savefig(gbplot, "Experiments/Figures/yeast_small_opt.png")

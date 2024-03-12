@@ -68,7 +68,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
             else
                 if verbose >= 3
                     println("Stats Type: ", typeof(node.stats))
-                    println("Indices:  ", get_index_order(node.stats))
+                    println("Input Expr Indices:  ", node.input_indices)
                     println("Level Formats:  ", [get_index_format(node.stats, idx) for idx in node.input_indices])
                     println("Protocols:  ", node.input_protocols)
                     println("Expected Output Tensor Size: ", estimate_nnz(node.stats))

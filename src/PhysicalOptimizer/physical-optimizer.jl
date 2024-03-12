@@ -272,7 +272,6 @@ function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel,
     if is_sorted
         return kernel
     end
-    println("TRANSPOSING")
     input_indices = kernel.output_indices
     input_dict = Dict()
     input_dict["t_1"] = kernel
@@ -291,6 +290,25 @@ function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel,
                             output_dims,
                             kernel.output_default,
                             reverse(input_indices))
+
+    tp_stats = deepcopy(new_stats)
+    expr = InputExpr("t_1", transposed_index_order, [t_default for _ in transposed_index_order], tp_stats)
+    input_dict = Dict()
+    input_dict["t_1"] = input
+    expr = ReorderExpr(transposed_index_order, expr)
+    output_formats = [t_sparse_list for _ in 1:length(transposed_index_order)]
+    output_formats[length(output_formats)] = t_dense
+    output_dims = [get_dim_size(tp_stats, idx) for idx in transposed_index_order]
+    input = TensorKernel(expr,
+                            input_dict,
+                            transposed_index_order,
+                            output_formats,
+                            output_dims,
+                            get_default_value(tp_stats),
+                            reverse(transposed_index_order))
+    def = get_def(tp_stats)
+    def.level_formats = output_formats
+    def.index_order = transposed_index_order
     return input
 end
 
@@ -299,15 +317,19 @@ function select_output_format(output_stats::TensorStats,
                                 output_indices::Vector{IndexExpr}
                                 )
     approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
-    if approx_sparsity > .05
+    if approx_sparsity > .01
         return [t_dense for _ in output_indices]
     end
 
     if is_prefix(output_indices, loop_order)
-        return [t_sparse_list for _ in output_indices]
+        formats = [t_sparse_list for _ in output_indices]
+        formats[length(formats)] = t_dense
+        return formats
     end
 
-    return [t_hash for _ in output_indices]
+    formats = [t_hash for _ in output_indices]
+    formats[length(formats)] = t_dense
+    return formats
 end
 
 

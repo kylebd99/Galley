@@ -2,9 +2,9 @@
 # We start by defining some basic cost parameters. These will need to be adjusted somewhat
 # through testing.
 const SeqReadCost = 1
-const SeqWriteCost = 1
+const SeqWriteCost = 10
 const RandomReadCost = 5
-const RandomWriteCost = 5
+const RandomWriteCost = 30
 
 const ComputeCost = 1
 const AllocateCost = 25

@@ -78,7 +78,7 @@ function get_sparsity_structure(tensor::Tensor)
 end
 
 function is_prefix(l_vec::Vector, r_vec::Vector)
-    for i in eachindex(l_vec)
+    for i in reverse(eachindex(l_vec))
         if i > length(r_vec)
             return true
         end

@@ -82,15 +82,34 @@ function modify_protocols!(input_exprs::Vector{InputExpr})
         end
         min_cost = minimum(costs)
         needs_leader = length(relevant_inputs) > 1
+        formats = [get_index_format(input.stats, var) for input in relevant_inputs]
+        num_sparse_lists = sum([f == t_sparse_list for f in formats])
+        use_gallop = false
+        if num_sparse_lists > 1
+            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost
+            walk_cost = maximum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * SeqReadCost
+            use_gallop = gallop_cost < walk_cost
+        end
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]
             var_index = findfirst(x->x==var, input.input_indices)
             is_leader = costs[i] == min_cost
+
+            if formats[i] == t_sparse_list
+                if use_gallop
+                    input.input_protocols[var_index] = t_gallop
+                else
+                    input.input_protocols[var_index] = t_walk
+                end
+                needs_leader = false
+                continue
+            end
+
             if is_leader && needs_leader
-                input.input_protocols[var_index] = select_leader_protocol(get_index_format(input.stats, var))
+                input.input_protocols[var_index] = select_leader_protocol(formats[i])
                 needs_leader = false
             else
-                input.input_protocols[var_index] = select_follower_protocol(get_index_format(input.stats, var))
+                input.input_protocols[var_index] = select_follower_protocol(formats[i])
             end
         end
     end
@@ -116,108 +135,6 @@ function _recursive_get_stats(n, input_counter)
     return input_stats
 end
 
-# This function takes in a dict of (tensor_id => tensor_stats) and outputs a join order.
-# Currently, it uses a simple prefix-join heuristic, but in the future it will be cost-based.
-function get_join_loop_order_simple(input_stats)
-    num_occurrences = counter(IndexExpr)
-    for stats in values(input_stats)
-        for v in get_index_set(stats)
-            inc!(num_occurrences, v)
-        end
-    end
-    vars_and_counts = sort([(num_occurrences[v], v) for v in keys(num_occurrences)], by=(x)->x[1], rev=true)
-    vars = [x[2] for x in vars_and_counts]
-    return vars
-end
-
-@enum OUTPUT_COMPAT FULL_PREFIX SET_PREFIX NO_PREFIX
-# We use a version of Selinger's algorithm to determine the join loop ordering.
-# For each subset of variables, we calculate their optimal ordering via dynamic programming.
-# This is singly exponential in the number of loop variables, and it uses the statistics to
-# determine the costs.
-function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
-    all_vars = union([get_index_set(stat) for stat in input_stats]...)
-    output_vars = get_index_set(output_stats)
-    ordered_output_vars = relative_sort(output_vars, output_order)
-
-    # At all times, we keep track of the best plans for each level of output compatability.
-    # This will let us consider the cost of random writes and transposes at the end.
-    prefix_costs = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Float64}()
-    optimal_prefix_orders = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Vector{IndexExpr}}()
-    for var in all_vars
-        v_set = Set([var])
-        is_output_prefix = is_prefix(ordered_output_vars, [var])
-        prefix_key = if is_output_prefix
-            (v_set, FULL_PREFIX)
-        else
-            (v_set, NO_PREFIX)
-        end
-        prefix_costs[prefix_key] = get_prefix_cost(v_set, var, input_stats)
-        optimal_prefix_orders[prefix_key] = [var]
-    end
-
-    for _ in 2:length(all_vars)
-        new_prefix_costs = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Float64}()
-        new_optimal_prefix_orders = Dict{Tuple{Set{IndexExpr}, OUTPUT_COMPAT}, Vector{IndexExpr}}()
-
-        for (prefix_set_and_compat, min_cost) in prefix_costs
-            prefix_set = prefix_set_and_compat[1]
-            # We only consider extensions that don't result in cross products
-            potential_vars = Set{IndexExpr}()
-            for stat in input_stats
-                index_set = get_index_set(stat)
-                if length(∩(index_set, prefix_set)) > 0
-                    potential_vars = ∪(potential_vars, index_set)
-                end
-            end
-
-            potential_vars = setdiff(potential_vars, prefix_set)
-            for new_var in potential_vars
-                new_prefix_set = union(prefix_set, [new_var])
-                new_prefix_order = [optimal_prefix_orders[prefix_set_and_compat]..., new_var]
-                prefix_key = if is_prefix(ordered_output_vars, new_prefix_order)
-                    (new_prefix_set, FULL_PREFIX)
-                elseif is_set_prefix(output_vars, new_prefix_order)
-                    (new_prefix_set, SET_PREFIX)
-                else
-                    (new_prefix_set, NO_PREFIX)
-                end
-
-                new_cost = get_prefix_cost(new_prefix_set, new_var, input_stats) + min_cost
-                if new_cost < get(new_prefix_costs, prefix_key, Inf)
-                    new_prefix_costs[prefix_key] = new_cost
-                    new_optimal_prefix_orders[prefix_key] = new_prefix_order
-                end
-            end
-        end
-        prefix_costs = new_prefix_costs
-        optimal_prefix_orders = new_optimal_prefix_orders
-    end
-
-    # The cost of transposing the output as a second step if we choose to
-    transpose_cost = estimate_nnz(output_stats) * RandomWriteCost
-    # The cost of writing to the output depending on whether the writes are sequential
-    num_writes = get_prefix_iterations(all_vars, input_stats)
-    random_write_cost = num_writes * RandomWriteCost
-    seq_write_cost = num_writes * SeqWriteCost
-
-
-    full_prefix_key = (all_vars, FULL_PREFIX)
-    full_prefix_cost = get(prefix_costs, full_prefix_key, Inf) + seq_write_cost
-    set_prefix_key = (all_vars, SET_PREFIX)
-    set_prefix_cost = get(prefix_costs, set_prefix_key, Inf) + seq_write_cost + transpose_cost
-    no_prefix_key = (all_vars, NO_PREFIX)
-    no_prefix_cost = get(prefix_costs, no_prefix_key, Inf) + random_write_cost
-
-    min_cost = min(full_prefix_cost, set_prefix_cost, no_prefix_cost)
-    if min_cost == full_prefix_cost
-        return optimal_prefix_orders[full_prefix_key]
-    elseif min_cost == set_prefix_cost
-        return optimal_prefix_orders[set_prefix_key]
-    else
-        return optimal_prefix_orders[no_prefix_key]
-    end
-end
 
 # This function takes in an input and replaces it with an input expression which matches the
 # loop order of the kernel. This is essentially the same as building an index on the fly
@@ -321,18 +238,19 @@ function select_output_format(output_stats::TensorStats,
     end
 
     approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
-    if approx_sparsity > .01
+    if approx_sparsity > .1
         return [t_dense for _ in output_indices]
     end
 
-    if is_prefix(output_indices, loop_order)
-        formats = [t_sparse_list for _ in output_indices]
-        formats[length(formats)] = t_dense
-        return formats
+    formats = if is_prefix(output_indices, loop_order)
+        [t_sparse_list for _ in output_indices]
+    else
+        [t_hash for _ in output_indices]
     end
 
-    formats = [t_hash for _ in output_indices]
-    formats[length(formats)] = t_dense
+    if length(formats) > 1
+        formats[length(formats)] = t_dense
+    end
     return formats
 end
 

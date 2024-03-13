@@ -31,9 +31,9 @@ function query_path(e1, e2, e3, e4)
     e3 = e3[k,l]
     e4 = e4[l,m]
     factors = Set(Factor[Factor(e1, Set(IndexExpr[i, j]), Set(IndexExpr[i, j]), false, deepcopy(e1.stats), 1),
-                     Factor(e2, Set(IndexExpr[j, k]), Set(IndexExpr[j, k]), false, deepcopy(e2.stats), 2),
-                     Factor(e3, Set(IndexExpr[k, l]), Set(IndexExpr[k, l]), false, deepcopy(e3.stats), 3),
-                     Factor(e4, Set(IndexExpr[l, m]), Set(IndexExpr[l, m]), false, deepcopy(e4.stats), 4),
+                     Factor(e2, Set(IndexExpr[k, j]), Set(IndexExpr[j, k]), false, deepcopy(e2.stats), 2),
+                     Factor(e3, Set(IndexExpr[l, k]), Set(IndexExpr[k, l]), false, deepcopy(e3.stats), 3),
+                     Factor(e4, Set(IndexExpr[m, l]), Set(IndexExpr[l, m]), false, deepcopy(e4.stats), 4),
     ])
 
     faq = FAQInstance(*, +, Set{IndexExpr}(), Set{IndexExpr}([i, j, k, l, m]), factors)

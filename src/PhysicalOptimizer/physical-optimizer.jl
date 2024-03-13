@@ -82,15 +82,34 @@ function modify_protocols!(input_exprs::Vector{InputExpr})
         end
         min_cost = minimum(costs)
         needs_leader = length(relevant_inputs) > 1
+        formats = [get_index_format(input.stats, var) for input in relevant_inputs]
+        num_sparse_lists = sum([f == t_sparse_list for f in formats])
+        use_gallop = false
+        if num_sparse_lists > 1
+            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost
+            walk_cost = maximum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * SeqReadCost
+            use_gallop = gallop_cost < walk_cost
+        end
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]
             var_index = findfirst(x->x==var, input.input_indices)
             is_leader = costs[i] == min_cost
+
+            if formats[i] == t_sparse_list
+                if use_gallop
+                    input.input_protocols[var_index] = t_gallop
+                else
+                    input.input_protocols[var_index] = t_walk
+                end
+                needs_leader = false
+                continue
+            end
+
             if is_leader && needs_leader
-                input.input_protocols[var_index] = select_leader_protocol(get_index_format(input.stats, var))
+                input.input_protocols[var_index] = select_leader_protocol(formats[i])
                 needs_leader = false
             else
-                input.input_protocols[var_index] = select_follower_protocol(get_index_format(input.stats, var))
+                input.input_protocols[var_index] = select_follower_protocol(formats[i])
             end
         end
     end
@@ -219,18 +238,19 @@ function select_output_format(output_stats::TensorStats,
     end
 
     approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
-    if approx_sparsity > .01
+    if approx_sparsity > .1
         return [t_dense for _ in output_indices]
     end
 
-    if is_prefix(output_indices, loop_order)
-        formats = [t_sparse_list for _ in output_indices]
-        formats[length(formats)] = t_dense
-        return formats
+    formats = if is_prefix(output_indices, loop_order)
+        [t_sparse_list for _ in output_indices]
+    else
+        [t_hash for _ in output_indices]
     end
 
-    formats = [t_hash for _ in output_indices]
-    formats[length(formats)] = t_dense
+    if length(formats) > 1
+        formats[length(formats)] = t_dense
+    end
     return formats
 end
 

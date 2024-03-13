@@ -4,7 +4,7 @@
 const SeqReadCost = 1
 const SeqWriteCost = 10
 const RandomReadCost = 5
-const RandomWriteCost = 30
+const RandomWriteCost = 25
 
 const ComputeCost = 1
 const AllocateCost = 25

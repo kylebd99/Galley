@@ -143,7 +143,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
     elseif n.head == InputTensor || n.head == Scalar
         next_tensor_id = get_tensor_id(input_counter)
         input_counter[1] += 1
-        input_dict[next_tensor_id], tp_stats = transpose(loop_order, n.args[2],  n.stats)
+        input_dict[next_tensor_id], tp_stats = transpose(reverse(loop_order), n.args[2],  n.stats)
         kernel_root = InputExpr(next_tensor_id, get_index_order(tp_stats), [t_default for idx in get_index_order(tp_stats)], tp_stats)
         push!(input_exprs, kernel_root)
     end
@@ -174,7 +174,7 @@ function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}
                             output_dims,
                             get_default_value(n.stats),
                             loop_order)
-    kernel, tp_stats = transpose(reverse(output_order), kernel, n.stats)
+    kernel, tp_stats = transpose(output_order, kernel, n.stats)
     validate_kernel(kernel)
     return kernel
 end
@@ -215,7 +215,7 @@ function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
                             output_dims,
                             get_default_value(n.stats),
                             loop_order)
-    kernel, tp_stats = transpose(reverse(output_order), kernel, n.stats)
+    kernel, tp_stats = transpose(output_order, kernel, n.stats)
     validate_kernel(kernel)
     return kernel
 end

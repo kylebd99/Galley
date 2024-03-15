@@ -2,11 +2,11 @@
 # This function takes in an input and replaces it with an input expression which matches the
 # loop order of the kernel. This is essentially the same as building an index on the fly
 # when needed.
-function transpose(loop_order, input, stats)
+function transpose(output_order, input, stats)
     if input isa Tensor
-        return transpose_input(loop_order, input, stats)
+        return transpose_input(output_order, input, stats)
     elseif input isa TensorKernel
-        return transpose_kernel(loop_order, input, stats)
+        return transpose_kernel(output_order, input, stats)
     else
         throw(ArgumentError("Can only transpose kernels and tensors"))
     end
@@ -37,10 +37,10 @@ function reformat_kernel(input_kernel, stats, new_formats)
 end
 
 
-function transpose_input(loop_order, input, stats)
+function transpose_input(output_order, input, stats)
     initial_stats = deepcopy(stats)
     input_index_set = get_index_set(initial_stats)
-    transposed_index_order = reverse([x for x in loop_order if x in input_index_set])
+    transposed_index_order = [x for x in output_order if x in input_index_set]
     @assert !isnothing(get_index_order(initial_stats))
     is_sorted = is_sorted_wrt_index_order(get_index_order(initial_stats), transposed_index_order)
     if !is_sorted
@@ -72,8 +72,8 @@ function transpose_input(loop_order, input, stats)
     return input, initial_stats
 end
 
-function transpose_kernel(loop_order::Vector{IndexExpr}, kernel::TensorKernel, stats::TensorStats)
-    transposed_index_order =  [x for x in reverse(loop_order) if x in kernel.output_indices]
+function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel, stats::TensorStats)
+    transposed_index_order =  [x for x in output_order if x in kernel.output_indices]
     is_sorted = is_sorted_wrt_index_order(kernel.output_indices, transposed_index_order)
     input_stats = deepcopy(stats)
     if is_sorted

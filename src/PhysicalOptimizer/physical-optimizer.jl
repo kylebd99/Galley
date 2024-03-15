@@ -1,4 +1,4 @@
-MAX_KERNEL_SIZE = 4
+MAX_KERNEL_SIZE = 7
 
 function get_tensor_id(input_counter)
     id = "t_$(input_counter[1])"
@@ -26,7 +26,7 @@ end
 function make_input_tree(op, child_kernel_info)
     input_tree = [Any[kernel_info] for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
-    while length(input_tree) > MAX_KERNEL_SIZE
+    while sum([length(get_index_set(stat)) for stat in cur_stats]) > MAX_KERNEL_SIZE && length(input_tree) > 2
         min_cost = Inf
         best_pair = (-1, -1)
         for (i, i_stats) in enumerate(cur_stats)

@@ -32,9 +32,9 @@ function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{Index
 end
 
 function get_output_compat(ordered_output_vars::Vector{IndexExpr}, prefix::Vector{IndexExpr})
-    return if is_prefix(ordered_output_vars, prefix)
+    return if fully_compat_with_loop_prefix(ordered_output_vars, prefix)
         FULL_PREFIX
-    elseif is_set_prefix(Set(ordered_output_vars), prefix)
+    elseif set_compat_with_loop_prefix(Set(ordered_output_vars), prefix)
         SET_PREFIX
     else
         NO_PREFIX

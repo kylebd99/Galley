@@ -160,8 +160,8 @@ function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}
     modify_protocols!(input_exprs)
     kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
     # Based on the loop order, we attempt to avoid random writes into the output.
-    output_indices = if is_set_prefix(get_index_set(n.stats), loop_order)
-        relative_sort(collect(get_index_set(n.stats)), loop_order)
+    output_indices = if set_compat_with_loop_prefix(get_index_set(n.stats), loop_order)
+        relative_sort(collect(get_index_set(n.stats)), reverse(loop_order))
     else
         relative_sort(collect(get_index_set(n.stats)), output_order)
     end
@@ -201,8 +201,8 @@ function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
     modify_protocols!(input_exprs)
     kernel_root = OperatorExpr(op, input_roots)
     # Based on the loop order, we attempt to avoid random writes into the output.
-    output_indices = if is_set_prefix(get_index_set(n.stats), loop_order)
-        relative_sort(collect(get_index_set(n.stats)), loop_order)
+    output_indices = if set_compat_with_loop_prefix(get_index_set(n.stats), loop_order)
+        relative_sort(collect(get_index_set(n.stats)), reverse(loop_order))
     else
         relative_sort(collect(get_index_set(n.stats)), output_order)
     end

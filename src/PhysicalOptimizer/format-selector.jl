@@ -11,7 +11,7 @@ function select_output_format(output_stats::TensorStats,
         return [t_dense for _ in output_indices]
     end
 
-    formats = if is_prefix(output_indices, loop_order)
+    formats = if fully_compat_with_loop_prefix(output_indices, loop_order)
         [t_sparse_list for _ in output_indices]
     else
         [t_hash for _ in output_indices]

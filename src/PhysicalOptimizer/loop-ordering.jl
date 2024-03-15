@@ -82,6 +82,10 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                 end
             end
             potential_vars = setdiff(potential_vars, prefix_set)
+            if length(potential_vars) == 0
+                # If the query isn't connected, we will need to include a cross product
+                potential_vars = setdiff(all_vars, prefix_set)
+            end
 
             for new_var in potential_vars
                 new_prefix_set = union(prefix_set, [new_var])

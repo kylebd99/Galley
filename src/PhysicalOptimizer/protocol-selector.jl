@@ -39,7 +39,7 @@ function modify_protocols!(input_exprs)
                 size_before_var = estimate_nnz(reduce_tensor_stats(+, setdiff(Set(input.input_indices), indices_before_var),  input.stats))
             end
             size_after_var = estimate_nnz(reduce_tensor_stats(+, setdiff(Set(input.input_indices), [indices_before_var..., var]),  input.stats))
-            push!(costs, size_after_var/size_before_var)
+            push!(costs, max(1, size_after_var/size_before_var))
         end
         min_cost = minimum(costs)
         needs_leader = length(relevant_inputs) > 1
@@ -47,7 +47,8 @@ function modify_protocols!(input_exprs)
         num_sparse_lists = sum([f == t_sparse_list for f in formats])
         use_gallop = false
         if num_sparse_lists > 1
-            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost * 4
+            # Gallop incurs additional code size, so we penalize it by a constant amount here.
+            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost * 4 + 10^4
             walk_cost = maximum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * SeqReadCost
             use_gallop = gallop_cost < walk_cost
         end

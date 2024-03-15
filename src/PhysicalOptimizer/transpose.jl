@@ -80,6 +80,12 @@ function transpose_kernel(output_order::Vector{IndexExpr}, kernel::TensorKernel,
         def = get_def(input_stats)
         def.index_order = kernel.output_indices
         def.level_formats = kernel.output_formats
+        if t_hash in def.level_formats
+            new_formats = [t_sparse_list for _ in kernel.output_indices]
+            new_formats[end] = t_dense
+            formatted_input, formatted_stats = reformat_kernel(kernel, input_stats, new_formats)
+            return formatted_input, formatted_stats
+        end
         return kernel, input_stats
     end
 

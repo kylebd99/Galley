@@ -27,12 +27,16 @@ function make_input_tree(op, child_kernel_info)
     input_tree = [Any[kernel_info] for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
     occurences = [length(get_index_set(stats)) for stats in cur_stats]
-    while sum([length(get_index_set(stat)) for stat in cur_stats]) > MAX_KERNEL_SIZE && length(input_tree) > 2
+    while sum(occurences) > MAX_KERNEL_SIZE && length(input_tree) > 2
         min_cost = Inf
         best_pair = (-1, -1)
         for (i, i_stats) in enumerate(cur_stats)
             for (j, j_stats) in enumerate(cur_stats)
                 i >= j && continue # Only need to compare each pair once
+                min_next_occurrences = min(occurences[i] + occurences[j],
+                                            occurences[i] + length(get_index_set(j_stats)),
+                                            length(get_index_set(i_stats))+ occurences[j])
+                min_next_occurrences > MAX_KERNEL_SIZE && continue
                 cost = estimate_nnz(merge_tensor_stats(op, i_stats, j_stats))
                 if min_cost > cost
                     min_cost = cost
@@ -40,6 +44,7 @@ function make_input_tree(op, child_kernel_info)
                 end
             end
         end
+        min_cost == Inf && println("MIN COST INF") &&  break
         i = best_pair[1]
         j = best_pair[2]
         new_expr_group = nothing
@@ -49,18 +54,20 @@ function make_input_tree(op, child_kernel_info)
             new_occurence = occurences[i]+occurences[j]
         elseif occurences[i] < occurences[j]
             new_expr_group = [input_tree[i]..., input_tree[j]]
-            new_occurence = occurences[i]+length(get_index_set(cur_stats[j]))
+            new_occurence = occurences[i] + length(get_index_set(cur_stats[j]))
         else
             new_expr_group = [input_tree[i], input_tree[j]...]
             new_occurence = length(get_index_set(cur_stats[i]))+ occurences[j]
         end
-        new_stats = merge_tensor_stats(op, cur_stats[i], cur_stats[j])
         input_tree::Vector{Any} = [grp for (k, grp) in enumerate(input_tree) if k!=i && k!=j]
         push!(input_tree, new_expr_group)
+        new_stats = merge_tensor_stats(op, cur_stats[i], cur_stats[j])
         cur_stats = [stat for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]
         push!(cur_stats, new_stats)
         occurences = [count for (k, count) in enumerate(occurences) if k!=i && k!=j]
         push!(occurences, new_occurence)
+        println((i,j))
+        println(occurences)
     end
     return input_tree
 end
@@ -117,8 +124,8 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
             root, dict, exprs = _recursive_get_kernel_root(arg, loop_order, input_counter)
             push!(child_kernel_info, (node=arg, stats=arg.stats, root=root, input_dict=dict, input_exprs=exprs))
         end
-        num_child_inputs = length(args)
-        if num_child_inputs > MAX_KERNEL_SIZE
+        num_occurences = sum([length(get_index_set(ki.stats)) for ki in child_kernel_info])
+        if num_occurences > MAX_KERNEL_SIZE
             input_tree = make_input_tree(op, child_kernel_info)
             child_roots = []
             input_dict = Dict()

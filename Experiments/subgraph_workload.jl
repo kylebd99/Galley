@@ -54,7 +54,7 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
             end
         end
         values = [1 for _ in node_ids]
-        vertex_vector = Tensor(SparseList(Element(0.0), n))
+        vertex_vector = Tensor(SparseList(Element(0), n))
         copyto!(vertex_vector,  sparsevec(node_ids, values, n))
         vertex_vectors[label] =  InputTensor(vertex_vector, stats_type)[IndexExpr("i")]
         if !isnothing(dbconn)
@@ -74,7 +74,7 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
             end
         end
         values = [1 for _ in i_ids]
-        edge_matrix = Tensor(Dense(SparseList(Element(0.0), n), n))
+        edge_matrix = Tensor(Dense(SparseList(Element(0), n), n))
         copyto!(edge_matrix, sparse(i_ids, j_ids, values, n, n))
         edge_matrices[label] = InputTensor(edge_matrix, stats_type)[IndexExpr("i"), IndexExpr("j")]
         if !isnothing(dbconn)

@@ -26,6 +26,7 @@ end
 function make_input_tree(op, child_kernel_info)
     input_tree = [Any[kernel_info] for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
+    occurences = [length(get_index_set(stats)) for stats in cur_stats]
     while sum([length(get_index_set(stat)) for stat in cur_stats]) > MAX_KERNEL_SIZE && length(input_tree) > 2
         min_cost = Inf
         best_pair = (-1, -1)
@@ -41,18 +42,25 @@ function make_input_tree(op, child_kernel_info)
         end
         i = best_pair[1]
         j = best_pair[2]
-        new_expr_group = if length(input_tree[i]) + length(input_tree[j]) <= MAX_KERNEL_SIZE
-            union(input_tree[i], input_tree[j])
-        elseif length(input_tree[i]) < length(input_tree[j])
-            [input_tree[i]..., input_tree[j]]
+        new_expr_group = nothing
+        new_occurence = 0
+        if occurences[i] + occurences[j] <= MAX_KERNEL_SIZE
+            new_expr_group = union(input_tree[i], input_tree[j])
+            new_occurence = occurences[i]+occurences[j]
+        elseif occurences[i] < occurences[j]
+            new_expr_group = [input_tree[i]..., input_tree[j]]
+            new_occurence = occurences[i]+length(get_index_set(cur_stats[j]))
         else
-            [input_tree[i], input_tree[j]...]
+            new_expr_group = [input_tree[i], input_tree[j]...]
+            new_occurence = length(get_index_set(cur_stats[i]))+ occurences[j]
         end
         new_stats = merge_tensor_stats(op, cur_stats[i], cur_stats[j])
         input_tree::Vector{Any} = [grp for (k, grp) in enumerate(input_tree) if k!=i && k!=j]
         push!(input_tree, new_expr_group)
         cur_stats = [stat for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]
         push!(cur_stats, new_stats)
+        occurences = [count for (k, count) in enumerate(occurences) if k!=i && k!=j]
+        push!(occurences, new_occurence)
     end
     return input_tree
 end

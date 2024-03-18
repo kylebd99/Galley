@@ -136,36 +136,48 @@ end
 DCStats(default) = DCStats(TensorDef(default), Set())
 get_def(stat::DCStats) = stat.def
 
-DCKey = NamedTuple{(:X, :Y), Tuple{Set{IndexExpr}, Set{IndexExpr}}}
+DCKey = NamedTuple{(:X, :Y), Tuple{Vector{IndexExpr}, Vector{IndexExpr}}}
+
+function union_then_diff(lY, rY, lX)
+    result = copy(lY)
+    for y in rY
+        if y in lY || y in lX
+            continue
+        end
+        push!(result, y)
+    end
+    return sort(result)
+end
+
+function infer_dc(l, ld, r, rd, all_dcs, new_dcs)
+    if l.Y ⊇ r.X
+        new_key = (X = l.X, Y = union_then_diff(l.Y, r.Y, l.X))
+        new_degree = ld*rd
+        if get(all_dcs, new_key, Inf) > new_degree &&
+                get(new_dcs, new_key, Inf) > new_degree
+            new_dcs[new_key] = new_degree
+        end
+    end
+end
 
 # When we're only attempting to infer for nnz estimation, we only need to consider
 # left dcs which have X = {}.
 function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
     all_dcs = Dict{DCKey, Float64}()
     for dc in dcs
-        all_dcs[(X = dc.X, Y = dc.Y)] = dc.d
+        all_dcs[(X = collect(dc.X), Y = collect(dc.Y))] = dc.d
     end
     prev_new_dcs = deepcopy(all_dcs)
     time = 1
     finished = false
     while time < timeout && !finished
         new_dcs = Dict{DCKey, Float64}()
-        function infer_dc(l, ld, r, rd)
-            if l.Y ⊇ r.X
-                new_key = (X = l.X, Y = setdiff(∪(l.Y, r.Y), l.X))
-                new_degree = ld*rd
-                if get(all_dcs, new_key, Inf) > new_degree &&
-                        get(new_dcs, new_key, Inf) > new_degree
-                    new_dcs[new_key] = new_degree
-                end
-            end
-            time +=1
-        end
 
         for (l, ld) in all_dcs
             cheap && length(l.X) > 0 && continue
             for (r, rd) in prev_new_dcs
-                infer_dc(l, ld, r, rd)
+                infer_dc(l, ld, r, rd, all_dcs, new_dcs)
+                time +=1
                 time > timeout && break
             end
             time > timeout && break
@@ -174,7 +186,8 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
         for (l, ld) in prev_new_dcs
             cheap && length(l.X) > 0 && continue
             for (r, rd) in all_dcs
-                infer_dc(l, ld, r, rd)
+                infer_dc(l, ld, r, rd, all_dcs, new_dcs)
+                time +=1
                 time > timeout && break
             end
             time > timeout && break
@@ -190,7 +203,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
     end
     final_dcs = Set{DC}()
     for (dc_key, dc) in all_dcs
-        push!(final_dcs, DC(dc_key.X, dc_key.Y, dc))
+        push!(final_dcs, DC(Set(dc_key.X), Set(dc_key.Y), dc))
     end
     return final_dcs
 end
@@ -218,7 +231,6 @@ function condense_stats(stat::DCStats)
     end
     stat.dcs = end_dcs
 end
-
 
 
 function estimate_nnz(stat::DCStats)

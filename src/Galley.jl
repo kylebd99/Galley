@@ -80,13 +80,14 @@ function galley(faq_problem::FAQInstance;
                     faq_optimizer::FAQ_OPTIMIZERS=naive,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     verbose=0)
-    verbose >= 3 && println("Input FAQ : ", faq_problem)
+#    verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
-
+    faq_opt_start = time()
     htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
     expr = decomposition_to_logical_plan(htd)
     _recursive_insert_stats!(expr)
-
+    faq_opt_end = time()
+    verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
     if !isnothing(dbconn)
         opt_end = time()
         result = duckdb_htd_to_output(dbconn, htd)
@@ -107,6 +108,8 @@ function galley(faq_problem::FAQInstance;
     end
     tensor_kernel = expr_to_kernel(expr, output_index_order, verbose = verbose)
     opt_end = time()
+    verbose >= 1 && println("Physical Opt Time: $(opt_end - faq_opt_end)")
+
 
     result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
     verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))

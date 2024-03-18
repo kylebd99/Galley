@@ -41,7 +41,7 @@ function get_output_compat(ordered_output_vars::Vector{IndexExpr}, prefix::Vecto
     end
 end
 
-@enum OUTPUT_COMPAT FULL_PREFIX SET_PREFIX NO_PREFIX
+@enum OUTPUT_COMPAT FULL_PREFIX=0 SET_PREFIX=1 NO_PREFIX=2
 # We use a version of Selinger's algorithm to determine the join loop ordering.
 # For each subset of variables, we calculate their optimal ordering via dynamic programming.
 # This is singly exponential in the number of loop variables, and it uses the statistics to
@@ -106,7 +106,38 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                 end
             end
         end
-        optimal_plans = new_plans
+
+        plans_by_set = Dict()
+        for (plan_class, plan) in new_plans
+            idx_set = plan_class[1]
+            if !haskey(plans_by_set, idx_set)
+                plans_by_set[idx_set] = Dict()
+            end
+            plans_by_set[idx_set][plan_class] = plan
+        end
+
+        # If a plan has worse reformatting & worse cost than another plan, we don't need to
+        # consider it further.
+        undominated_plans = Dict()
+        for (plan_class_1, plan_1) in new_plans
+            cost_1 = plan_1[2]
+            output_compat_1 = plan_class_1[2]
+            reformat_set_1 = plan_class_1[3]
+            is_dominated = false
+            for (plan_class_2, plan_2) in plans_by_set[plan_class_1[1]]
+                cost_2 = plan_2[2]
+                output_compat_2 = plan_class_2[2]
+                reformat_set_2 = plan_class_2[3]
+                if cost_1 > cost_2 && output_compat_1 >= output_compat_2 && reformat_set_2 ⊆ reformat_set_1
+                    is_dominated = true
+                    break
+                end
+            end
+            if !is_dominated
+                undominated_plans[plan_class_1] = plan_1
+            end
+        end
+        optimal_plans = undominated_plans
     end
 
     # The cost of transposing the output as a second step if we choose to

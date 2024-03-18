@@ -44,7 +44,7 @@ function make_input_tree(op, child_kernel_info)
                 end
             end
         end
-        min_cost == Inf && println("MIN COST INF") &&  break
+        min_cost == Inf && (println("MIN COST INF"); break)
         i = best_pair[1]
         j = best_pair[2]
         new_expr_group = nothing

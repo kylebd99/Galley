@@ -1,10 +1,17 @@
+
+get_index_symbol(idx_num) = Symbol("v_$(idx_num)")
+
 # This file performs the actual execution of physical query plan.
-function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols; read=true)
+function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols, index_name_dict; read=true)
     mode = read ? Reader() : Updater()
     mode = literal_instance(mode)
     index_expressions = []
     for i in range(1, length(index_ids))
-        index = index_instance(Symbol(index_ids[i]))
+        if !haskey(index_name_dict, index_ids[i])
+            idx_num = length(index_name_dict)
+            index_name_dict[index_ids[i]] = get_index_symbol(idx_num)
+        end
+        index = index_instance(index_name_dict[index_ids[i]])
         if read == true
             if protocols[i] == t_walk
                 index = call_instance(literal_instance(walk), index)
@@ -64,7 +71,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         end
         node_dict[cur_node_id] = (cur_node, child_node_ids)
     end
-
+    index_sym_dict = Dict()
     agg_op = nothing
     kernel_prgm = nothing
     input_index_orders = []
@@ -86,7 +93,8 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                 node_dict[node_id] = initialize_access(tensor_id,
                                                         kernel.input_tensors[tensor_id],
                                                         node.input_indices,
-                                                        node.input_protocols)
+                                                        node.input_protocols,
+                                                        index_sym_dict)
                 push!(input_index_orders, node.input_indices)
             end
         elseif node isa OperatorExpr
@@ -118,7 +126,8 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     output_access = initialize_access("output_tensor",
                                         output_tensor,
                                         kernel.output_indices,
-                                        [t_default for _ in kernel.output_indices];
+                                        [t_default for _ in kernel.output_indices],
+                                        index_sym_dict;
                                         read=false)
 
     if agg_op === nothing
@@ -127,7 +136,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
 
     full_prgm = assign_instance(output_access, literal_instance(agg_op), kernel_prgm)
 
-    loop_order = [index_instance(Symbol(i)) for i in kernel.loop_order]
+    loop_order = [index_instance(index_sym_dict[i]) for i in kernel.loop_order]
     for index in reverse(loop_order)
         full_prgm = loop_instance(index, Dimensionless(), full_prgm)
     end

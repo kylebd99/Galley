@@ -60,15 +60,16 @@ function get_sparsity_structure(tensor::Tensor)
     function non_zero_func(x)
         return x == default_value ? 0.0 : 1.0
     end
+    index_sym_dict = Dict()
     indices = [IndexExpr("t_" * string(i)) for i in 1:length(size(tensor))]
-    tensor_instance = initialize_access("A", tensor, indices, [t_default for _ in indices], read=true)
+    tensor_instance = initialize_access("A", tensor, indices, [t_default for _ in indices], index_sym_dict, read=true)
     tensor_instance = call_instance(literal_instance(non_zero_func), tensor_instance)
     output_tensor = initialize_tensor([t_sparse_list for _ in indices ], [dim for dim in size(tensor)], 0.0)
-    output_instance = initialize_access("output_tensor", output_tensor, indices, [t_default for _ in indices], read = false)
+    output_instance = initialize_access("output_tensor", output_tensor, indices, [t_default for _ in indices], index_sym_dict, read = false)
     full_prgm = assign_instance(output_instance, literal_instance(initwrite(0.0)), tensor_instance)
 
     for index in indices
-        full_prgm = loop_instance(index_instance(Symbol(index)), Dimensionless(), full_prgm)
+        full_prgm = loop_instance(index_instance(index_sym_dict[index]), Dimensionless(), full_prgm)
     end
 
     initializer = declare_instance(variable_instance(:output_tensor), literal_instance(0.0))
@@ -112,12 +113,13 @@ function one_off_reduce(op,
     if fully_compat_with_loop_prefix(output_indices, loop_order)
         output_formats = [t_sparse_list for _ in output_indices]
     end
-    tensor_instance = initialize_access("s", s, input_indices, [t_default for _ in input_indices])
+    index_sym_dict = Dict()
+    tensor_instance = initialize_access("s", s, input_indices, [t_default for _ in input_indices], index_sym_dict)
     output_tensor = initialize_tensor(output_formats, output_dims, 0.0)
 
-    loop_index_instances = [index_instance(Symbol(idx)) for idx in loop_order]
+    loop_index_instances = [index_instance(index_sym_dict[idx]) for idx in loop_order]
     output_variable = tag_instance(variable_instance(:output_tensor), output_tensor)
-    output_access = initialize_access("output_tensor", output_tensor, output_indices, [t_default for _ in output_indices]; read=false)
+    output_access = initialize_access("output_tensor", output_tensor, output_indices, [t_default for _ in output_indices], index_sym_dict; read=false)
     op_instance = if op == max
         literal_instance(initmax(Finch.default(s)))
     elseif op == min

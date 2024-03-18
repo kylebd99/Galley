@@ -14,7 +14,9 @@ macro timeout(seconds, expr_to_run, expr_when_fails)
         end
         try
             fetch(tsk)
-        catch
+        catch e
+            throw(e)
+            println("Error: $e")
             $(esc(expr_when_fails))
         end
     end
@@ -22,7 +24,7 @@ end
 
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
-        results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "Result", "Failed")]
+        results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "CompileTime", "Result", "Failed")]
         dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
         queries = load_workload(experiment.workload, experiment.stats_type, dbconn)
         num_attempted = 0
@@ -31,9 +33,9 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         num_with_values = 0
         for query in queries
             println("Query Path: ", query.query_path)
-#            if !occursin("Graph_6/uf_Q_4_2", query.query_path)
-#                continue
-#            end
+            if !occursin("query_dense_8_115", query.query_path)
+                continue
+            end
             num_attempted +=1
             try
                 if experiment.use_duckdb
@@ -41,7 +43,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     if result == "failed"
                         push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", string(true)))
                     else
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value), string(false)))
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), "0.0", string(result.value), string(false)))
                         if !isnothing(query.expected_result)
                             if result.value == query.expected_result
                                 num_correct += 1
@@ -51,6 +53,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                         num_completed += 1
                     end
                 else
+                    warm_start_time = 0
                     if experiment.warm_start
                         println("Warm Start Query Path: ", query.query_path)
                         warm_start_time = @elapsed (@timeout experiment.timeout galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0) "failed")
@@ -58,10 +61,10 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     end
                     result = @timeout experiment.timeout galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=3) "failed"
                     if result == "failed"
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", string(true)))
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", "0.0", string(true)))
                     else
                         println(result)
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(result.value), string(false)))
+                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(warm_start_time - result.execute_time - result.opt_time), string(result.value), string(false)))
                         if !isnothing(query.expected_result)
                             if all(result.value .== query.expected_result)
                                 num_correct += 1
@@ -75,8 +78,8 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     end
                 end
             catch e
-                throw(e)
                 println("Error Occurred: ", e)
+                throw(e)
             end
         end
         println("Attempted Queries: ", num_attempted)

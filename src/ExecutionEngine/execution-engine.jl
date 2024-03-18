@@ -1,17 +1,18 @@
 
 get_index_symbol(idx_num) = Symbol("v_$(idx_num)")
+get_tensor_symbol(tns_num) = Symbol("t_$(tns_num)")
 
 # This file performs the actual execution of physical query plan.
-function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols, index_name_dict; read=true)
+function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols, index_sym_dict; read=true)
     mode = read ? Reader() : Updater()
     mode = literal_instance(mode)
     index_expressions = []
     for i in range(1, length(index_ids))
-        if !haskey(index_name_dict, index_ids[i])
-            idx_num = length(index_name_dict)
-            index_name_dict[index_ids[i]] = get_index_symbol(idx_num)
+        if !haskey(index_sym_dict, index_ids[i])
+            idx_num = length(index_sym_dict)
+            index_sym_dict[index_ids[i]] = get_index_symbol(idx_num)
         end
-        index = index_instance(index_name_dict[index_ids[i]])
+        index = index_instance(index_sym_dict[index_ids[i]])
         if read == true
             if protocols[i] == t_walk
                 index = call_instance(literal_instance(walk), index)
@@ -72,6 +73,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         node_dict[cur_node_id] = (cur_node, child_node_ids)
     end
     index_sym_dict = Dict()
+    tensor_id_converter = Dict()
     agg_op = nothing
     kernel_prgm = nothing
     input_index_orders = []
@@ -90,7 +92,10 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
                     println("Expected Output Tensor Size: ", estimate_nnz(node.stats))
                     println("Output Tensor Size: ", countstored(kernel.input_tensors[tensor_id]))
                 end
-                node_dict[node_id] = initialize_access(tensor_id,
+                if !haskey(tensor_id_converter, tensor_id)
+                    tensor_id_converter[tensor_id] = "t_$(length(tensor_id_converter))"
+                end
+                node_dict[node_id] = initialize_access(tensor_id_converter[tensor_id],
                                                         kernel.input_tensors[tensor_id],
                                                         node.input_indices,
                                                         node.input_protocols,

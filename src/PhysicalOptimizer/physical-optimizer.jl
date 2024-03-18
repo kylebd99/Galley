@@ -66,8 +66,6 @@ function make_input_tree(op, child_kernel_info)
         push!(cur_stats, new_stats)
         occurences = [count for (k, count) in enumerate(occurences) if k!=i && k!=j]
         push!(occurences, new_occurence)
-        println((i,j))
-        println(occurences)
     end
     return input_tree
 end
@@ -124,8 +122,8 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
             root, dict, exprs = _recursive_get_kernel_root(arg, loop_order, input_counter)
             push!(child_kernel_info, (node=arg, stats=arg.stats, root=root, input_dict=dict, input_exprs=exprs))
         end
-        num_occurences = sum([length(get_index_set(ki.stats)) for ki in child_kernel_info])
-        if num_occurences > MAX_KERNEL_SIZE
+        idx_occurences = sum([length(get_index_set(ki.stats)) for ki in child_kernel_info])
+        if idx_occurences > MAX_KERNEL_SIZE
             input_tree = make_input_tree(op, child_kernel_info)
             child_roots = []
             input_dict = Dict()

@@ -2,7 +2,7 @@
 
 @enum GROUP dataset faq_optimizer query_type stats_type description
 
-@enum VALUE execute_time opt_time overall_time
+@enum VALUE execute_time opt_time overall_time compile_time
 
 function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams};
                                         x_type::GROUP=dataset, y_type::VALUE=overall_time,
@@ -32,6 +32,8 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
                 current_y = results_df[i, :Runtime]
             elseif y_type == opt_time
                 current_y = results_df[i, :OptTime]
+            elseif y_type == compile_time
+                current_y = results_df[i, :CompileTime]
             elseif y_type == overall_time
                 current_y = results_df[i, :OptTime] + results_df[i, :Runtime]
             else # y_type == execute_time
@@ -91,6 +93,8 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                 current_y = results_df[i, :MemoryFootprint]/(10^6)
             elseif y_type == opt_time
                 current_y = results_df[i, :OptTime]
+            elseif y_type == compile_time
+                current_y = results_df[i, :CompileTime]
             elseif y_type == execute_time
                 current_y = results_df[i, :Runtime]
             else # y_type == overall_time

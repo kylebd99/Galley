@@ -33,9 +33,9 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         num_with_values = 0
         for query in queries
             println("Query Path: ", query.query_path)
-            if !occursin("query_dense_8_115", query.query_path)
-                continue
-            end
+#            if !occursin("query_dense_8_115", query.query_path)
+#                continue
+#            end
             num_attempted +=1
             try
                 if experiment.use_duckdb

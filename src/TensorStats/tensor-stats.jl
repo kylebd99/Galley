@@ -239,14 +239,6 @@ function estimate_nnz(stat::DCStats)
         return 1
     end
     dcs = stat.dcs
-    min_card = Inf
-    for dc in dcs
-        if isempty(dc.X) && dc.Y ⊇ indices
-            min_card = min(min_card, dc.d)
-        end
-    end
-    min_card < Inf && return min_card
-
     inferred_dcs = _infer_dcs(dcs; cheap=true)
     min_card = Inf
     for dc in inferred_dcs

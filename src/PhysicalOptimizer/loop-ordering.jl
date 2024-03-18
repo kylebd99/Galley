@@ -32,9 +32,9 @@ function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{Index
 end
 
 function get_output_compat(ordered_output_vars::Vector{IndexExpr}, prefix::Vector{IndexExpr})
-    return if is_prefix(ordered_output_vars, prefix)
+    return if fully_compat_with_loop_prefix(ordered_output_vars, prefix)
         FULL_PREFIX
-    elseif is_set_prefix(Set(ordered_output_vars), prefix)
+    elseif set_compat_with_loop_prefix(Set(ordered_output_vars), prefix)
         SET_PREFIX
     else
         NO_PREFIX
@@ -82,6 +82,10 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                 end
             end
             potential_vars = setdiff(potential_vars, prefix_set)
+            if length(potential_vars) == 0
+                # If the query isn't connected, we will need to include a cross product
+                potential_vars = setdiff(all_vars, prefix_set)
+            end
 
             for new_var in potential_vars
                 new_prefix_set = union(prefix_set, [new_var])

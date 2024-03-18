@@ -77,12 +77,12 @@ function get_sparsity_structure(tensor::Tensor)
     return output_tensor
 end
 
-function is_prefix(l_vec::Vector, r_vec::Vector)
-    for i in reverse(eachindex(l_vec))
-        if i > length(r_vec)
+function fully_compat_with_loop_prefix(tensor_order::Vector, loop_prefix::Vector)
+    for i in reverse(eachindex(tensor_order))
+        if i > length(loop_prefix)
             return true
         end
-        if l_vec[i] != r_vec[i]
+        if tensor_order[i] != loop_prefix[i]
             return false
         end
     end
@@ -91,11 +91,11 @@ end
 
 # This function determines whether any ordering of the `l_set` is a prefix of `r_vec`.
 # If r_vec is smaller than l_set, we just check whether r_vec is a subset of l_set.
-function is_set_prefix(l_set::Set, r_vec::Vector)
-    if length(l_set) > length(r_vec)
-        return Set(r_vec) ⊆ l_set
+function set_compat_with_loop_prefix(tensor_order::Set, loop_prefix::Vector)
+    if length(tensor_order) > length(loop_prefix)
+        return Set(loop_prefix) ⊆ tensor_order
     else
-        return l_set == Set(r_vec[1:length(l_set)])
+        return tensor_order == Set(loop_prefix[1:length(tensor_order)])
     end
 end
 
@@ -109,7 +109,7 @@ function one_off_reduce(op,
     loop_order = reverse(input_indices)
     output_dims = [get_dim_size(s_stats, idx) for idx in output_indices]
     output_formats = [t_hash for _ in output_indices]
-    if is_prefix(output_indices, loop_order)
+    if fully_compat_with_loop_prefix(output_indices, loop_order)
         output_formats = [t_sparse_list for _ in output_indices]
     end
     tensor_instance = initialize_access("s", s, input_indices, [t_default for _ in input_indices])

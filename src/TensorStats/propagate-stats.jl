@@ -1,11 +1,11 @@
 # This file defines how stats are produced for a logical expression based on its children.
 
 # We begin by defining the necessary interface for a statistics object.
-function merge_tensor_stats_join(op, all_stats::Vector{TensorStats})
+function merge_tensor_stats_join(op, all_stats::Vararg{TensorStats})
     throw(error("merge_tensor_stats_join not implemented for: ", typeof(all_stats[1])))
 end
 
-function merge_tensor_stats_union(op,  all_stats::Vector{TensorStats})
+function merge_tensor_stats_union(op,  all_stats::Vararg{TensorStats})
     throw(error("merge_tensor_stats_union not implemented for: ", typeof(all_stats[1])))
 end
 
@@ -19,7 +19,7 @@ end
 
 # We now define a set of functions for manipulating the TensorDefs that will be shared
 # across all statistics types
-function merge_tensor_def_join(op, all_defs::Vector{TensorDef})
+function merge_tensor_def_join(op, all_defs::Vararg{TensorDef})
     new_default_value = op([def.default_value for def in all_defs]...)
     new_index_set = union([def.index_set for def in all_defs]...)
     new_dim_sizes = Dict()
@@ -34,7 +34,7 @@ function merge_tensor_def_join(op, all_defs::Vector{TensorDef})
 end
 
 
-function merge_tensor_def_union(op, all_defs::Vector{TensorDef})
+function merge_tensor_def_union(op, all_defs::Vararg{TensorDef})
     new_default_value = op([def.default_value for def in all_defs]...)
     new_index_set = union([def.index_set for def in all_defs]...)
     new_dim_sizes = Dict()
@@ -74,16 +74,16 @@ end
 
 # This function determines whether a binary operation is union-like or join-like and creates
 # new statistics objects accordingly.
-function merge_tensor_stats(op, all_stats::Vector{ST}) where ST <: TensorStats
+function merge_tensor_stats(op, all_stats::Vararg{ST}) where ST <: TensorStats
     if !haskey(annihilator_dict, :($op))
-        return merge_tensor_stats_union(op, all_stats)
+        return merge_tensor_stats_union(op, all_stats...)
     end
 
     annihilator_value = annihilator_dict[:($op)]
     if all([annihilator_value == get_default_value(stats) for stats in all_stats])
-        return merge_tensor_stats_join(op, all_stats)
+        return merge_tensor_stats_join(op, all_stats...)
     else
-        return merge_tensor_stats_union(op, all_stats)
+        return merge_tensor_stats_union(op, all_stats...)
     end
 end
 
@@ -92,9 +92,8 @@ end
 # a TensorStats object.
 function _recursive_insert_stats!(n::LogicalPlanNode)
     if n.head == MapJoin
-        _recursive_insert_stats!(n.args[2])
-        _recursive_insert_stats!(n.args[3])
-        n.stats = merge_tensor_stats(n.args[1], [n.args[2].stats, n.args[3].stats])
+        map(_recursive_insert_stats!, n.args[2:end])
+        n.stats = merge_tensor_stats(n.args[1], [arg.stats for arg in n.args[2:end]]...)
     elseif n.head == Aggregate
         _recursive_insert_stats!(n.args[3])
         n.stats = reduce_tensor_stats(n.args[1], n.args[2], n.args[3].stats)
@@ -124,16 +123,16 @@ end
 
 
 ################# NaiveStats Propagation ##################################################
-function merge_tensor_stats_join(op, all_stats::Vector{NaiveStats})
-    new_def = merge_tensor_def_join(op, [get_def(stats) for stats in all_stats])
+function merge_tensor_stats_join(op, all_stats::Vararg{NaiveStats})
+    new_def = merge_tensor_def_join(op, [get_def(stats) for stats in all_stats]...)
     new_dim_space_size = get_dim_space_size(new_def, new_def.index_set)
     prob_non_defaults = [stats.cardinality / get_dim_space_size(stats, get_index_set(stats)) for stats in all_stats]
     new_cardinality = prod(prob_non_defaults) * new_dim_space_size
     return NaiveStats(new_def, new_cardinality)
 end
 
-function merge_tensor_stats_union(op, all_stats::Vector{NaiveStats})
-    new_def = merge_tensor_def_union(op, [get_def(stats) for stats in all_stats])
+function merge_tensor_stats_union(op, all_stats::Vararg{NaiveStats})
+    new_def = merge_tensor_def_union(op, [get_def(stats) for stats in all_stats]...)
     new_dim_space_size = get_dim_space_size(new_def, new_def.index_set)
     prob_defaults = [1 - stats.cardinality / get_dim_space_size(stats, get_index_set(stats)) for stats in all_stats]
     new_cardinality = (1 - prod(prob_defaults)) * new_dim_space_size
@@ -158,8 +157,8 @@ end
 
 
 ################# DCStats Propagation ##################################################
-function merge_tensor_stats_join(op, all_stats::Vector{DCStats})
-    new_def = merge_tensor_def_join(op, [get_def(stats) for stats in all_stats])
+function merge_tensor_stats_join(op, all_stats::Vararg{DCStats})
+    new_def = merge_tensor_def_join(op, [get_def(stats) for stats in all_stats]...)
     new_dc_dict = Dict()
     for dc in ∪([stats.dcs for stats in all_stats]...)
         dc_key = get_dc_key(dc)
@@ -172,8 +171,8 @@ function merge_tensor_stats_join(op, all_stats::Vector{DCStats})
     return new_stats
 end
 
-function merge_tensor_stats_union(op, all_stats::Vector{DCStats})
-    new_def = merge_tensor_def_union(op, [get_def(stats) for stats in all_stats])
+function merge_tensor_stats_union(op, all_stats::Vararg{DCStats})
+    new_def = merge_tensor_def_union(op, [get_def(stats) for stats in all_stats]...)
 
     # We start by extending all arguments' dcs to the new dimensions
     new_dcs = Dict()

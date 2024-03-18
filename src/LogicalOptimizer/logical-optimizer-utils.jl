@@ -41,8 +41,7 @@ function get_plan_node_indices(node::LogicalPlanNode)
     if node.head == InputTensor
         return get_index_set(node.stats)
     elseif node.head == MapJoin
-        return union(get_plan_node_indices(node.args[2]),
-        get_plan_node_indices(node.args[3]))
+        return union(map(get_plan_node_indices, node.args[2:end])...)
     elseif node.head == Aggregate
         return setdiff(get_plan_node_indices(node.args[3]), node.args[2])
     elseif node.head == Reorder

@@ -14,7 +14,7 @@ function get_prefix_iterations(vars::Set{IndexExpr}, input_stats::Vector{TensorS
     prefix_stats = [stat for stat in input_stats if length(∩(get_index_set(stat), vars)) > 0]
     all_vars = union([get_index_set(stat) for stat in prefix_stats]...)
 
-    join_stat = merge_tensor_stats_join(*, prefix_stats)
+    join_stat = merge_tensor_stats_join(*, prefix_stats...)
     resulting_stat = reduce_tensor_stats(+, setdiff(all_vars, vars), join_stat)
     return estimate_nnz(resulting_stat)
 end
@@ -33,12 +33,12 @@ function get_loop_lookups(vars::Set{IndexExpr}, new_var::IndexExpr, input_stats:
     prev_stats = [stat for stat in input_stats if length(∩(get_index_set(stat), prev_vars)) > 0]
     ST = typeof(input_stats[1])
 
-    prev_iterations_stat = merge_tensor_stats_join(*, [ST(get_default_value(input_stats[1])), prev_stats...])
+    prev_iterations_stat = merge_tensor_stats_join(*, ST(get_default_value(input_stats[1])), prev_stats...)
     prev_iterations_stat = reduce_tensor_stats(+, setdiff(all_vars, prev_vars), prev_iterations_stat)
 
     lookups = 0
     for stat in new_var_stats
-        new_stat = merge_tensor_stats_join(*, [prev_iterations_stat, stat])
+        new_stat = merge_tensor_stats_join(*, prev_iterations_stat, stat)
         new_stat = reduce_tensor_stats(+, setdiff(all_vars, vars), new_stat)
         lookups += estimate_nnz(new_stat)
     end

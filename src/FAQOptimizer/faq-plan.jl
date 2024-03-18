@@ -103,10 +103,7 @@ function _recursive_bag_to_plan_node(b::Bag, mult_op::Function, sum_op::Function
     end
     result_node = nothing
     if length(factor_plan_nodes) >= 2
-        result_node = MapJoin(mult_op, factor_plan_nodes[1], factor_plan_nodes[2])
-        for i in 3:length(factor_plan_nodes)
-            result_node = MapJoin(mult_op, result_node, factor_plan_nodes[i])
-        end
+        result_node = MapJoin(mult_op, factor_plan_nodes...)
     else
         result_node = factor_plan_nodes[1]
     end

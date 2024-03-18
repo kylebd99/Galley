@@ -11,7 +11,7 @@ function make_join_factor(op, lfactor::Factor, rfactor::Factor)
                     union(lfactor.active_indices,rfactor.active_indices),
                     union(lfactor.all_indices, rfactor.all_indices),
                     false,
-                    merge_tensor_stats_join(op, [lfactor.stats, rfactor.stats]))
+                    merge_tensor_stats_join(op, lfactor.stats, rfactor.stats))
 end
 
 function merge_prefix_joins!(faq::FAQInstance)

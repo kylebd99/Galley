@@ -24,6 +24,14 @@ function initialize_access(tensor_id::TensorId, tensor, index_ids, protocols; re
     return tensor_access
 end
 
+# To reduce compilation overhead, we try and roughly cannonicalize the inputs
+# to operator_expr by sorting them.
+function sort_operator_expr_inputs(inputs)
+    immediate_inputs = [input for input in inputs if input isa InputExpr]
+    remainder = [input for input in inputs if !(input isa InputExpr)]
+    perm = sortperm([(length(input.input_indices), get_def(input.stats).level_formats...) for input in immediate_inputs])
+    return [immediate_inputs[perm]..., remainder...]
+end
 
 function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     for tensor_id in keys(kernel.input_tensors)
@@ -43,6 +51,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         cur_node, cur_node_id = dequeue!(nodes_to_visit)
         child_node_ids = []
         if cur_node isa OperatorExpr
+            cur_node.inputs = sort_operator_expr_inputs(cur_node.inputs)
             for child_node in cur_node.inputs
                 node_id_counter += 1
                 enqueue!(nodes_to_visit, (child_node, node_id_counter))

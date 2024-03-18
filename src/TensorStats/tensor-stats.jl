@@ -85,7 +85,6 @@ get_index_order(stat::TensorStats) = get_index_order(get_def(stat))
 get_default_value(stat::TensorStats) = get_default_value(get_def(stat))
 get_index_format(stat::TensorStats, idx::IndexExpr) = get_index_format(get_def(stat), idx)
 
-
 #################  NaiveStats Definition ###################################################
 
 @auto_hash_equals mutable struct NaiveStats <: TensorStats
@@ -95,7 +94,7 @@ end
 
 get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats) = stat.cardinality
-condense_stats(stat::NaiveStats) = stat
+condense_stats!(::NaiveStats) = nothing
 
 NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
@@ -208,7 +207,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
     return final_dcs
 end
 
-function condense_stats(stat::DCStats)
+function condense_stats!(stat::DCStats)
     current_indices = get_index_set(stat)
     inferred_dcs = _infer_dcs(stat.dcs; cheap=false)
     min_dcs = Dict()
@@ -220,7 +219,7 @@ function condense_stats(stat::DCStats)
                 break
             end
         end
-        valid == false && break
+        valid == false && continue
         new_Y = dc.Y ∩ current_indices
         min_dcs[(dc.X, new_Y)] = min(get(min_dcs, (dc.X, new_Y), Inf), dc.d)
     end
@@ -230,11 +229,15 @@ function condense_stats(stat::DCStats)
         push!(end_dcs, DC(dc_key[1], dc_key[2], d))
     end
     stat.dcs = end_dcs
+    return nothing
 end
 
 
 function estimate_nnz(stat::DCStats)
     indices = get_index_set(stat)
+    if length(indices) == 0
+        return 1
+    end
     dcs = stat.dcs
     min_card = Inf
     for dc in dcs

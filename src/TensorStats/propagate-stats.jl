@@ -192,29 +192,7 @@ end
 
 function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
-    # In order to preserve as much information as possible, we need to infer dcs before
-    # filtering out DCs.
-    inferred_dcs = _infer_dcs(stats.dcs)
-    new_dcs_dict = Dict()
-    for dc in inferred_dcs
-        summed_Xs = ∩(dc.X, reduce_indices)
-        remaining_Xs = setdiff(dc.X, reduce_indices)
-        summed_X_dim_size = get_dim_space_size(stats, summed_Xs)
-        new_Y = setdiff(dc.Y, reduce_indices)
-        new_Y_dim_size = get_dim_space_size(stats, new_Y)
-
-        new_dc = min(dc.d * summed_X_dim_size, new_Y_dim_size)
-        new_key = (X = remaining_Xs, Y = new_Y)
-        current_dc = get(new_dcs_dict, new_key, Inf)
-        if new_dc < current_dc
-            new_dcs_dict[new_key] = new_dc
-        end
-    end
-    new_dcs = Set{DC}()
-    for (key, d) in new_dcs_dict
-        push!(new_dcs, DC(key.X, key.Y, d))
-    end
-
+    new_dcs = deepcopy(stats.dcs)
     new_stats = DCStats(new_def, new_dcs)
     return new_stats
 end

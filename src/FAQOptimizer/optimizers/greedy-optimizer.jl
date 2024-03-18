@@ -56,6 +56,9 @@ function _get_cheapest_edge_cover(mult_op, sum_op, inputs::Vector{Union{Factor{S
             cheapest_stat = stat
         end
     end
+    if isinf(min_cost)
+        println("MIN COST IS INFINITE!")
+    end
     return cheapest_edge_cover, cheapest_stat
 end
 
@@ -96,7 +99,7 @@ function greedy_decomposition(faq::FAQInstance)
                 end
             end
         end
-        condense_stats(cheapest_stat)
+        condense_stats!(cheapest_stat)
         new_bag = Bag(edge_cover,
                         covered_indices,
                         parent_indices,

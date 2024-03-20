@@ -209,7 +209,7 @@ end
 
 function condense_stats!(stat::DCStats)
     current_indices = get_index_set(stat)
-    inferred_dcs = _infer_dcs(stat.dcs; cheap=false)
+    inferred_dcs = _infer_dcs(stat.dcs; cheap=true)
     min_dcs = Dict()
     for dc in inferred_dcs
         valid = true
@@ -239,8 +239,14 @@ function estimate_nnz(stat::DCStats)
         return 1
     end
     dcs = stat.dcs
-    inferred_dcs = _infer_dcs(dcs; cheap=true)
     min_card = Inf
+    for dc in dcs
+        if isempty(dc.X) && dc.Y ⊇ indices
+            min_card = min(min_card, dc.d)
+        end
+    end
+    min_card < Inf && return min_card
+    inferred_dcs = _infer_dcs(dcs; cheap=true)
     for dc in inferred_dcs
         if isempty(dc.X) && dc.Y ⊇ indices
             min_card = min(min_card, dc.d)

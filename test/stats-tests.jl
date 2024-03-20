@@ -20,6 +20,7 @@ end
                  DC(Set(), Set([i, j]), 50),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         @test estimate_nnz(stat) == 50
     end
 
@@ -34,6 +35,7 @@ end
                  DC(Set(), Set([i, j]), 50),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         @test estimate_nnz(stat) == 50*5
     end
 
@@ -50,6 +52,7 @@ end
                 DC(Set([k]), Set([l]), 5),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         @test estimate_nnz(stat) == 50*5*5
     end
 
@@ -71,6 +74,7 @@ end
                 DC(Set([k]), Set([i]), 5),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         @test estimate_nnz(stat) == 50*5
     end
 
@@ -93,6 +97,7 @@ end
                 DC(Set([k]), Set([i]), 5),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         @test estimate_nnz(stat) == 1*5
     end
 
@@ -114,6 +119,7 @@ end
                 DC(Set([k]), Set([i]), 5),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         reduce_stats = reduce_tensor_stats(+, Set([i,j,k]), stat)
         @test estimate_nnz(reduce_stats) == 1
     end
@@ -136,6 +142,7 @@ end
                     DC(Set([k]), Set([i]), 5),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         reduce_stats = reduce_tensor_stats(+, Set([i, j]), stat)
         @test estimate_nnz(reduce_stats) == 5
     end
@@ -158,6 +165,7 @@ end
                     DC(Set([k]), Set([i]), 5),
                 ])
         stat = DCStats(def, dcs)
+        condense_stats!(stat)
         reduce_stats = reduce_tensor_stats(+, Set([i]), stat)
         @test estimate_nnz(reduce_stats) == 5
     end

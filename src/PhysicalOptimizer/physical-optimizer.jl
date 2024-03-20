@@ -1,4 +1,4 @@
-MAX_KERNEL_SIZE = 7
+MAX_KERNEL_SIZE = 8
 
 function get_tensor_id(input_counter)
     id = "t_$(input_counter[1])"

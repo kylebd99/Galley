@@ -54,6 +54,8 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
     reformat_costs = Dict(i => cost_of_reformat(input_stats[i]) for i in eachindex(input_stats))
+    join_stats = merge_tensor_stats(*, input_stats...)
+    condense_stats!(join_stats)
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
@@ -63,7 +65,7 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
         rf_set = get_reformat_set(input_stats, prefix)
         output_compat = get_output_compat(ordered_output_vars, prefix)
         class = (v_set, output_compat, rf_set)
-        cost = get_prefix_cost(v_set, var, input_stats)
+        cost = get_prefix_cost(v_set, join_stats)
         optimal_plans[class] = (prefix, cost)
     end
 
@@ -93,7 +95,7 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                 rf_set = get_reformat_set(input_stats, new_prefix)
                 output_compat = get_output_compat(ordered_output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
-                new_cost = get_prefix_cost(new_prefix_set, new_var, input_stats) + cost
+                new_cost = get_prefix_cost(new_prefix_set, join_stats) + cost
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf
@@ -144,7 +146,7 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
     output_size = estimate_nnz(output_stats)
     transpose_cost = output_size * RandomWriteCost
     # The cost of writing to the output depending on whether the writes are sequential
-    num_flops = get_prefix_iterations(all_vars, input_stats)
+    num_flops = get_loop_lookups(all_vars, join_stats)
 
     min_cost = Inf
     best_prefix = nothing

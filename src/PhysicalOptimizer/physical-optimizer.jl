@@ -1,4 +1,4 @@
-MAX_KERNEL_SIZE = 8
+MAX_KERNEL_SIZE = 7
 
 function get_tensor_id(input_counter)
     id = "t_$(input_counter[1])"
@@ -26,8 +26,8 @@ KI_V = NamedTuple{(:children, :reduce_vars), Tuple{Vector, Set{IndexExpr}}}
 
 # Takes in a list of statistics objects and produces a tree of lists which represent
 # a good way to break down the mapjoin.
-function make_input_tree(sum_op, mult_op, child_kernel_info, reduce_vars)
-    input_tree = [(Any[ kernel_info ], Set()) for kernel_info in child_kernel_info]
+function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars)
+    input_tree = [(children=KI[ kernel_info ], reduce_vars=Set{IndexExpr}()) for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
     occurences = [length(get_index_set(stats)) for stats in cur_stats]
     while sum(occurences) > MAX_KERNEL_SIZE && length(input_tree) > 2
@@ -40,7 +40,7 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, reduce_vars)
                                             occurences[i] + length(get_index_set(j_stats)),
                                             length(get_index_set(i_stats))+ occurences[j])
                 min_next_occurrences > MAX_KERNEL_SIZE && continue
-                new_reduce_vars = setdiff(reduce_vars, input_tree[i][2], input_tree[j][2])
+                new_reduce_vars = setdiff(overall_reduce_vars, input_tree[i][2], input_tree[j][2])
                 new_reduce_vars = Set{IndexExpr}(setdiff(new_reduce_vars, [get_index_set(stat) for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]...))
                 cost = estimate_nnz(reduce_tensor_stats(sum_op, new_reduce_vars, merge_tensor_stats(mult_op, i_stats, j_stats)))
                 if min_cost > cost
@@ -53,7 +53,7 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, reduce_vars)
         i = best_pair[1]
         j = best_pair[2]
         new_expr_group = nothing
-        new_reduce_vars = Set{IndexExpr}(setdiff(reduce_vars, input_tree[i][2], input_tree[j][2]))
+        new_reduce_vars = Set{IndexExpr}(setdiff(overall_reduce_vars, input_tree[i][2], input_tree[j][2]))
         new_reduce_vars = setdiff(new_reduce_vars, [get_index_set(stat) for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]...)
         new_occurence = 0
         if occurences[i] + occurences[j] <= MAX_KERNEL_SIZE
@@ -71,7 +71,7 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, reduce_vars)
         end
         input_tree = [grp for (k, grp) in enumerate(input_tree) if k!=i && k!=j]
         new_reduce_vars = Set{IndexExpr}(new_reduce_vars)
-        new_expr_group = (new_expr_group, new_reduce_vars)
+        new_expr_group = (children=new_expr_group, reduce_vars=new_reduce_vars)
         push!(input_tree, new_expr_group)
         new_stats = merge_tensor_stats(mult_op, cur_stats[i], cur_stats[j])
         if length(new_reduce_vars) > 0
@@ -85,9 +85,10 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, reduce_vars)
     return input_tree
 end
 
-function _process_input_tree(sum_op, mult_op, input_tree, overall_output_order, input_counter, reduce_vars)
+function _process_input_tree(sum_op, mult_op, input_tree, overall_output_order, input_counter, reduce_vars, verbose)
     child_nodes = []
     child_stats = []
+    overall_removed_vars = Set{IndexExpr}(reduce_vars)
     for child in input_tree
         if child isa NamedTuple
             push!(child_nodes, child.node)
@@ -95,9 +96,10 @@ function _process_input_tree(sum_op, mult_op, input_tree, overall_output_order, 
         else
             child_inputs = child[1]
             child_reduce_vars = child[2]
-            child_node = _process_input_tree(sum_op, mult_op, child_inputs, overall_output_order, input_counter, child_reduce_vars)
+            child_node, child_removed_vars = _process_input_tree(sum_op, mult_op, child_inputs, overall_output_order, input_counter, child_reduce_vars, verbose)
             push!(child_nodes, child_node)
             push!(child_stats, child_node.stats)
+            union!(overall_removed_vars, child_removed_vars)
         end
     end
     expr = MapJoin(mult_op, child_nodes...)
@@ -109,24 +111,22 @@ function _process_input_tree(sum_op, mult_op, input_tree, overall_output_order, 
         expr = Aggregate(sum_op, reduce_vars, expr)
         expr.stats = agg_stats
         expr_idxs = get_index_set(expr.stats)
-        println(expr_idxs)
-        println(expr)
-        kernel = aggregate_to_kernel(expr, [idx for idx in overall_output_order if idx in expr_idxs])
+        kernel = aggregate_to_kernel(expr, [idx for idx in overall_output_order if idx in expr_idxs], verbose)
     else
         expr_idxs = get_index_set(expr.stats)
-        kernel = mapjoin_to_kernel(expr, [idx for idx in overall_output_order if idx in expr_idxs])
+        kernel = mapjoin_to_kernel(expr, [idx for idx in overall_output_order if idx in expr_idxs], verbose)
     end
     def = get_def(expr.stats)
     def.index_order = kernel.output_indices
     def.level_formats = kernel.output_formats
     node = LogicalPlanNode(InputTensor, [kernel.output_indices, kernel], expr.stats)
-    return node
+    return node, overall_removed_vars
 end
 
 # This function traverses the logical expression tree and converts it into a tensor expression
 # tree for use in a tensor kernel. In doing so, it decides the boundaries of each kernel as
 # well.
-function _recursive_get_kernel_root(n, loop_order, input_counter, parent)
+function _recursive_get_kernel_root(n, loop_order, input_counter, parent, verbose)
     kernel_root = nothing
     input_dict = Dict()
     input_exprs = []
@@ -148,7 +148,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter, parent)
         args = n.args[2:end]
         child_kernel_info = KI[]
         for arg in args
-            root, dict, exprs = _recursive_get_kernel_root(arg, loop_order, input_counter, n)
+            root, dict, exprs = _recursive_get_kernel_root(arg, loop_order, input_counter, n, verbose)
             push!(child_kernel_info, (node=arg, stats=arg.stats, root=root, input_dict=dict, input_exprs=exprs))
         end
         idx_occurences = sum([length(get_index_set(ki.stats)) for ki in child_kernel_info])
@@ -164,25 +164,29 @@ function _recursive_get_kernel_root(n, loop_order, input_counter, parent)
             input_dict = Dict()
             input_exprs = []
             output_order = relative_sort(collect(get_index_set(n.stats)), reverse(loop_order))
+            removed_vars = Set{IndexExpr}()
             for (inputs, input_reduce_vars) in input_tree
                 if length(inputs) > 1
-                    child_node = _process_input_tree(sum_op, op, inputs, output_order, input_counter, input_reduce_vars)
+                    child_node, child_removed_vars = _process_input_tree(sum_op, op, inputs, output_order, input_counter, input_reduce_vars, verbose)
                     child_kernel = child_node.args[2]
                     child_expr = InputExpr(get_tensor_id(input_counter),
                                             child_kernel.output_indices,
                                             [t_default for _ in child_kernel.output_indices],
                                             child_node.stats)
-                    println(get_index_set(child_node.stats))
-                    println(child_kernel.output_indices)
                     input_dict[child_expr.tensor_id] = child_kernel
                     push!(child_roots, child_expr)
                     push!(input_exprs, child_expr)
+                    union!(removed_vars, child_removed_vars)
                 else
                     ki = inputs[1]
                     merge!(input_dict, ki.input_dict)
                     append!(input_exprs, ki.input_exprs)
                     push!(child_roots, ki.root)
                 end
+            end
+            if parent.head == Aggregate
+                println(removed_vars)
+                setdiff!(parent.args[2], removed_vars)
             end
             kernel_root = OperatorExpr(op, [child_roots...])
         else
@@ -203,10 +207,13 @@ end
 function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, verbose)
     op = n.args[1]
     reduce_indices = n.args[2]
+    starting_reduce_indices = copy(reduce_indices)
     sub_expr = n.args[3]
     input_stats_vec = Vector{TensorStats}(_recursive_get_stats(sub_expr))
     loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
-    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], n)
+    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], n, verbose)
+    already_reduced_indices = setdiff(starting_reduce_indices, reduce_indices)
+    setdiff!(loop_order, already_reduced_indices)
     modify_protocols!(input_exprs)
     kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
     # Based on the loop order, we attempt to avoid random writes into the output.
@@ -243,7 +250,7 @@ function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, 
     input_dict = Dict()
     loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
     for child in children
-        child_root, child_input_dict, child_exprs = _recursive_get_kernel_root(child, loop_order, input_counter, n)
+        child_root, child_input_dict, child_exprs = _recursive_get_kernel_root(child, loop_order, input_counter, n, verbose)
         input_dict = merge(input_dict, child_input_dict)
         input_exprs = [input_exprs..., child_exprs...]
         push!(input_roots, child_root)
@@ -274,7 +281,7 @@ function reorder_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, 
     sub_expr = n.args[1]
     output_indices = n.args[2]
     loop_order = reverse(output_indices)
-    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], n)
+    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], n, verbose)
     kernel_root = ReorderExpr(output_indices, body_kernel)
     output_formats = select_output_format(n.stats, loop_order, output_indices)
     output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]

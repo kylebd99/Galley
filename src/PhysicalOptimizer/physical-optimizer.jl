@@ -21,8 +21,8 @@ function _recursive_get_stats(n)
     return input_stats
 end
 
-KI = NamedTuple{(:node, :stats, :root, :input_dict, :input_exprs), (LogicalPlanNode, TensorStats, TensorExpression, Dict, Vector{InputExpr})}
-KI_V = NamedTuple{(:children, :reduce_vars), (Vector, Set{IndexExpr})}
+KI = NamedTuple{(:node, :stats, :root, :input_dict, :input_exprs), Tuple{LogicalPlanNode, TensorStats, TensorExpression, Dict, Vector{InputExpr}}}
+KI_V = NamedTuple{(:children, :reduce_vars), Tuple{Vector, Set{IndexExpr}}}
 
 # Takes in a list of statistics objects and produces a tree of lists which represent
 # a good way to break down the mapjoin.

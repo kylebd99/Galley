@@ -21,10 +21,13 @@ function _recursive_get_stats(n)
     return input_stats
 end
 
+KI = NamedTuple{(:node, :stats, :root, :input_dict, :input_exprs), (LogicalPlanNode, TensorStats, TensorExpression, Dict, Vector{InputExpr})}
+KI_V = NamedTuple{(:children, :reduce_vars), (Vector, Set{IndexExpr})}
+
 # Takes in a list of statistics objects and produces a tree of lists which represent
 # a good way to break down the mapjoin.
 function make_input_tree(op, child_kernel_info)
-    input_tree = [Any[kernel_info] for kernel_info in child_kernel_info]
+    input_tree = KI_V[(children=[kernel_info], reduce_vars=Set{IndexExpr}()) for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
     occurences = [length(get_index_set(stats)) for stats in cur_stats]
     while sum(occurences) > MAX_KERNEL_SIZE && length(input_tree) > 2
@@ -70,12 +73,12 @@ function make_input_tree(op, child_kernel_info)
     return input_tree
 end
 
-function _process_input_tree(op, input_tree, overall_output_order, input_counter)
+function _process_input_tree(op, input_tree, overall_output_order, input_counter, verbose)
     child_nodes = []
     child_stats = []
     for ki in input_tree
         if ki isa Vector
-            child_node = _process_input_tree(op, ki, overall_output_order, input_counter)
+            child_node = _process_input_tree(op, ki, overall_output_order, input_counter, verbose)
             push!(child_nodes, child_node)
             push!(child_stats, child_node.stats)
         else
@@ -86,7 +89,7 @@ function _process_input_tree(op, input_tree, overall_output_order, input_counter
     expr = MapJoin(op, child_nodes...)
     expr.stats = merge_tensor_stats(op, child_stats...)
     expr_idxs = get_index_set(expr.stats)
-    kernel = mapjoin_to_kernel(expr, [idx for idx in overall_output_order if idx in expr_idxs])
+    kernel = mapjoin_to_kernel(expr, [idx for idx in overall_output_order if idx in expr_idxs], verbose)
     def = get_def(expr.stats)
     def.index_order = kernel.output_indices
     def.level_formats = kernel.output_formats
@@ -97,7 +100,7 @@ end
 # This function traverses the logical expression tree and converts it into a tensor expression
 # tree for use in a tensor kernel. In doing so, it decides the boundaries of each kernel as
 # well.
-function _recursive_get_kernel_root(n, loop_order, input_counter)
+function _recursive_get_kernel_root(n, loop_order, input_counter, verbose)
     kernel_root = nothing
     input_dict = Dict()
     input_exprs = []
@@ -117,9 +120,9 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
     elseif n.head == MapJoin
         op = n.args[1]
         args = n.args[2:end]
-        child_kernel_info = []
+        child_kernel_info = KI[]
         for arg in args
-            root, dict, exprs = _recursive_get_kernel_root(arg, loop_order, input_counter)
+            root, dict, exprs = _recursive_get_kernel_root(arg, loop_order, input_counter, verbose)
             push!(child_kernel_info, (node=arg, stats=arg.stats, root=root, input_dict=dict, input_exprs=exprs))
         end
         idx_occurences = sum([length(get_index_set(ki.stats)) for ki in child_kernel_info])
@@ -131,7 +134,7 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
             output_order = relative_sort(collect(get_index_set(n.stats)), reverse(loop_order))
             for input in input_tree
                 if length(input) > 1
-                    child_node = _process_input_tree(op, input, output_order, input_counter)
+                    child_node = _process_input_tree(op, input, output_order, input_counter, verbose)
                     child_kernel = child_node.args[2]
                     child_expr = InputExpr(get_tensor_id(input_counter),
                                             child_kernel.output_indices,
@@ -163,13 +166,13 @@ function _recursive_get_kernel_root(n, loop_order, input_counter)
     return kernel_root, input_dict, input_exprs
 end
 
-function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
+function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, verbose)
     op = n.args[1]
     reduce_indices = n.args[2]
     sub_expr = n.args[3]
     input_stats_vec = Vector{TensorStats}(_recursive_get_stats(sub_expr))
     loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
-    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1])
+    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], verbose)
     modify_protocols!(input_exprs)
     kernel_root = AggregateExpr(op, reduce_indices, body_kernel)
     # Based on the loop order, we attempt to avoid random writes into the output.
@@ -188,11 +191,11 @@ function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}
                             get_default_value(n.stats),
                             loop_order)
     kernel, tp_stats = transpose(output_order, kernel, n.stats)
-    validate_kernel(kernel)
+    verbose >= 2 && validate_kernel(kernel)
     return kernel
 end
 
-function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
+function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, verbose)
     op = n.args[1]
     children = n.args[2:end]
     input_stats_vec = TensorStats[]
@@ -206,7 +209,7 @@ function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
     input_dict = Dict()
     loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
     for child in children
-        child_root, child_input_dict, child_exprs = _recursive_get_kernel_root(child, loop_order, input_counter)
+        child_root, child_input_dict, child_exprs = _recursive_get_kernel_root(child, loop_order, input_counter, verbose)
         input_dict = merge(input_dict, child_input_dict)
         input_exprs = [input_exprs..., child_exprs...]
         push!(input_roots, child_root)
@@ -229,15 +232,15 @@ function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
                             get_default_value(n.stats),
                             loop_order)
     kernel, tp_stats = transpose(output_order, kernel, n.stats)
-    validate_kernel(kernel)
+    verbose >= 2 && validate_kernel(kernel)
     return kernel
 end
 
-function reorder_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
+function reorder_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, verbose)
     sub_expr = n.args[1]
     output_indices = n.args[2]
     loop_order = reverse(output_indices)
-    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1])
+    body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], verbose)
     kernel_root = ReorderExpr(output_indices, body_kernel)
     output_formats = select_output_format(n.stats, loop_order, output_indices)
     output_dims = [get_dim_size(n.stats, idx) for idx in output_indices]
@@ -249,7 +252,7 @@ function reorder_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr})
                             output_dims,
                             get_default_value(n.stats),
                             loop_order)
-    validate_kernel(kernel)
+    verbose >= 2 && validate_kernel(kernel)
     return kernel
 end
 
@@ -265,11 +268,11 @@ end
 # to re-optimize at this point based on the materialized children (e.g. their nnz count).
 function expr_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}; verbose = 0)
     if n.head == Aggregate
-        return aggregate_to_kernel(n, output_order)
+        return aggregate_to_kernel(n, output_order, verbose)
     elseif n.head == MapJoin
-        return mapjoin_to_kernel(n, output_order)
+        return mapjoin_to_kernel(n, output_order, verbose)
     elseif n.head == Reorder
-        return reorder_to_kernel(n, output_order)
+        return reorder_to_kernel(n, output_order, verbose)
     elseif n.head == InputTensor
         return n.args[2]
     elseif n.head == Scalar

@@ -1,5 +1,5 @@
 
-using Galley: estimate_nnz, reduce_tensor_stats
+using Galley: estimate_nnz, reduce_tensor_stats, condense_stats!
 
 @testset "NaiveStats" begin
 

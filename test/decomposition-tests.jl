@@ -59,7 +59,7 @@ end
         plan = decomposition_to_logical_plan(htd)
         _recursive_insert_stats!(plan)
         output_order = [i, k]
-        tensor_kernel = expr_to_kernel(plan, output_order)
+        tensor_kernel = expr_to_kernel(plan, output_order, verbose = 0)
         correct_matrix = a_matrix * b_matrix
         @test execute_tensor_kernel(tensor_kernel) == correct_matrix
     end

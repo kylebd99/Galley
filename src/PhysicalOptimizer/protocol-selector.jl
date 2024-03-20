@@ -48,7 +48,7 @@ function modify_protocols!(input_exprs)
         use_gallop = false
         if num_sparse_lists > 1
             # Gallop incurs additional code size, so we penalize it by a constant amount here.
-            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost * 4 + 10^4
+            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost * 4
             walk_cost = maximum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * SeqReadCost
             use_gallop = gallop_cost < walk_cost
         end

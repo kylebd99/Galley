@@ -27,7 +27,7 @@ KI_V = NamedTuple{(:children, :reduce_vars), Tuple{Vector, Set{IndexExpr}}}
 # Takes in a list of statistics objects and produces a tree of lists which represent
 # a good way to break down the mapjoin.
 function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars)
-    input_tree = [(children=KI[ kernel_info ], reduce_vars=Set{IndexExpr}()) for kernel_info in child_kernel_info]
+    input_tree = KI_V[(children=KI[ kernel_info ], reduce_vars=Set{IndexExpr}()) for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
     occurences = [length(get_index_set(stats)) for stats in cur_stats]
     while sum(occurences) > MAX_KERNEL_SIZE && length(input_tree) > 2
@@ -42,7 +42,9 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars
                 min_next_occurrences > MAX_KERNEL_SIZE && continue
                 new_reduce_vars = setdiff(overall_reduce_vars, input_tree[i][2], input_tree[j][2])
                 new_reduce_vars = Set{IndexExpr}(setdiff(new_reduce_vars, [get_index_set(stat) for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]...))
-                cost = estimate_nnz(reduce_tensor_stats(sum_op, new_reduce_vars, merge_tensor_stats(mult_op, i_stats, j_stats)))
+                new_stats = reduce_tensor_stats(sum_op, new_reduce_vars, merge_tensor_stats(mult_op, i_stats, j_stats))
+                condense_stats!(new_stats)
+                cost = estimate_nnz(new_stats)
                 if min_cost > cost
                     min_cost = cost
                     best_pair = (i,j)
@@ -52,7 +54,7 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars
         min_cost == Inf && (println("MIN COST INF"); break)
         i = best_pair[1]
         j = best_pair[2]
-        new_expr_group = nothing
+        new_expr_group = []
         new_reduce_vars = Set{IndexExpr}(setdiff(overall_reduce_vars, input_tree[i][2], input_tree[j][2]))
         new_reduce_vars = setdiff(new_reduce_vars, [get_index_set(stat) for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]...)
         new_occurence = 0
@@ -69,7 +71,7 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars
             new_reduce_vars = ∪(new_reduce_vars, input_tree[j][2])
             new_occurence = length(get_index_set(cur_stats[i]))+ occurences[j]
         end
-        input_tree = [grp for (k, grp) in enumerate(input_tree) if k!=i && k!=j]
+        input_tree = KI_V[grp for (k, grp) in enumerate(input_tree) if k!=i && k!=j]
         new_reduce_vars = Set{IndexExpr}(new_reduce_vars)
         new_expr_group = (children=new_expr_group, reduce_vars=new_reduce_vars)
         push!(input_tree, new_expr_group)
@@ -90,7 +92,7 @@ function _process_input_tree(sum_op, mult_op, input_tree, overall_output_order, 
     child_stats = []
     overall_removed_vars = Set{IndexExpr}(reduce_vars)
     for child in input_tree
-        if child isa NamedTuple
+        if child isa KI
             push!(child_nodes, child.node)
             push!(child_stats, child.stats)
         else
@@ -185,7 +187,6 @@ function _recursive_get_kernel_root(n, loop_order, input_counter, parent, verbos
                 end
             end
             if parent.head == Aggregate
-                println(removed_vars)
                 setdiff!(parent.args[2], removed_vars)
             end
             kernel_root = OperatorExpr(op, [child_roots...])

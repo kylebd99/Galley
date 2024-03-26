@@ -94,7 +94,7 @@ end
 
 get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats) = stat.cardinality
-condense_stats!(::NaiveStats) = nothing
+condense_stats!(::NaiveStats; timeout=100000) = nothing
 
 NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
@@ -161,7 +161,7 @@ end
 
 # When we're only attempting to infer for nnz estimation, we only need to consider
 # left dcs which have X = {}.
-function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
+function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
     all_dcs = Dict{DCKey, Float64}()
     for dc in dcs
         all_dcs[(X = collect(dc.X), Y = collect(dc.Y))] = dc.d
@@ -200,6 +200,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
             finished = true
         end
     end
+    time>timeout && println("Hit Timeout: $(time>timeout)")
     final_dcs = Set{DC}()
     for (dc_key, dc) in all_dcs
         push!(final_dcs, DC(Set(dc_key.X), Set(dc_key.Y), dc))
@@ -207,9 +208,9 @@ function _infer_dcs(dcs::Set{DC}; timeout=100000, cheap=false)
     return final_dcs
 end
 
-function condense_stats!(stat::DCStats)
+function condense_stats!(stat::DCStats; timeout=Inf)
     current_indices = get_index_set(stat)
-    inferred_dcs = _infer_dcs(stat.dcs; cheap=true)
+    inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, cheap=true)
     min_dcs = Dict()
     for dc in inferred_dcs
         valid = true

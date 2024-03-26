@@ -1,4 +1,4 @@
-MAX_KERNEL_SIZE = 7
+MAX_KERNEL_SIZE = 6
 
 function get_tensor_id(input_counter)
     id = "t_$(input_counter[1])"
@@ -29,16 +29,18 @@ KI_V = NamedTuple{(:children, :reduce_vars), Tuple{Vector, Set{IndexExpr}}}
 function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars)
     input_tree = KI_V[(children=KI[ kernel_info ], reduce_vars=Set{IndexExpr}()) for kernel_info in child_kernel_info]
     cur_stats = [kernel_info.stats for kernel_info in child_kernel_info]
-    occurences = [length(get_index_set(stats)) for stats in cur_stats]
-    while sum(occurences) > MAX_KERNEL_SIZE && length(input_tree) > 2
+    occurences = [0 for stats in cur_stats]
+    outermost_occurences = sum([length(get_index_set(stat)) for stat in cur_stats]) - length(union([get_index_set(stat) for stat in cur_stats]...))
+    while outermost_occurences > MAX_KERNEL_SIZE && length(input_tree) > 2
         min_cost = Inf
         best_pair = (-1, -1)
         for (i, i_stats) in enumerate(cur_stats)
             for (j, j_stats) in enumerate(cur_stats)
                 i >= j && continue # Only need to compare each pair once
-                min_next_occurrences = min(occurences[i] + occurences[j],
-                                            occurences[i] + length(get_index_set(j_stats)),
-                                            length(get_index_set(i_stats))+ occurences[j])
+                overlapping_vars = length(union(length(get_index_set(i_stats)), length(get_index_set(j_stats))))
+                min_next_occurrences = min(occurences[i] + occurences[j] + overlapping_vars,
+                                            occurences[i] + overlapping_vars,
+                                            occurences[j] + overlapping_vars)
                 min_next_occurrences > MAX_KERNEL_SIZE && continue
                 new_reduce_vars = setdiff(overall_reduce_vars, input_tree[i][2], input_tree[j][2])
                 new_reduce_vars = Set{IndexExpr}(setdiff(new_reduce_vars, [get_index_set(stat) for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]...))
@@ -57,19 +59,20 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars
         new_expr_group = []
         new_reduce_vars = Set{IndexExpr}(setdiff(overall_reduce_vars, input_tree[i][2], input_tree[j][2]))
         new_reduce_vars = setdiff(new_reduce_vars, [get_index_set(stat) for (k, stat) in enumerate(cur_stats) if k!=i && k!=j]...)
+        overlapping_vars = length(union(length(get_index_set(cur_stats[i])), length(get_index_set(cur_stats[j]))))
         new_occurence = 0
-        if occurences[i] + occurences[j] <= MAX_KERNEL_SIZE
+        if occurences[i] + occurences[j] + overlapping_vars <= MAX_KERNEL_SIZE
             new_expr_group = [input_tree[i][1]..., input_tree[j][1]...]
             new_reduce_vars = ∪(new_reduce_vars, input_tree[i][2], input_tree[j][2])
-            new_occurence = occurences[i]+occurences[j]
+            new_occurence = occurences[i] + occurences[j] + overlapping_vars
         elseif occurences[i] < occurences[j]
             new_expr_group = [input_tree[i][1]..., input_tree[j]]
             new_reduce_vars = ∪(new_reduce_vars, input_tree[i][2])
-            new_occurence = occurences[i] + length(get_index_set(cur_stats[j]))
+            new_occurence = occurences[i] + overlapping_vars
         else
             new_expr_group = [input_tree[i], input_tree[j][1]...]
             new_reduce_vars = ∪(new_reduce_vars, input_tree[j][2])
-            new_occurence = length(get_index_set(cur_stats[i]))+ occurences[j]
+            new_occurence = overlapping_vars + occurences[j]
         end
         input_tree = KI_V[grp for (k, grp) in enumerate(input_tree) if k!=i && k!=j]
         new_reduce_vars = Set{IndexExpr}(new_reduce_vars)
@@ -83,6 +86,7 @@ function make_input_tree(sum_op, mult_op, child_kernel_info, overall_reduce_vars
         push!(cur_stats, new_stats)
         occurences = [count for (k, count) in enumerate(occurences) if k!=i && k!=j]
         push!(occurences, new_occurence)
+        outermost_occurences = sum([length(get_index_set(stat)) for stat in cur_stats]) - length(union([get_index_set(stat) for stat in cur_stats]...))
     end
     return input_tree
 end

@@ -142,8 +142,7 @@ function merge_tensor_stats_join(op, all_stats::Vararg{DCStats})
     new_dc_dict = Dict()
     for dc in ∪([stats.dcs for stats in all_stats]...)
         dc_key = get_dc_key(dc)
-        current_dc = get(new_dc_dict, dc_key, Inf)
-        if dc.d < current_dc
+        if dc.d < get(new_dc_dict, dc_key, Inf)
             new_dc_dict[dc_key] = dc.d
         end
     end

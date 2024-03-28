@@ -69,7 +69,6 @@ function get_join_loop_order(agg_op,
                                 output_stats::TensorStats,
                                 output_order::Union{Nothing, Vector{IndexExpr}})
     all_vars = union([get_index_set(stat) for stat in input_stats]...)
-
     output_vars = get_index_set(output_stats)
     if !isnothing(output_order)
         output_vars = relative_sort(output_vars, output_order)

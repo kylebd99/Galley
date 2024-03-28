@@ -178,12 +178,14 @@ function get_join_loop_order_bounded(input_stats::Vector{TensorStats},
     end
 
     min_cost = Inf
+    best_plan_class = nothing
     best_prefix = nothing
     for (plan_class, plan) in optimal_plans
         cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size, num_flops)
         if cur_cost < min_cost
             min_cost = cur_cost
             best_prefix = plan[1]
+            best_plan_class = plan_class
         end
     end
     return best_prefix, min_cost
@@ -193,8 +195,8 @@ GREEDY_PLAN_K = 10
 
 function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
     join_stats = merge_tensor_stats(*, input_stats...)
-    condense_stats!(join_stats; only_for_estimation=true)
-    greedy_prefix, greedy_cost = get_join_loop_order_bounded(input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
-    exact_prefix, exact_cost = get_join_loop_order_bounded(input_stats, join_stats, output_stats, output_order, greedy_cost, Inf)
-    return exact_prefix
+    condense_stats!(join_stats; timeout=Inf, only_for_estimation=true)
+    greedy_order, greedy_cost = get_join_loop_order_bounded(input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
+    exact_order, exact_cost = get_join_loop_order_bounded(input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
+    return exact_order
 end

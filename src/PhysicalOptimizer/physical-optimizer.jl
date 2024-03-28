@@ -253,6 +253,9 @@ function mapjoin_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}, 
     for child in children
         append!(input_stats_vec, _recursive_get_stats(child))
     end
+    for stats in input_stats_vec
+        condense_stats!(stats; timeout=Inf, only_for_estimation=false)
+    end
     input_roots = TensorExpression[]
     input_exprs = []
     input_counter = [1]

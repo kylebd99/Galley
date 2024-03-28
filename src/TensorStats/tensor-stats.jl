@@ -16,7 +16,7 @@ TensorDef(default) = TensorDef(Set(), Dict(), default, nothing, nothing)
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
         return t_sparse_list
-    elseif typeof(lvl) <: SparseHashLevel
+    elseif typeof(lvl) <: SparseDict
         return t_hash
     elseif typeof(lvl) <: DenseLevel
         return t_dense

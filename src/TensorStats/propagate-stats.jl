@@ -97,6 +97,7 @@ function _recursive_insert_stats!(n::LogicalPlanNode)
     elseif n.head == Aggregate
         _recursive_insert_stats!(n.args[3])
         n.stats = reduce_tensor_stats(n.args[1], n.args[2], n.args[3].stats)
+        condense_stats!(n.stats)
     elseif n.head == RenameIndices
         _recursive_insert_stats!(n.args[1])
         n.stats = n.args[1].stats
@@ -162,8 +163,7 @@ function merge_tensor_stats_join(op, all_stats::Vararg{DCStats})
     new_dc_dict = Dict()
     for dc in ∪([stats.dcs for stats in all_stats]...)
         dc_key = get_dc_key(dc)
-        current_dc = get(new_dc_dict, dc_key, Inf)
-        if dc.d < current_dc
+        if dc.d < get(new_dc_dict, dc_key, Inf)
             new_dc_dict[dc_key] = dc.d
         end
     end

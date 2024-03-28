@@ -114,6 +114,7 @@ function _process_input_tree(sum_op, mult_op, input_tree, overall_output_order, 
     if length(reduce_vars) > 0
         reduce_vars = Set{IndexExpr}(reduce_vars)
         agg_stats = reduce_tensor_stats(sum_op, reduce_vars, expr.stats)
+        condense_stats!(agg_stats)
         expr = Aggregate(sum_op, reduce_vars, expr)
         expr.stats = agg_stats
         expr_idxs = get_index_set(expr.stats)
@@ -215,6 +216,9 @@ function aggregate_to_kernel(n::LogicalPlanNode, output_order::Vector{IndexExpr}
     starting_reduce_indices = copy(reduce_indices)
     sub_expr = n.args[3]
     input_stats_vec = Vector{TensorStats}(_recursive_get_stats(sub_expr))
+    for stats in input_stats_vec
+        condense_stats!(stats; timeout=Inf, only_for_estimation=false)
+    end
     loop_order = get_join_loop_order(input_stats_vec, n.stats, output_order)
     body_kernel, input_dict, input_exprs = _recursive_get_kernel_root(sub_expr, loop_order, [1], n, verbose)
     already_reduced_indices = setdiff(starting_reduce_indices, reduce_indices)

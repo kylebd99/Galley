@@ -139,6 +139,7 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
         agg_op = initwrite(output_default)
     end
 
+    printKernel(kernel, verbose)
     full_prgm = assign_instance(output_access, literal_instance(agg_op), kernel_prgm)
 
     loop_order = [index_instance(index_sym_dict[i]) for i in kernel.loop_order]
@@ -148,7 +149,6 @@ function execute_tensor_kernel(kernel::TensorKernel; lvl = 1, verbose=0)
     full_prgm = block_instance(declare_instance(variable_instance(:output_tensor),
                                                  literal_instance(output_default)),
                                 full_prgm)
-    printKernel(kernel, verbose)
     start_time = time()
     Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)

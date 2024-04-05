@@ -4,6 +4,7 @@ authors = ["Kyle Deeds <kdeeds@cs.washington.edu >"]
 version = "0.1.0"
 
 [deps]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
 AutoHashEquals = "15f4f7f2-30c1-5605-9d31-71845cf9641f"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -22,7 +23,9 @@ Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
 QXGraphDecompositions = "b15f1ded-d19a-4aca-a940-1991fcfc7750"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+RewriteTools = "5969e224-3634-4c61-9f66-721b69e98b8a"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+SyntaxInterface = "b33eeca9-aacb-4496-a840-e75f1646a4fb"
 TermInterface = "8ea1fca8-c5ef-4a55-8b96-4e9afe9c9a3c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

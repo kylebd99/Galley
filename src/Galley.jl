@@ -29,6 +29,7 @@ export load_to_duckdb, DuckDBTensor
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
+include("PlanAST/PlanAST.jl")
 include("LogicalOptimizer/LogicalOptimizer.jl")
 include("TensorStats/TensorStats.jl")
 include("FAQOptimizer/FAQOptimizer.jl")

@@ -1,0 +1,205 @@
+# This file defines the logical query plan (LQP) language.
+# Each LQP is a tree of expressions where interior nodes refer to
+# function calls and leaf nodes refer to constants or input tensors.
+
+const IS_TREE = 1
+const IS_STATEFUL = 2
+const ID = 4
+
+@enum PlanNodeKind begin
+    Value        =  1ID             #  Value(x::Any)
+    Index        =  2ID             #  Index(x::Union{String, Symbol})
+    Alias        =  3ID             #  Alias(x::Union{String, Symbol})
+    Input        =  4ID | IS_TREE   #  Input(tns::Union{Tensor, Number}, idxs...::{TI})
+    MapJoin      =  5ID | IS_TREE   #  MapJoin(op::Value, args..::PlanNode)
+    Aggregate    =  6ID | IS_TREE   #  Aggregate(op::Value, idxs...::Index, arg::PlanNode)
+    Materialize  =  7ID | IS_TREE   #  Materialize(formats::Vector{Formats}, idx_order::Vector{TI}, arg:PlanNode)
+    Query        =  8ID | IS_TREE   #  Query(name::Alias, expr::PlanNode)
+    Outputs      =  9ID | IS_TREE   #  Outputs(args...::TI)
+    Plan         = 10ID | IS_TREE   #  Alias(x::Union{String, Symbol})
+end
+
+
+
+
+# Here, we define the internal expression type that we use to describe logical query plans.
+mutable struct PlanNode
+    kind::Any
+    children::Vector{PlanNode}
+    val::Any
+    stats::Any
+end
+PN = PlanNode
+
+function PlanNode(kind::PlanNodeKind, args::Vector)
+    if (kind === Value || kind === Index || kind === Alias) && length(args) == 1
+        return PlanNode(kind, PlanNode[], args[1], nothing)
+    else
+        args = vcat(args...)
+        if (kind === Input && length(args) >= 1) ||
+            (kind === MapJoin && length(args) >= 2) ||
+            (kind === Aggregate && length(args) >= 3) ||
+            (kind === Materialize && length(args) >= 3) ||
+            (kind === Query && length(args) == 2) ||
+            (kind === Outputs) ||
+            (kind === Plan)
+            return PlanNode(kind, args, nothing, nothing)
+        else
+            error("wrong number of arguments to $kind(...)")
+        end
+    end
+end
+
+function (kind::PlanNodeKind)(args...)
+    PlanNode(kind, Any[args...,])
+end
+
+# SyntaxInterface mandatories.
+isvalue(node::PlanNode) = node.kind === Value
+isindex(node::PlanNode) = node.kind === Index
+isalias(node::PlanNode) = node.kind === Alias
+isstateful(node::PlanNode) = Int(node.kind) & IS_STATEFUL != 0
+SyntaxInterface.istree(node::PlanNode) = Int(node.kind) & IS_TREE != 0
+AbstractTrees.children(node::PlanNode) = node.children
+SyntaxInterface.arguments(node::PlanNode) = node.children
+SyntaxInterface.operation(node::PlanNode) = node.kind
+
+function SyntaxInterface.similarterm(::Type{PlanNode}, op::PlanNodeKind, args)
+    @assert Int(op) & IS_TREE != 0
+    PlanNode(op, args, nothing, nothing)
+end
+
+logic_leaf(arg) = Value(arg)
+logic_leaf(arg::Type) = Value(arg)
+logic_leaf(arg::Function) = Value(arg)
+logic_leaf(arg::Union{Symbol, String}) = Index(arg)
+logic_leaf(arg::PlanNode) = arg
+
+Base.convert(::Type{PlanNode}, x) = logic_leaf(x)
+Base.convert(::Type{PlanNode}, x::PlanNode) = x
+
+#overload RewriteTools pattern constructor so we don't need
+#to wrap leaf nodes.
+galley_pattern(arg) = logic_leaf(arg)
+galley_pattern(arg::RewriteTools.Slot) = arg
+galley_pattern(arg::RewriteTools.Segment) = arg
+galley_pattern(arg::RewriteTools.Term) = arg
+function RewriteTools.term(f::PlanNodeKind, args...; type = nothing)
+    RewriteTools.Term(f, [galley_pattern.(args)...])
+end
+
+function Base.getproperty(node::PlanNode, sym::Symbol)
+    if sym === :kind || sym === :val || sym === :children
+        return Base.getfield(node, sym)
+    elseif node.kind === Index && sym === :name node.val
+    elseif node.kind === Alias && sym === :name node.val
+    elseif node.kind === Input && sym === :tns node.children[1]
+    elseif node.kind === Input && sym === :idxs node.children[2:end]
+    elseif node.kind === MapJoin && sym === :op node.children[1]
+    elseif node.kind === MapJoin && sym === :args @view node.children[2:end]
+    elseif node.kind === Aggregate && sym === :op node.children[1]
+    elseif node.kind === Aggregate && sym === :idxs node.children[2:end-1]
+    elseif node.kind === Aggregate && sym === :arg node.children[end]
+    elseif node.kind === Materialize && sym === :formats node.children[1]
+    elseif node.kind === Materialize && sym === :idx_order node.children[2]
+    elseif node.kind === Materialize && sym === :expr node.children[3]
+    elseif node.kind === Query && sym === :name node.children[1]
+    elseif node.kind === Query && sym === :expr node.children[2]
+    elseif node.kind === Outputs && sym === :names node.children
+    elseif node.kind === Plan && sym === :queries @view node.children[1:end-1]
+    elseif node.kind === Plan && sym === :outputs @view node.children[end]
+    else
+        error("type PlanNode($(node.kind), ...) has no property $sym")
+    end
+end
+
+
+function Base.:(==)(a::PlanNode, b::PlanNode)
+    if a.kind === Value
+        return b.kind === Value && a.val == b.val
+    elseif a.kind === Alias
+        return b.kind === Alias && a.name == b.name
+    elseif a.kind === Index
+        return b.kind === Index && a.name == b.name
+    elseif istree(a)
+        return a.kind === b.kind && a.children == b.children
+    else
+        error("unimplemented")
+    end
+end
+
+function Base.hash(a::PlanNode, h::UInt)
+    if a.kind === Value || a.kind === Alias || a.kind === Index
+        return hash(a.kind, hash(a.val, h))
+    elseif istree(a)
+        return hash(a.kind, hash(a.children, h))
+    else
+        error("unimplemented")
+    end
+end
+
+
+
+function planToString(n::PlanNode, depth::Int64)
+    output = ""
+    if n.kind == Alias
+        output *= "$(n.name)"
+        return output
+    elseif n.kind == Index
+        output *= "$(n.name)"
+        return output
+    elseif n.kind == Value
+        if n.val isa Tensor
+            output *= "Value(FIBER)"
+        else
+            output *= "Value($(n.val))"
+        end
+        return output
+    elseif n.kind == Input
+        output *= "Input("
+        prefix = ""
+        for arg in children(n)
+            output *= prefix * planToString(arg, depth + 1)
+            prefix =","
+        end
+        output *= ")"
+        return output
+    end
+
+    if depth > 0
+        output = "\n"
+    end
+    left_space = ""
+    for _ in 1:depth
+        left_space *= "   "
+    end
+    output *= left_space
+    if n.kind == Aggregate
+        output *= "Aggregate("
+    elseif n.kind == MapJoin
+        output *= "MapJoin("
+    elseif n.kind == Materialize
+        output *= "Reorder("
+    elseif n.kind == Query
+        output *= "Query("
+    elseif n.kind == Outputs
+        output *= "Outputs("
+    elseif n.kind == Plan
+        output *= "Plan("
+    end
+
+    prefix = ""
+    for arg in children(n)
+        output *= prefix * planToString(arg, depth + 1)
+        prefix =","
+    end
+    output *= ")"
+end
+
+function Base.show(io::IO, input::PlanNode)
+    print(io, planToString(input, 0))
+end
+
+function Base.show(io::IO, input::TI)
+    print(io, input.name)
+end

@@ -10,3 +10,11 @@ end
 function isdistributive(f, g)
     return Finch.isdistributive(Finch.DefaultAlgebra(), f, g)
 end
+
+function isidentity(f, x)
+    return Finch.isidentity(Finch.DefaultAlgebra(), f, x)
+end
+
+function isannihilator(f, x)
+    return Finch.isannihilator(Finch.DefaultAlgebra(), f, x)
+end

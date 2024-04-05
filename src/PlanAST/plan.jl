@@ -89,7 +89,7 @@ function RewriteTools.term(f::PlanNodeKind, args...; type = nothing)
 end
 
 function Base.getproperty(node::PlanNode, sym::Symbol)
-    if sym === :kind || sym === :val || sym === :children
+    if sym === :kind || sym === :val || sym === :children || sym == :stats
         return Base.getfield(node, sym)
     elseif node.kind === Index && sym === :name node.val
     elseif node.kind === Alias && sym === :name node.val
@@ -137,8 +137,6 @@ function Base.hash(a::PlanNode, h::UInt)
         error("unimplemented")
     end
 end
-
-
 
 function planToString(n::PlanNode, depth::Int64)
     output = ""
@@ -198,8 +196,4 @@ end
 
 function Base.show(io::IO, input::PlanNode)
     print(io, planToString(input, 0))
-end
-
-function Base.show(io::IO, input::TI)
-    print(io, input.name)
 end

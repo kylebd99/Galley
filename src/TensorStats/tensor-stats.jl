@@ -1,6 +1,4 @@
 
-# A subset of the allowed level formats provided by the Finch API
-@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
 
 # This struct holds the high-level definition of a tensor. This information should be
 # agnostic to the statistics used for cardinality estimation.
@@ -16,7 +14,7 @@ TensorDef(default) = TensorDef(Set(), Dict(), default, nothing, nothing)
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
         return t_sparse_list
-    elseif typeof(lvl) <: SparseHashLevel
+    elseif typeof(lvl) <: SparseLevel
         return t_hash
     elseif typeof(lvl) <: DenseLevel
         return t_dense
@@ -25,7 +23,7 @@ function level_to_enum(lvl)
     end
 end
 
-function TensorDef(indices::Vector{IndexExpr}, tensor::Tensor)
+function TensorDef(tensor::Tensor, indices::Vector{IndexExpr})
     shape_tuple = size(tensor)
     dim_size = Dict()
     level_formats = LevelFormat[]
@@ -99,8 +97,8 @@ condense_stats!(::NaiveStats; timeout=100000) = nothing
 NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
-function NaiveStats(indices::Vector{IndexExpr}, tensor::Tensor)
-    def = TensorDef(indices, tensor)
+function NaiveStats(tensor::Tensor, indices::Vector{IndexExpr})
+    def = TensorDef(tensor, indices)
     cardinality = countstored(tensor)
     return NaiveStats(def, cardinality)
 end
@@ -297,8 +295,8 @@ function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
     return dcs
 end
 
-function DCStats(indices::Vector{IndexExpr}, tensor::Tensor)
-    def = TensorDef(indices, tensor)
+function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
+    def = TensorDef(tensor, indices)
     sparsity_structure = get_sparsity_structure(tensor)
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)
@@ -309,7 +307,7 @@ function DCStats(x::Number)
     return DCStats(def, Set([DC(Set(), Set(), 1)]))
 end
 
-function reindex_stats(indices::Vector{IndexExpr}, stat::DCStats)
+function reindex_stats(stat::DCStats, indices::Vector{IndexExpr})
     new_def = reindex_def(indices, stat.def)
     rename_dict = Dict(get_index_order(stat)[i]=> indices[i] for i in eachindex(indices))
     new_dcs = Set()

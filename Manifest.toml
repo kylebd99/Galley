@@ -369,11 +369,11 @@ weakdeps = ["PDMats", "SparseArrays", "Statistics"]
 
 [[deps.Finch]]
 deps = ["AbstractTrees", "CIndices", "Compat", "DataStructures", "JSON", "LinearAlgebra", "PrecompileTools", "Random", "Requires", "RewriteTools", "SyntaxInterface"]
-git-tree-sha1 = "200d8359e02736a73ba7f85af5b60212d6fb2770"
+git-tree-sha1 = "abf2668b6c5ccfa60a258981d5d77bb4c5b41b20"
 repo-rev = "main"
 repo-url = "https://github.com/willow-ahrens/Finch.jl.git"
 uuid = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"
-version = "0.6.19"
+version = "0.6.20"
 
     [deps.Finch.extensions]
     HDF5Ext = "HDF5"

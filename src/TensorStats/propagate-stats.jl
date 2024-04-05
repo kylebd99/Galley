@@ -50,7 +50,7 @@ end
 
 function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
     new_default_value = nothing
-    if haskey(identity_dict, :($op)) && identity_dict[:($op)] == def.default_value
+    if isidentity(op, def.default_value)
         new_default_value = def.default_value
     elseif op == +
         new_default_value = def.default_value * prod([def.dim_sizes[x] for x in reduce_indices])
@@ -75,47 +75,13 @@ end
 # This function determines whether a binary operation is union-like or join-like and creates
 # new statistics objects accordingly.
 function merge_tensor_stats(op, all_stats::Vararg{ST}) where ST <: TensorStats
-    if !haskey(annihilator_dict, :($op))
-        return merge_tensor_stats_union(op, all_stats...)
-    end
-
-    annihilator_value = annihilator_dict[:($op)]
-    if all([annihilator_value == get_default_value(stats) for stats in all_stats])
+    if all([isannihilator(op, get_default_value(stats)) for stats in all_stats])
         return merge_tensor_stats_join(op, all_stats...)
     else
         return merge_tensor_stats_union(op, all_stats...)
     end
 end
 
-
-# This function takes in a logical plan node and annotates it as well as any children with
-# a TensorStats object.
-function _recursive_insert_stats!(n::LogicalPlanNode)
-    if n.head == MapJoin
-        map(_recursive_insert_stats!, n.args[2:end])
-        n.stats = merge_tensor_stats(n.args[1], [arg.stats for arg in n.args[2:end]]...)
-    elseif n.head == Aggregate
-        _recursive_insert_stats!(n.args[3])
-        n.stats = reduce_tensor_stats(n.args[1], n.args[2], n.args[3].stats)
-    elseif n.head == RenameIndices
-        _recursive_insert_stats!(n.args[1])
-        n.stats = n.args[1].stats
-    elseif n.head == Reorder
-        _recursive_insert_stats!(n.args[1])
-        n.stats = n.args[1].stats
-    # If the stats of the input tensor has already been initialized, we leave it alone.
-    # Otherwise, we use the stats type defined in the input.
-    elseif n.head == InputTensor
-        if n.stats isa Type
-            n.stats = n.stats(n.args[1], n.args[2])
-        else
-            n.stats = n.stats
-        end
-    elseif n.head == Scalar
-        TensorStats(n.args[1])
-    end
-    return n.stats
-end
 
 function transpose_tensor_def(index_order::Vector{IndexExpr}, def::TensorDef)
     return reindex_def(index_order, def)

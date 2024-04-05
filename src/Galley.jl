@@ -13,30 +13,31 @@ using Finch.FinchNotation: index_instance, variable_instance, tag_instance, lite
                         block_instance, define_instance, call_instance, freeze_instance,
                         thaw_instance,
                         Updater, Reader, Dimensionless
-using Metatheory
-using Metatheory.EGraphs
 using PrettyPrinting
-using TermInterface
-
 export galley
-export LogicalPlanNode, IndexExpr, Aggregate, Agg, MapJoin, Reorder, InputTensor
+export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
 export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
-export DCStats, NaiveStats, _recursive_insert_stats!, TensorDef, DC
+export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, hypertree_width, greedy, ordering
 export expr_to_kernel, execute_tensor_kernel
 export load_to_duckdb, DuckDBTensor
 
-include("finch-algebra_ext.jl")
+IndexExpr = Symbol
+# This defines the list of access protocols allowed by the Finch API
+@enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4 t_default = 5
+# A subset of the allowed level formats provided by the Finch API
+@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
+
 include("utility-funcs.jl")
-include("PlanAST/PlanAST.jl")
-include("LogicalOptimizer/LogicalOptimizer.jl")
 include("TensorStats/TensorStats.jl")
-include("FAQOptimizer/FAQOptimizer.jl")
-include("PhysicalOptimizer/PhysicalOptimizer.jl")
-include("ExecutionEngine/ExecutionEngine.jl")
+include("PlanAST/PlanAST.jl")
+#include("LogicalOptimizer/LogicalOptimizer.jl")
+#include("FAQOptimizer/FAQOptimizer.jl")
+#include("PhysicalOptimizer/PhysicalOptimizer.jl")
+#include("ExecutionEngine/ExecutionEngine.jl")
 
-
+#=
 function galley(expr::LogicalPlanNode; optimize=true, verbose=0, global_index_order=1)
     verbose >= 3 && println("Before Rename Pass: ", expr)
     dummy_index_order = get_index_order(expr)
@@ -117,5 +118,5 @@ function galley(faq_problem::FAQInstance;
     verbose >= 1 && println("Time to Execute: ", result.time)
     return (value=result.value, opt_time=(opt_end-opt_start), execute_time=result.time)
 end
-
+ =#
 end

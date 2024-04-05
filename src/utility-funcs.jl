@@ -30,29 +30,6 @@ function uniform_tensor(shape, sparsity; formats = [], default_value = 0, non_de
     return tensor
 end
 
-
-function get_index_order(expr, perm_choice=-1)
-    if expr isa Vector{IndexExpr}
-        return expr
-    elseif expr isa LogicalPlanNode && perm_choice > 0
-        return nthperm(sort(union([get_index_order(child) for child in expr.args]...)), perm_choice)
-    elseif expr isa LogicalPlanNode
-        return sort(union([get_index_order(child) for child in expr.args]...))
-
-    else
-        return []
-    end
-end
-
-function fill_in_stats(expr, global_index_order)
-    g = EGraph(expr)
-    settermtype!(g, LogicalPlanNode)
-    analyze!(g, :TensorStatsAnalysis)
-    expr = e_graph_to_expr_tree(g, global_index_order)
-    return expr
-end
-
-
 # This function takes in a tensor and outputs the 0/1 tensor which is 0 at all default
 # values and 1 at all other entries.
 function get_sparsity_structure(tensor::Tensor)

@@ -1,6 +1,3 @@
-
-
-
 function merge_mapjoins(plan::PlanNode)
     Rewrite(Postwalk(Chain([
         (@rule MapJoin(~f::isvalue, ~a..., MapJoin(~f, ~b...), ~c...) => MapJoin(~f, ~a..., ~b..., ~c...) where isassociative(f.val)),
@@ -38,6 +35,30 @@ function unique_indices(scope_dict, plan::PlanNode)
         return deepcopy(plan)
     end
 end
+
+function insert_statistics(ST, plan::PlanNode)
+    bindings = Dict()
+    for expr in PostOrderDFS(plan)
+        if @capture expr Query(~a, ~expr)
+            bindings[a.name] = expr.stats
+        elseif @capture expr MapJoin(~f, ~args...)
+            expr.stats = merge_tensor_stats(f.val, ST[arg.stats for arg in args]...)
+        elseif @capture expr Aggregate(~f, ~idxs..., ~arg)
+            expr.stats = reduce_tensor_stats(f.val, Set([idx.name for idx in idxs]), arg.stats)
+        elseif @capture expr Materialize(~formats, ~idxs, ~arg)
+            expr.stats = arg.stats
+            def = get_def(expr.stats)
+            def.level_formats = formats
+            def.index_order = idxs
+        elseif expr.kind === Alias
+            expr.stats = get(bindings, expr.name, nothing)
+        elseif @capture expr Input(~tns, ~idxs...)
+            expr.stats = ST(tns.val, [idx.val for idx in idxs])
+        end
+    end
+end
+
+
 
 function canonicalize(plan::PlanNode)
     plan = merge_mapjoins(plan)

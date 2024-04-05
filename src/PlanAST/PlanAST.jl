@@ -5,5 +5,5 @@ using AbstractTrees
 using Finch
 
 include("algebra.jl")
-include("logical-query-plan.jl")
+include("plan.jl")
 include("canonicalize.jl")

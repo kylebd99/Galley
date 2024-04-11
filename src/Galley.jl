@@ -4,16 +4,23 @@ module Galley
 using AutoHashEquals
 using Combinatorics
 using DataStructures
-using Finch
-using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
 using Random
 using Profile
+using IterTools: subsets
+using RewriteTools
+using RewriteTools.Rewriters
+using SyntaxInterface
+using AbstractTrees
+using Finch
+using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
                         access_instance,  assign_instance, loop_instance, declare_instance,
                         block_instance, define_instance, call_instance, freeze_instance,
                         thaw_instance,
                         Updater, Reader, Dimensionless
+using DuckDB
 using PrettyPrinting
+
 export galley
 export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
@@ -24,74 +31,39 @@ export expr_to_kernel, execute_tensor_kernel
 export load_to_duckdb, DuckDBTensor
 
 IndexExpr = Symbol
+TensorId = String
 # This defines the list of access protocols allowed by the Finch API
 @enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4 t_default = 5
 # A subset of the allowed level formats provided by the Finch API
-@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3
+@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_undef = 4
+# The set of optimizers implemented by Galley
+@enum FAQ_OPTIMIZERS greedy
 
+include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
-include("TensorStats/TensorStats.jl")
 include("PlanAST/PlanAST.jl")
-#include("LogicalOptimizer/LogicalOptimizer.jl")
-#include("FAQOptimizer/FAQOptimizer.jl")
-#include("PhysicalOptimizer/PhysicalOptimizer.jl")
-#include("ExecutionEngine/ExecutionEngine.jl")
+include("TensorStats/TensorStats.jl")
+include("FAQOptimizer/FAQOptimizer.jl")
+include("PhysicalOptimizer/PhysicalOptimizer.jl")
+include("ExecutionEngine/ExecutionEngine.jl")
 
-#=
-function galley(expr::LogicalPlanNode; optimize=true, verbose=0, global_index_order=1)
-    verbose >= 3 && println("Before Rename Pass: ", expr)
-    dummy_index_order = get_index_order(expr)
-    expr = insert_global_orders(expr, dummy_index_order)
-    expr = fill_in_stats(expr, dummy_index_order)
-    expr = recursive_rename(expr, Dict(), 0, 0, [0], true, true)
 
-    verbose >= 3 && println("After Rename Pass: ", expr)
-    global_index_order = get_index_order(expr, global_index_order)
-    expr = insert_global_orders(expr, global_index_order)
-    expr = remove_uneccessary_reorders(expr, global_index_order)
 
-    if optimize
-        g = EGraph(expr)
-        settermtype!(g, LogicalPlanNode)
-        analyze!(g, :TensorStatsAnalysis)
-        params = SaturationParams(timeout=100, eclasslimit=4000)
-        saturation_report = saturate!(g, basic_rewrites, params);
-        if verbose >=2
-            println(saturation_report)
-        end
-        expr = extract!(g, simple_cardinality_cost_function)
-    end
-    expr = merge_aggregates(expr)
-
-    if verbose >= 1
-        optimize && print("Optimized Expression: ")
-        !optimize && print("Expression: ")
-        println(expr)
-    end
-
-    expr = fill_in_stats(expr, global_index_order)
-    tensor_kernel = expr_to_kernel(expr, global_index_order, verbose = verbose)
-    result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
-
-    verbose >= 1 && println("Time to Execute: ", result.time)
-
-    return result.value
-end
-
-function galley(faq_problem::FAQInstance;
-                    faq_optimizer::FAQ_OPTIMIZERS=naive,
+function galley(input_query::PlanNode;
+                    faq_optimizer::FAQ_OPTIMIZERS=greedy,
+                    ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     verbose=0)
 #    verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
     faq_opt_start = time()
-    htd = faq_to_htd(faq_problem; faq_optimizer=faq_optimizer)
-    expr = decomposition_to_logical_plan(htd)
-    _recursive_insert_stats!(expr)
+    aq = AnnotatedQuery(input_query, ST)
+    logical_plan = greedy_aq_to_plan(aq)
     faq_opt_end = time()
     verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
     if !isnothing(dbconn)
-        opt_end = time()
+        return
+#=      opt_end = time()
         result = duckdb_htd_to_output(dbconn, htd)
         verbose >= 1 && println("Plan: ", expr)
         verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
@@ -99,24 +71,29 @@ function galley(faq_problem::FAQInstance;
         verbose >= 1 && println("Time to Execute: ", result.execute_time)
         return (value=result.value,
                     opt_time=(opt_end-opt_start + result.opt_time),
-                    execute_time=result.execute_time)
+                    execute_time=result.execute_time)=#
     end
 
-    _recursive_insert_stats!(expr)
-    verbose >= 1 && println("Plan: ", expr)
-    output_index_order = htd.output_index_order
-    if isnothing(htd.output_index_order)
-        output_index_order = collect(htd.output_indices)
+    alias_stats = Dict()
+    physical_queries = []
+    for query in logical_plan.queries
+        translated_queries = logical_query_to_physical_queries(alias_stats, query)
+        for physical_query in translated_queries
+            insert_statistics!(ST, physical_query; bindings=alias_stats)
+        end
+        append!(physical_queries, translated_queries)
     end
-    tensor_kernel = expr_to_kernel(expr, output_index_order, verbose = verbose)
     opt_end = time()
     verbose >= 1 && println("Physical Opt Time: $(opt_end - faq_opt_end)")
 
-
-    result = @timed execute_tensor_kernel(tensor_kernel, verbose = verbose)
+    alias_result = Dict()
+    for query in physical_queries
+        execute_query(alias_result, query, verbose)
+    end
+    exec_end = time()
     verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
-    verbose >= 1 && println("Time to Execute: ", result.time)
-    return (value=result.value, opt_time=(opt_end-opt_start), execute_time=result.time)
+    verbose >= 1 && println("Time to Execute: ", (exec_end - opt_end))
+    return (value=alias_result[physical_queries[end].name], opt_time=(opt_end-opt_start), execute_time= (exec_end - opt_end))
 end
- =#
+
 end

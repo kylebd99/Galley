@@ -24,12 +24,17 @@ end
 
 # Here, we define the internal expression type that we use to describe logical query plans.
 mutable struct PlanNode
-    kind::Any
+    kind::PlanNodeKind
     children::Vector{PlanNode}
     val::Any
     stats::Any
+    node_id::Int
 end
 PN = PlanNode
+
+function PlanNode(kind::PlanNodeKind, children::Vector, val::Any, stats::Any)
+    return PlanNode(kind, children, val, stats, -1)
+end
 
 function PlanNode(kind::PlanNodeKind, args::Vector)
     if (kind === Value || kind === Index || kind === Alias) && length(args) == 1
@@ -38,9 +43,9 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
         args = vcat(args...)
         if (kind === Input && length(args) >= 1) ||
             (kind === MapJoin && length(args) >= 2) ||
-            (kind === Aggregate && length(args) >= 3) ||
-            (kind === Materialize && length(args) >= 3) ||
-            (kind === Query && length(args) == 2) ||
+            (kind === Aggregate && length(args) >= 2) ||
+            (kind === Materialize && length(args) >= 1 && length(args) % 2 == 1) ||
+            (kind === Query && length(args) >= 2) ||
             (kind === Outputs) ||
             (kind === Plan)
             return PlanNode(kind, args, nothing, nothing)
@@ -64,9 +69,9 @@ AbstractTrees.children(node::PlanNode) = node.children
 SyntaxInterface.arguments(node::PlanNode) = node.children
 SyntaxInterface.operation(node::PlanNode) = node.kind
 
-function SyntaxInterface.similarterm(::Type{PlanNode}, op::PlanNodeKind, args)
+function SyntaxInterface.similarterm(x::PlanNode, op::PlanNodeKind, args)
     @assert Int(op) & IS_TREE != 0
-    PlanNode(op, args, nothing, nothing)
+    PlanNode(op, args, nothing, deepcopy(x.stats), x.node_id)
 end
 
 logic_leaf(arg) = Value(arg)
@@ -89,22 +94,23 @@ function RewriteTools.term(f::PlanNodeKind, args...; type = nothing)
 end
 
 function Base.getproperty(node::PlanNode, sym::Symbol)
-    if sym === :kind || sym === :val || sym === :children || sym == :stats
+    if sym === :kind || sym === :val || sym === :children || sym == :stats || sym == :node_id
         return Base.getfield(node, sym)
     elseif node.kind === Index && sym === :name node.val
     elseif node.kind === Alias && sym === :name node.val
     elseif node.kind === Input && sym === :tns node.children[1]
-    elseif node.kind === Input && sym === :idxs node.children[2:end]
+    elseif node.kind === Input && sym === :idxs begin length(node.children) > 1 ? node.children[2:end] : [] end
     elseif node.kind === MapJoin && sym === :op node.children[1]
     elseif node.kind === MapJoin && sym === :args @view node.children[2:end]
     elseif node.kind === Aggregate && sym === :op node.children[1]
-    elseif node.kind === Aggregate && sym === :idxs node.children[2:end-1]
+    elseif node.kind === Aggregate && sym === :idxs begin length(node.children) > 2 ? node.children[2:end-1] : [] end
     elseif node.kind === Aggregate && sym === :arg node.children[end]
-    elseif node.kind === Materialize && sym === :formats node.children[1]
-    elseif node.kind === Materialize && sym === :idx_order node.children[2]
-    elseif node.kind === Materialize && sym === :expr node.children[3]
+    elseif node.kind === Materialize && sym === :formats begin length(node.children) > 1 ? node.children[1:Int((length(node.children)-1)/2)] : [] end
+    elseif node.kind === Materialize && sym === :idx_order begin length(node.children) > 1 ? node.children[Int((length(node.children)-1)/2)+1:length(node.children)-1] : [] end
+    elseif node.kind === Materialize && sym === :expr node.children[end]
     elseif node.kind === Query && sym === :name node.children[1]
     elseif node.kind === Query && sym === :expr node.children[2]
+    elseif node.kind === Query && sym === :loop_order begin length(node.children) > 2 ? node.children[3:end] : [] end
     elseif node.kind === Outputs && sym === :names node.children
     elseif node.kind === Plan && sym === :queries @view node.children[1:end-1]
     elseif node.kind === Plan && sym === :outputs @view node.children[end]
@@ -121,6 +127,8 @@ function Base.:(==)(a::PlanNode, b::PlanNode)
         return b.kind === Alias && a.name == b.name
     elseif a.kind === Index
         return b.kind === Index && a.name == b.name
+    elseif a.kind == Aggregate
+        return b.kind === Aggregate && a.arg == b.arg && Set(a.idxs) == Set(b.idxs)
     elseif istree(a)
         return a.kind === b.kind && a.children == b.children
     else
@@ -141,7 +149,7 @@ end
 function planToString(n::PlanNode, depth::Int64)
     output = ""
     if n.kind == Alias
-        output *= "$(n.name)"
+        output *= "Alias($(n.name))"
         return output
     elseif n.kind == Index
         output *= "$(n.name)"
@@ -177,7 +185,7 @@ function planToString(n::PlanNode, depth::Int64)
     elseif n.kind == MapJoin
         output *= "MapJoin("
     elseif n.kind == Materialize
-        output *= "Reorder("
+        output *= "Materialize("
     elseif n.kind == Query
         output *= "Query("
     elseif n.kind == Outputs

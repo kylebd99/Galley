@@ -1,3 +1,4 @@
+
 function merge_mapjoins(plan::PlanNode)
     Rewrite(Postwalk(Chain([
         (@rule MapJoin(~f::isvalue, ~a..., MapJoin(~f, ~b...), ~c...) => MapJoin(~f, ~a..., ~b..., ~c...) where isassociative(f.val)),
@@ -24,7 +25,7 @@ function unique_indices(scope_dict, plan::PlanNode)
         new_idxs = []
         for idx in plan.idxs
             old_idx = idx.val
-            new_idx = gensym(idx.val)
+            new_idx = haskey(new_scope_dict, old_idx) ? gensym(idx.val) : idx.val
             push!(new_idxs, new_idx)
             new_scope_dict[old_idx] = new_idx
         end
@@ -36,32 +37,44 @@ function unique_indices(scope_dict, plan::PlanNode)
     end
 end
 
-function insert_statistics(ST, plan::PlanNode)
-    bindings = Dict()
+function insert_statistics!(ST, plan::PlanNode; bindings = Dict())
     for expr in PostOrderDFS(plan)
         if @capture expr Query(~a, ~expr)
             bindings[a.name] = expr.stats
         elseif @capture expr MapJoin(~f, ~args...)
             expr.stats = merge_tensor_stats(f.val, ST[arg.stats for arg in args]...)
         elseif @capture expr Aggregate(~f, ~idxs..., ~arg)
-            expr.stats = reduce_tensor_stats(f.val, Set([idx.name for idx in idxs]), arg.stats)
-        elseif @capture expr Materialize(~formats, ~idxs, ~arg)
+            expr.stats = reduce_tensor_stats(f.val, Set{IndexExpr}([idx.name for idx in idxs]), arg.stats)
+        elseif @capture expr Materialize(~formats..., ~idxs..., ~arg)
             expr.stats = arg.stats
             def = get_def(expr.stats)
-            def.level_formats = formats
-            def.index_order = idxs
+            def.level_formats = [f.val for f in expr.formats]
+            def.index_order = [idx.name for idx in expr.idx_order]
         elseif expr.kind === Alias
             expr.stats = get(bindings, expr.name, nothing)
         elseif @capture expr Input(~tns, ~idxs...)
-            expr.stats = ST(tns.val, [idx.val for idx in idxs])
+            if !isnothing(expr.stats)
+                continue
+            end
+            expr.stats = ST(tns.val, IndexExpr[idx.val for idx in idxs])
         end
     end
 end
 
+# This function labels every node with an id. These ids respect a topological ordering where
+# children have id's that are larger than parents.
+function insert_node_ids!(plan::PlanNode)
+    cur_id = 0
+    for expr in PreOrderDFS(plan)
+        expr.node_id = cur_id
+        cur_id += 1
+    end
+end
 
 
 function canonicalize(plan::PlanNode)
     plan = merge_mapjoins(plan)
     plan = unique_indices(Dict(), plan)
+    insert_node_ids!(plan)
     return plan
 end

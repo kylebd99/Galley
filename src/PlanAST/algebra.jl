@@ -8,7 +8,9 @@ function iscommutative(f)
      return Finch.iscommutative(Finch.DefaultAlgebra(), f)
 end
 function isdistributive(f, g)
-    return Finch.isdistributive(Finch.DefaultAlgebra(), f, g)
+    distributes = Finch.isdistributive(Finch.DefaultAlgebra(), f, g)
+    distributes = distributes || ((f == max) || (f == min)) && ((g == +) || (g == *))
+    return distributes
 end
 
 function isidentity(f, x)
@@ -17,4 +19,8 @@ end
 
 function isannihilator(f, x)
     return Finch.isannihilator(Finch.DefaultAlgebra(), f, x)
+end
+
+function isidempotent(f)
+    return Finch.isidempotent(Finch.DefaultAlgebra(), f)
 end

@@ -31,11 +31,23 @@ function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{Index
     return ref_set
 end
 
-function get_output_compat(ordered_output_vars::Vector{IndexExpr}, prefix::Vector{IndexExpr})
-    return if fully_compat_with_loop_prefix(ordered_output_vars, prefix)
+# If output_vars is a vector, we assume that we will have to reindex it if it's just a set
+# prefix.
+function get_output_compat(output_vars::Vector{IndexExpr}, prefix::Vector{IndexExpr})
+    return if fully_compat_with_loop_prefix(output_vars, prefix)
         FULL_PREFIX
-    elseif set_compat_with_loop_prefix(Set(ordered_output_vars), prefix)
+    elseif set_compat_with_loop_prefix(Set(output_vars), prefix)
         SET_PREFIX
+    else
+        NO_PREFIX
+    end
+end
+
+# If output_vars is a set, we don't assume that we'll have to reindex it, so we treat any
+# prefix as a FULL_PREFIX.
+function get_output_compat(output_vars::Set{IndexExpr}, prefix::Vector{IndexExpr})
+    return if set_compat_with_loop_prefix(output_vars, prefix)
+        FULL_PREFIX
     else
         NO_PREFIX
     end
@@ -46,16 +58,26 @@ end
 # For each subset of variables, we calculate their optimal ordering via dynamic programming.
 # This is singly exponential in the number of loop variables, and it uses the statistics to
 # determine the costs.
-function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
+# `input_stats` is for the set of `Input` and `Alias` expressions,
+# `join_stats` reflects the compute tensor (i.e. the set of necessary FLOPs)
+# `output_stats` reflects the materialization tensor (i.e. the size of the intermediate produced)
+# `output_order` may or may not be present and reflects whether we have a set output order
+#  we care about. This will generally be present in the final query to be evaluated.
+function get_join_loop_order(agg_op,
+                                input_stats::Vector{TensorStats},
+                                join_stats::TensorStats,
+                                output_stats::TensorStats,
+                                output_order::Union{Nothing, Vector{IndexExpr}})
     all_vars = union([get_index_set(stat) for stat in input_stats]...)
+
     output_vars = get_index_set(output_stats)
-    ordered_output_vars = relative_sort(output_vars, output_order)
+    if !isnothing(output_order)
+        output_vars = relative_sort(output_vars, output_order)
+    end
 
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
     reformat_costs = Dict(i => cost_of_reformat(input_stats[i]) for i in eachindex(input_stats))
-    join_stats = merge_tensor_stats(*, input_stats...)
-    condense_stats!(join_stats)
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
@@ -63,9 +85,9 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
         prefix = [var]
         v_set = Set(prefix)
         rf_set = get_reformat_set(input_stats, prefix)
-        output_compat = get_output_compat(ordered_output_vars, prefix)
+        output_compat = get_output_compat(output_vars, prefix)
         class = (v_set, output_compat, rf_set)
-        cost = get_prefix_cost(v_set, join_stats)
+        cost = get_prefix_cost(agg_op, v_set, join_stats)
         optimal_plans[class] = (prefix, cost)
     end
 
@@ -93,9 +115,9 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
                 new_prefix_set = union(prefix_set, [new_var])
                 new_prefix = [prefix..., new_var]
                 rf_set = get_reformat_set(input_stats, new_prefix)
-                output_compat = get_output_compat(ordered_output_vars, new_prefix)
+                output_compat = get_output_compat(output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
-                new_cost = get_prefix_cost(new_prefix_set, join_stats) + cost
+                new_cost = get_prefix_cost(agg_op, new_prefix_set, join_stats) + cost
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf
@@ -146,7 +168,7 @@ function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::Ten
     output_size = estimate_nnz(output_stats)
     transpose_cost = output_size * RandomWriteCost
     # The cost of writing to the output depending on whether the writes are sequential
-    num_flops = get_loop_lookups(all_vars, join_stats)
+    num_flops = get_loop_lookups(agg_op, all_vars, join_stats)
 
     min_cost = Inf
     best_prefix = nothing

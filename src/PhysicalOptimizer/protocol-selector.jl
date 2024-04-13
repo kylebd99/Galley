@@ -63,9 +63,6 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
             input_def = get_def(input)
             var_index = findfirst(x->x==var, get_index_order(input))
             is_leader = costs[i] == min_cost
-            println(var)
-            println(input)
-            println(var_index)
             if formats[i] == t_sparse_list
                 if use_gallop
                     input_def.index_protocols[var_index] = t_gallop

@@ -81,7 +81,6 @@ function initialize_tensor(formats, dims::Vector{Int64}, default_value)
         elseif formats[i] == t_hash
             B = Sparse(B, dims[i])
         else
-            println(formats[i])
             println("Error: Attempted to initialize invalid level format type.")
         end
     end

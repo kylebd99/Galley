@@ -74,18 +74,16 @@ function galley(input_query::PlanNode;
                     execute_time=result.execute_time)=#
     end
 
-    alias_stats = Dict()
+    alias_stats = Dict{PlanNode, TensorStats}()
     physical_queries = []
     for query in logical_plan.queries
         translated_queries = logical_query_to_physical_queries(alias_stats, query)
-        for physical_query in translated_queries
-            insert_statistics!(ST, physical_query; bindings=alias_stats)
-        end
         append!(physical_queries, translated_queries)
     end
     opt_end = time()
     verbose >= 1 && println("Physical Opt Time: $(opt_end - faq_opt_end)")
 
+    alias_stats = Dict()
     alias_result = Dict()
     for query in physical_queries
         execute_query(alias_result, query, verbose)

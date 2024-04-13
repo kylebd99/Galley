@@ -9,7 +9,7 @@ end
 
 function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode)
     if rhs.kind == Alias
-        tns = alias_dict[rhs.name]
+        tns = alias_dict[rhs]
         idxs = get_index_order(rhs.stats)
         protocols = [get_index_protocol(rhs.stats, idx) for idx in idxs]
         t_name = get_tensor_symbol(tensor_counter[1])
@@ -24,6 +24,7 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         return initialize_access(t_name, tns.val, idxs, protocols, index_sym_dict, read=true)
 
     elseif @capture rhs MapJoin(~op, ~args...)
+        println(rhs)
         args = sort_mapjoin_args(args)
         return call_instance(literal_instance(op.val),
                                 [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)
@@ -46,7 +47,6 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     agg_expr = mat_expr.expr
     output_default = get_default_value(agg_expr.stats)
     output_dimensions = [get_dim_size(agg_expr.stats, idx) for idx in output_idx_order]
-    println(q)
     agg_op = agg_expr.op.val
     agg_idxs = [idx.name for idx in agg_expr.idxs]
     rhs_expr = agg_expr.arg

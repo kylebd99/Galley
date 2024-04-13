@@ -1,20 +1,7 @@
 # This file defines the physical plan language. This language should fully define the
 # execution plan without any ambiguity.
 
-abstract type TensorExpression end
 TensorId = String
-
-# The struct containing all information needed to compute a small tensor kernel using the finch compiler.
-# This will be the output of the kernel optimizer
-mutable struct TensorKernel
-    kernel_root::PlanNode
-    input_tensors::Dict{TensorId, Union{TensorKernel, Finch.Tensor, Number}}
-    output_indices::Vector{IndexExpr}
-    output_formats::Vector{LevelFormat}
-    output_dims::Vector{Int}
-    output_default::Any
-    loop_order::Vector{IndexExpr}
-end
 
 function getFormatString(lf::LevelFormat)
     if lf == t_sparse_list

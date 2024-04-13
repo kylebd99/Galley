@@ -1,8 +1,13 @@
-function get_input_stats(alias_stats, expr::PlanNode)
+function get_input_stats(alias_stats::Dict{PlanNode, TensorStats}, expr::PlanNode)
+    println(expr)
     input_stats = Dict()
     for n in PostOrderDFS(expr)
         if n.kind == Alias
-            input_stats[n.node_id] = alias_stats[n.name]
+            println(n)
+            println(collect(keys(alias_stats))[1].kind)
+            println(collect(keys(alias_stats))[1])
+            n.stats = alias_stats[n]
+            input_stats[n.node_id] = n.stats
         elseif n.kind == Input
             input_stats[n.node_id] = n.stats
         end
@@ -15,7 +20,7 @@ function reorder_input(alias_stats, input, expr, loop_order::Vector{IndexExpr})
     fixed_order = relative_sort(input_order, loop_order, rev=true)
     agg_expr = Aggregate(initwrite(get_default_value(input.stats)), input)
     agg_expr.stats = input.stats
-    reorder_query = Query(gensym("A"), Materialize([t_hash for _ in fixed_order], fixed_order..., agg_expr), reverse(input_order)...)
+    reorder_query = Query(Alias(gensym("A")), Materialize([t_hash for _ in fixed_order], fixed_order..., agg_expr), reverse(input_order)...)
     reorder_stats = deepcopy(input.stats)
     reorder_def = get_def(reorder_stats)
     reorder_def.index_order = fixed_order
@@ -23,17 +28,17 @@ function reorder_input(alias_stats, input, expr, loop_order::Vector{IndexExpr})
     alias_stats[reorder_query.name] = reorder_stats
 
     fixed_formats = select_output_format(reorder_stats, reverse(fixed_order), fixed_order)
-    alias_expr = Alias(reorder_query.name)
+    alias_expr = Alias(reorder_query.name.name)
     alias_expr.stats = deepcopy(reorder_stats)
     alias_agg_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
     alias_agg_expr.stats = alias_expr.stats
-    reformat_query = Query(gensym("A"), Materialize(fixed_formats, fixed_order..., alias_agg_expr), )
+    reformat_query = Query(Alias(gensym("A")), Materialize(fixed_formats, fixed_order..., alias_agg_expr), )
     reformat_stats = deepcopy(alias_expr.stats)
     reformat_def = get_def(reformat_stats)
     reformat_def.level_formats = fixed_formats
     alias_stats[reformat_query.name] = reformat_stats
 
-    final_alias_expr = Alias(reformat_query.name)
+    final_alias_expr = Alias(reformat_query.name.name)
     final_alias_expr.stats = deepcopy(reformat_stats)
     expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
     return [reorder_query, reformat_query], expr
@@ -52,7 +57,7 @@ end
 # where formats can't be t_undef.
 # `alias_stats` is a dictionary which holds stats objects for the results of any previous
 # queries. This is needed to get the stats for `Alias` inputs.
-function logical_query_to_physical_queries(alias_stats, query::PlanNode; verbose = 0)
+function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorStats}, query::PlanNode; verbose = 0)
     if !(@capture query Query(~name, Aggregate(~args...))) &&
             !(@capture query Query(~name, MapJoin(~args...)))
         throw(ErrorException("Physical optimizer only takes in properly formatted single queries."))
@@ -84,7 +89,6 @@ function logical_query_to_physical_queries(alias_stats, query::PlanNode; verbose
 
     # Determine the optimal loop order for the query
     input_stats = get_input_stats(alias_stats, expr)
-    println(input_stats)
     condense_stats!(expr.stats)
     output_stats = reduce_tensor_stats(agg_op, reduce_idxs, expr.stats)
     loop_order = get_join_loop_order(agg_op, Vector{TensorStats}(collect(values(input_stats))), expr.stats, output_stats, output_order)
@@ -92,9 +96,14 @@ function logical_query_to_physical_queries(alias_stats, query::PlanNode; verbose
     for (id, stats) in input_stats
         if !is_sorted_wrt_index_order(get_index_order(stats), loop_order; loop_order=true)
             reorder_queries, expr = reorder_input(alias_stats, id_to_node[id], expr, loop_order)
+            for query in reorder_queries
+                reordered_input_stats = get_input_stats(alias_stats, query)
+                modify_protocols!(collect(values(reordered_input_stats)))
+            end
             append!(queries, reorder_queries)
         end
     end
+
 
     # Determine the optimal access protocols for every index occurence
     reordered_input_stats = get_input_stats(alias_stats, expr)
@@ -110,11 +119,12 @@ function logical_query_to_physical_queries(alias_stats, query::PlanNode; verbose
 
     needs_intermediate = any([f == t_hash for f in first_formats]) || !isnothing(output_formats)
     if needs_intermediate
-        intermediate_query = Query(gensym("A"), Materialize(first_formats..., output_order..., expr))
+        intermediate_query = Query(Alias(gensym("A")), Materialize(first_formats..., output_order..., expr))
         reorder_stats = deepcopy(expr.stats)
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order = output_order
         reorder_def.level_formats = first_formats
+        reorder_def.protocols = [t_default for _ in output_order]
         alias_stats[intermediate_query.name] = reorder_stats
         push!(queries, intermediate_query)
         best_formats = !isnothing(output_formats) ? output_formats : select_output_format(output_stats, reverse(output_order), output_order)

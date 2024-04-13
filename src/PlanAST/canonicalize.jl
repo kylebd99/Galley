@@ -40,7 +40,9 @@ end
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict())
     for expr in PostOrderDFS(plan)
         if @capture expr Query(~a, ~expr)
-            bindings[a.name] = expr.stats
+            bindings[a] = expr.stats
+        elseif @capture expr Query(~a, ~expr, ~loop_order...)
+            bindings[a] = expr.stats
         elseif @capture expr MapJoin(~f, ~args...)
             expr.stats = merge_tensor_stats(f.val, ST[arg.stats for arg in args]...)
         elseif @capture expr Aggregate(~f, ~idxs..., ~arg)
@@ -51,7 +53,7 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict())
             def.level_formats = [f.val for f in expr.formats]
             def.index_order = [idx.name for idx in expr.idx_order]
         elseif expr.kind === Alias
-            expr.stats = get(bindings, expr.name, nothing)
+            expr.stats = get(bindings, expr, nothing)
         elseif @capture expr Input(~tns, ~idxs...)
             if !isnothing(expr.stats)
                 continue

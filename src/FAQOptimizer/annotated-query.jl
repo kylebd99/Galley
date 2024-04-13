@@ -117,7 +117,6 @@ function get_reduce_query(reduce_idx, aq)
             idx_root_node = aq.id_to_node[idx_root_id]
             args_with_idx = [arg for arg in root_node.args if idx.name in get_index_set(arg.stats)]
             if idx_root_id == root_node_id && relevant_args ⊇ args_with_idx
-                println
                 push!(idxs_to_be_reduced, idx)
             elseif isdescendant(idx_root_node, root_node)
                 push!(idxs_to_be_reduced, idx)
@@ -142,7 +141,7 @@ function get_reduce_query(reduce_idx, aq)
     condense_stats!(query_expr.stats)
     query_expr = Aggregate(aq.idx_op[reduce_idx], idxs_to_be_reduced..., query_expr)
     query_expr.stats = reduce_tensor_stats(query_expr.op, Set(query_expr.idxs), query_expr.arg.stats)
-    query = Query(gensym("A"), query_expr)
+    query = Query(Alias(gensym("A")), query_expr)
     return query, node_to_replace, nodes_to_remove
 end
 
@@ -181,9 +180,9 @@ end
 function reduce_idx(idx, aq)
     query, node_to_replace, nodes_to_remove = get_reduce_query(idx, aq)
     reduced_idxs = query.expr.idxs
-    alias_expr = Alias(query.name)
+    alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
-    alias_expr.stats = query.expr.stats
+    alias_expr.stats = deepcopy(query.expr.stats)
     new_point_expr = replace_and_remove_nodes(deepcopy(aq.point_expr), node_to_replace, alias_expr, nodes_to_remove)
     new_id_to_node = Dict()
     for node in PreOrderDFS(new_point_expr)

@@ -24,7 +24,6 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         return initialize_access(t_name, tns.val, idxs, protocols, index_sym_dict, read=true)
 
     elseif @capture rhs MapJoin(~op, ~args...)
-        println(rhs)
         args = sort_mapjoin_args(args)
         return call_instance(literal_instance(op.val),
                                 [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)

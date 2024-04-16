@@ -56,7 +56,8 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
         values = [1 for _ in node_ids]
         vertex_vector = Tensor(SparseList(Element(0), n))
         copyto!(vertex_vector,  sparsevec(node_ids, values, n))
-        vertex_vectors[label] =  InputTensor(vertex_vector, stats_type)[IndexExpr("i")]
+        vertex_vectors[label] =  Input(vertex_vector, :i)
+        vertex_vectors[label].stats = stats_type(vertex_vectors[label].tns.val, [:i])
         if !isnothing(dbconn)
             fill_table(dbconn, vertex_vectors[label].args[2], [IndexExpr("i_1")], vertex_label_to_table(label))
             vertex_vectors[label].args[2] = DuckDBTensor(vertex_label_to_table(label), ["i_1"])
@@ -76,7 +77,8 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
         values = [1 for _ in i_ids]
         edge_matrix = Tensor(Dense(SparseList(Element(0), n), n))
         copyto!(edge_matrix, sparse(i_ids, j_ids, values, n, n))
-        edge_matrices[label] = InputTensor(edge_matrix, stats_type)[IndexExpr("i"), IndexExpr("j")]
+        edge_matrices[label] = Input(edge_matrix, :i, :j)
+        edge_matrices[label].stats = stats_type(edge_matrices[label].tns.val, [:i, :j])
         if !isnothing(dbconn)
             fill_table(dbconn, edge_matrices[label].args[2], [IndexExpr("i_1"), IndexExpr("i_2")], edge_label_to_table(label))
             edge_matrices[label].args[2] = DuckDBTensor(edge_label_to_table(label), ["i_1", "i_2"])
@@ -163,16 +165,16 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
     end
 
     factor_counter = 1
-    factors = Set{Factor}()
+    factors = Set{PlanNode}()
     for v in keys(query_vertices)
         label = query_vertices[v]
         if label == -1
             continue
         end
         idx = query_id_to_idx(v)
-        indices = Set([idx])
-        vertex_tensor = vertex_vectors[label][idx]
-        vertex_factor = Factor(vertex_tensor, indices, indices, false, deepcopy(vertex_tensor.stats), factor_counter)
+        indices = [idx]
+        vertex_tensor = vertex_vectors[label]
+        vertex_factor = relabel_input(vertex_tensor, indices...)
         factor_counter += 1
         push!(factors, vertex_factor)
     end
@@ -184,14 +186,14 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         end
         l_idx = query_id_to_idx(edge[1])
         r_idx = query_id_to_idx(edge[2])
-        indices = Set([l_idx, r_idx])
-        edge_tensor = edge_matrices[label][l_idx, r_idx]
-        edge_factor = Factor(edge_tensor, indices, indices, false, deepcopy(edge_tensor.stats), factor_counter)
+        indices = [l_idx, r_idx]
+        edge_tensor = edge_matrices[label]
+        edge_factor = relabel_input(edge_tensor, indices...)
         factor_counter += 1
         push!(factors, edge_factor)
     end
-    faq = FAQInstance(*, +, Set{IndexExpr}(), Set([query_id_to_idx(v) for v in 1:n]), factors)
-    return faq
+    query = Query(:out, Materialize(Aggregate(+, [query_id_to_idx(i) for i in keys(query_vertices)]..., MapJoin(*, factors...))))
+    return query
 end
 
 

@@ -15,6 +15,7 @@ function getFormatString(lf::LevelFormat)
     end
 end
 
+#=
 function printKernel(k::TensorKernel, verbosity)
     if verbosity <= 0
         return
@@ -37,3 +38,4 @@ function printKernel(k::TensorKernel, verbosity)
     end
     println(" Def: $(k.output_default)]")
 end
+=#

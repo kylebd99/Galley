@@ -37,7 +37,7 @@ function unique_indices(scope_dict, plan::PlanNode)
     end
 end
 
-function insert_statistics!(ST, plan::PlanNode; bindings = Dict())
+function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
     for expr in PostOrderDFS(plan)
         if @capture expr Query(~a, ~expr)
             bindings[a] = expr.stats
@@ -55,7 +55,7 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict())
         elseif expr.kind === Alias
             expr.stats = get(bindings, expr, nothing)
         elseif @capture expr Input(~tns, ~idxs...)
-            if !isnothing(expr.stats)
+            if !isnothing(expr.stats) && !replace
                 continue
             end
             expr.stats = ST(tns.val, IndexExpr[idx.val for idx in idxs])

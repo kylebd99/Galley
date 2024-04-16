@@ -118,7 +118,7 @@ function get_reduce_query(reduce_idx, aq)
             args_with_idx = [arg for arg in root_node.args if idx.name in get_index_set(arg.stats)]
             if idx_root_id == root_node_id && relevant_args ⊇ args_with_idx
                 push!(idxs_to_be_reduced, idx)
-            elseif isdescendant(idx_root_node, root_node)
+            elseif any([intree(idx_root_node, arg) for arg in relevant_args])
                 push!(idxs_to_be_reduced, idx)
             end
         end

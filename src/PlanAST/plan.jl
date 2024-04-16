@@ -119,6 +119,15 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
     end
 end
 
+function relabel_input(input::PlanNode, indices...)
+    if input.kind != Input
+        throw(ErrorException("Can't relabel a node other than input!"))
+    end
+    relabeled_input = Input(input.tns, indices...)
+    relabeled_input.stats = reindex_stats(input.stats, collect(indices))
+    return relabeled_input
+end
+
 
 function Base.:(==)(a::PlanNode, b::PlanNode)
     if a.kind === Value

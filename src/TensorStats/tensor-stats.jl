@@ -117,7 +117,7 @@ function NaiveStats(x::Number)
     return NaiveStats(def, 1)
 end
 
-function reindex_stats(indices::Vector{IndexExpr}, stat::NaiveStats)
+function reindex_stats(stat::NaiveStats, indices::Vector{IndexExpr})
     return NaiveStats(reindex_def(indices, stat.def), stat.cardinality)
 end
 

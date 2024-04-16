@@ -73,7 +73,7 @@ function galley(input_query::PlanNode;
                     opt_time=(opt_end-opt_start + result.opt_time),
                     execute_time=result.execute_time)=#
     end
-
+    println(logical_plan)
     alias_stats = Dict{PlanNode, TensorStats}()
     physical_queries = []
     for query in logical_plan.queries
@@ -86,6 +86,9 @@ function galley(input_query::PlanNode;
     alias_stats = Dict()
     alias_result = Dict()
     for query in physical_queries
+#        println(query)
+#        println(keys(alias_result))
+        validate_physical_query(query, alias_stats)
         execute_query(alias_result, query, verbose)
     end
     exec_end = time()

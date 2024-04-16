@@ -32,10 +32,10 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         num_correct = 0
         num_with_values = 0
         for query in queries
-            println("Query Path: ", query.query_path)
+            println("Query Path: ", query.query_path)#=
             if occursin("query_dense_4", query.query_path)
                 continue
-            end
+            end =#
             num_attempted +=1
             try
                 if experiment.use_duckdb
@@ -56,10 +56,10 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     warm_start_time = 0
                     if experiment.warm_start
                         println("Warm Start Query Path: ", query.query_path)
-                        warm_start_time = @elapsed galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0)
+                        warm_start_time = @elapsed galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, verbose=3)
                         println("Warm Start Time: $warm_start_time")
                     end
-                    result = galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=3)
+                    result = galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, verbose=0)
                     if result == "failed"
                         push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", "0.0", string(true)))
                     else

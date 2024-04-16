@@ -131,7 +131,11 @@ end
 
 function Base.:(==)(a::PlanNode, b::PlanNode)
     if a.kind === Value
-        return b.kind === Value && a.val == b.val
+        if a.val isa Tensor
+            return typeof(a.val) == typeof(b.val) # We don't test for tensor equality.
+        else
+            return typeof(a.val) == typeof(b.val) && a.val == b.val
+        end
     elseif a.kind === Alias
         return b.kind === Alias && a.name == b.name
     elseif a.kind === Index

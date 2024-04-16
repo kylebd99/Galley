@@ -183,7 +183,7 @@ function reduce_idx(idx, aq)
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
     alias_expr.stats = deepcopy(query.expr.stats)
-    new_point_expr = replace_and_remove_nodes(deepcopy(aq.point_expr), node_to_replace, alias_expr, nodes_to_remove)
+    new_point_expr = replace_and_remove_nodes(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
     new_id_to_node = Dict()
     for node in PreOrderDFS(new_point_expr)
         new_id_to_node[node.node_id] = node

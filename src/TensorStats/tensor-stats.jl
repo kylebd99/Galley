@@ -260,6 +260,9 @@ function estimate_nnz(stat::DCStats)
             min_card = min(min_card, dc.d)
         end
     end
+    if min_card == Inf
+        println("ESTIMATED INF!")
+    end
     return min_card
 end
 

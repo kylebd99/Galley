@@ -2,7 +2,7 @@ function get_input_stats(alias_stats::Dict{PlanNode, TensorStats}, expr::PlanNod
     input_stats = Dict()
     for n in PostOrderDFS(expr)
         if n.kind == Alias
-            n.stats = alias_stats[n]
+            n.stats = deepcopy(alias_stats[n])
             input_stats[n.node_id] = n.stats
         elseif n.kind == Input
             input_stats[n.node_id] = n.stats
@@ -11,7 +11,7 @@ function get_input_stats(alias_stats::Dict{PlanNode, TensorStats}, expr::PlanNod
     return input_stats
 end
 
-function reorder_input(alias_stats, input, expr, loop_order::Vector{IndexExpr})
+function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     input_order = get_index_order(input.stats)
     fixed_order = relative_sort(input_order, loop_order, rev=true)
     agg_expr = Aggregate(initwrite(get_default_value(input.stats)), input)
@@ -21,7 +21,7 @@ function reorder_input(alias_stats, input, expr, loop_order::Vector{IndexExpr})
     reorder_def = get_def(reorder_stats)
     reorder_def.index_order = fixed_order
     reorder_def.level_formats = [t_hash for _ in fixed_order]
-    alias_stats[reorder_query.name] = reorder_stats
+    reorder_query.expr.stats = reorder_stats
 
     fixed_formats = select_output_format(reorder_stats, reverse(fixed_order), fixed_order)
     alias_expr = Alias(reorder_query.name.name)
@@ -32,7 +32,7 @@ function reorder_input(alias_stats, input, expr, loop_order::Vector{IndexExpr})
     reformat_stats = deepcopy(alias_expr.stats)
     reformat_def = get_def(reformat_stats)
     reformat_def.level_formats = fixed_formats
-    alias_stats[reformat_query.name] = reformat_stats
+    reformat_query.expr.stats = reformat_stats
 
     final_alias_expr = Alias(reformat_query.name.name)
     final_alias_expr.stats = deepcopy(reformat_stats)
@@ -91,19 +91,10 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     queries = []
     for (id, stats) in input_stats
         if !is_sorted_wrt_index_order(get_index_order(stats), loop_order; loop_order=true)
-            reorder_queries, expr = reorder_input(alias_stats, id_to_node[id], expr, loop_order)
-            for query in reorder_queries
-                reordered_input_stats = get_input_stats(alias_stats, query)
-                modify_protocols!(collect(values(reordered_input_stats)))
-            end
+            reorder_queries, expr = reorder_input(id_to_node[id], expr, loop_order)
             append!(queries, reorder_queries)
         end
     end
-
-
-    # Determine the optimal access protocols for every index occurence
-    reordered_input_stats = get_input_stats(alias_stats, expr)
-    modify_protocols!(collect(values(reordered_input_stats)))
 
     # Determine the optimal output format & add a further query to reformat if necessary.
     output_order = isnothing(output_order) ? relative_sort(get_index_set(output_stats), loop_order, rev=true) : output_order
@@ -120,8 +111,8 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order = output_order
         reorder_def.level_formats = first_formats
-        reorder_def.index_protocols = [t_default for _ in output_order]
         alias_stats[intermediate_query.name] = reorder_stats
+        intermediate_query.expr.stats = reorder_stats
         push!(queries, intermediate_query)
         best_formats = !isnothing(output_formats) ? output_formats : select_output_format(output_stats, reverse(output_order), output_order)
         alias_expr = Alias(intermediate_query.name.name)
@@ -133,7 +124,7 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
         result_def = get_def(result_stats)
         result_def.index_order = output_order
         result_def.level_formats = best_formats
-        alias_stats[query.name] = result_stats
+        result_query.expr.stats = result_stats
         push!(queries, result_query)
     else
         result_query = Query(query.name, Materialize(first_formats..., output_order..., expr), loop_order...)
@@ -141,67 +132,11 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order =  output_order
         reorder_def.level_formats = first_formats
-        alias_stats[query.name] = reorder_stats
+        result_query.expr.stats = reorder_stats
         push!(queries, result_query)
     end
+    for query in queries
+        alias_stats[query.name] = query.expr.stats
+    end
     return queries
-end
-
-# This function does a variety of sanity checks on the kernel before we attempt to execute it.
-# Such as:
-#  1. Check that the loop order is a permutation of the input indices
-#  2. Check that the output indices are the inputs minus any that are aggregate_indices
-#  3. Check that the inputs are all sorted w.r.t. the loop order
-function validate_physical_query(q::PlanNode, alias_stats)
-    q = deepcopy(q)
-    insert_statistics!(NaiveStats, q, bindings = alias_stats, replace=true)
-    function get_input_indices(n::PlanNode)
-        return if n.kind == Input
-            get_index_set(n.stats)
-        elseif n.kind == Alias
-            get_index_set(n.stats)
-        elseif  n.kind == Aggregate
-            get_input_indices(n.arg)
-        elseif  n.kind == MapJoin
-            union([get_input_indices(input) for input in n.args]...)
-        elseif n.kind == Materialize
-            get_input_indices(n.expr)
-        end
-    end
-    input_indices = get_input_indices(q.expr)
-    @assert input_indices == Set([idx.name for idx in q.loop_order])
-
-    function get_output_indices(n::PlanNode)
-        return if n.kind == Input
-            get_index_set(n.stats)
-        elseif n.kind == Alias
-            get_index_set(n.stats)
-        elseif n.kind == Aggregate
-            setdiff(get_input_indices(n.arg), n.idxs)
-        elseif  n.kind == MapJoin
-            union([get_input_indices(input) for input in n.args]...)
-        elseif n.kind == Materialize
-            get_input_indices(n.expr)
-        end
-    end
-    output_indices = get_index_set(q.expr.stats)
-    @assert output_indices ⊆ input_indices
-    @assert Set(output_indices) == Set([idx.name for idx in q.expr.idx_order])
-
-    function check_sorted_inputs(n::PlanNode)
-        return if n.kind == Input
-            @assert is_sorted_wrt_index_order([idx.name for idx in n.idxs], [idx.name for idx in q.loop_order]; loop_order=true)
-        elseif n.kind == Alias
-            @assert is_sorted_wrt_index_order(get_index_order(n.stats), [idx.name for idx in q.loop_order]; loop_order=true)
-        elseif n.kind == Aggregate
-            check_sorted_inputs(n.arg)
-        elseif n.kind == MapJoin
-            for arg in n.args
-                check_sorted_inputs(arg)
-            end
-        elseif n.kind == Materialize
-            check_sorted_inputs(n.expr)
-        end
-    end
-    check_sorted_inputs(q.expr)
 end

@@ -76,8 +76,10 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     Finch.execute(prgm_instance, (mode=Finch.FastFinch(),))
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
+        verbose >= 2 && println("Output Size: 1")
         alias_dict[name] = output_tensor[]
     else
+        verbose >= 2 && println("Output Size: ", countstored(output_tensor))
         alias_dict[name] = output_tensor
     end
 end

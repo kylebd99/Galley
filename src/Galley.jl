@@ -57,8 +57,9 @@ function galley(input_query::PlanNode;
 #    verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
     faq_opt_start = time()
-    @profile AnnotatedQuery(input_query, ST)
+#    @profile AnnotatedQuery(input_query, ST)
     aq = AnnotatedQuery(input_query, ST)
+    verbose >= 1 && println("AQ Time: $(time()-faq_opt_start)")
     logical_plan = greedy_aq_to_plan(aq)
     faq_opt_end = time()
     verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
@@ -85,6 +86,17 @@ function galley(input_query::PlanNode;
         translated_queries = logical_query_to_physical_queries(alias_stats, query)
         append!(physical_queries, translated_queries)
     end
+
+    # Determine the optimal access protocols for every index occurence
+    alias_stats = Dict{PlanNode, TensorStats}()
+    for query in physical_queries
+        println(query)
+        input_stats = get_input_stats(alias_stats, query.expr)
+        println(input_stats)
+        modify_protocols!(collect(values(input_stats)))
+        alias_stats[query.name] = query.expr.stats
+    end
+
     opt_end = time()
     verbose >= 1 && println("Physical Opt Time: $(opt_end - faq_opt_end)")
 
@@ -95,10 +107,9 @@ function galley(input_query::PlanNode;
         end
         println("--------------------------------------------")
     end
-    alias_stats = Dict()
     alias_result = Dict()
     for query in physical_queries
-        validate_physical_query(query, alias_stats)
+        validate_physical_query(query)
         execute_query(alias_result, query, verbose)
     end
     exec_end = time()

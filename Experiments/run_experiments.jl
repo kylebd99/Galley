@@ -56,7 +56,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     warm_start_time = 0
                     if experiment.warm_start
                         println("Warm Start Query Path: ", query.query_path)
-                        warm_start_time = @elapsed galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=3)
+                        warm_start_time = @elapsed galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=0)
                         println("Warm Start Time: $warm_start_time")
                     end
                     result = galley(query.query; faq_optimizer = experiment.faq_optimizer, verbose=3)

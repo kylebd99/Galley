@@ -19,7 +19,7 @@ function unique_indices(scope_dict, plan::PlanNode)
     elseif plan.kind === MapJoin
         return MapJoin(plan.op, [unique_indices(scope_dict, arg) for arg in plan.args]...)
     elseif plan.kind === Input
-        return Input(plan.tns, [unique_indices(scope_dict, arg) for arg in plan.idxs]...)
+        return relabel_input(plan, [unique_indices(scope_dict, idx).name for idx in plan.idxs]...)
     elseif plan.kind === Aggregate
         new_scope_dict = deepcopy(scope_dict)
         new_idxs = []

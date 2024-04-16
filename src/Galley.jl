@@ -57,6 +57,7 @@ function galley(input_query::PlanNode;
 #    verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
     faq_opt_start = time()
+    @profile AnnotatedQuery(input_query, ST)
     aq = AnnotatedQuery(input_query, ST)
     logical_plan = greedy_aq_to_plan(aq)
     faq_opt_end = time()
@@ -73,7 +74,11 @@ function galley(input_query::PlanNode;
                     opt_time=(opt_end-opt_start + result.opt_time),
                     execute_time=result.execute_time)=#
     end
-    println(logical_plan)
+    if verbose >= 3
+        println("--------------- Logical Plan ---------------")
+        println(logical_plan)
+        println("--------------------------------------------")
+    end
     alias_stats = Dict{PlanNode, TensorStats}()
     physical_queries = []
     for query in logical_plan.queries
@@ -83,11 +88,16 @@ function galley(input_query::PlanNode;
     opt_end = time()
     verbose >= 1 && println("Physical Opt Time: $(opt_end - faq_opt_end)")
 
+    if verbose >= 3
+        println("--------------- Physical Plan ---------------")
+        for query in physical_queries
+            println(query)
+        end
+        println("--------------------------------------------")
+    end
     alias_stats = Dict()
     alias_result = Dict()
     for query in physical_queries
-#        println(query)
-#        println(keys(alias_result))
         validate_physical_query(query, alias_stats)
         execute_query(alias_result, query, verbose)
     end

@@ -99,19 +99,20 @@ end
 
 
 ################# NaiveStats Propagation ##################################################
+ # We do everything in log for numerical stability
 function merge_tensor_stats_join(op, all_stats::Vararg{NaiveStats})
     new_def = merge_tensor_def_join(op, [get_def(stats) for stats in all_stats]...)
-    new_dim_space_size = get_dim_space_size(new_def, new_def.index_set)
-    prob_non_defaults = [stats.cardinality / get_dim_space_size(stats, get_index_set(stats)) for stats in all_stats]
-    new_cardinality = prod(prob_non_defaults) * new_dim_space_size
+    new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
+    prob_non_default = sum([log2(stats.cardinality) - sum([log2(get_dim_size(stats, idx)) for idx in get_index_set(stats)]) for stats in all_stats])
+    new_cardinality = 2^(prob_non_default + new_dim_space_size)
     return NaiveStats(new_def, new_cardinality)
 end
 
 function merge_tensor_stats_union(op, all_stats::Vararg{NaiveStats})
     new_def = merge_tensor_def_union(op, [get_def(stats) for stats in all_stats]...)
-    new_dim_space_size = get_dim_space_size(new_def, new_def.index_set)
-    prob_defaults = [1 - stats.cardinality / get_dim_space_size(stats, get_index_set(stats)) for stats in all_stats]
-    new_cardinality = (1 - prod(prob_defaults)) * new_dim_space_size
+    new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
+    prob_default = sum([log2(1 - 2^(log2(stats.cardinality) - sum([log2(get_dim_size(stats, idx)) for idx in get_index_set(stats)]))) for stats in all_stats])
+    new_cardinality = 2^(log2(1 - 2^prob_default) + new_dim_space_size)
     return NaiveStats(new_def, new_cardinality)
 end
 
@@ -120,11 +121,11 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::NaiveSta
         return deepcopy(stats)
     end
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
-    new_dim_space_size = get_dim_space_size(stats, new_def.index_set)
-    old_dim_space_size = get_dim_space_size(stats, get_index_set(stats))
-    prob_default_value = 1 - stats.cardinality/old_dim_space_size
-    prob_non_default_subspace = 1 - prob_default_value ^ (old_dim_space_size/new_dim_space_size)
-    new_cardinality = new_dim_space_size * prob_non_default_subspace
+    new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
+    old_dim_space_size = sum([log2(get_dim_size(stats, idx)) for idx in get_index_set(stats)])
+    prob_default_value = 1 - 2^(log2(stats.cardinality)-old_dim_space_size)
+    prob_non_default_subspace = 1 - 2^(log2(prob_default_value) * 2^(old_dim_space_size-new_dim_space_size))
+    new_cardinality = 2^(new_dim_space_size + log2(prob_non_default_subspace))
     return NaiveStats(new_def, new_cardinality)
 end
 

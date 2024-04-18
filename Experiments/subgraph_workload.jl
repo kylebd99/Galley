@@ -59,8 +59,10 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
         vertex_vectors[label] =  Input(vertex_vector, :i)
         vertex_vectors[label].stats = stats_type(vertex_vectors[label].tns.val, [:i])
         if !isnothing(dbconn)
-            fill_table(dbconn, vertex_vectors[label].args[2], [IndexExpr("i_1")], vertex_label_to_table(label))
-            vertex_vectors[label].args[2] = DuckDBTensor(vertex_label_to_table(label), ["i_1"])
+            stats = vertex_vectors[label].stats
+            fill_table(dbconn, vertex_vector, [Index(:i)], vertex_label_to_table(label))
+            vertex_vectors[label] = Input(DuckDBTensor(vertex_label_to_table(label), ["i"]), :i)
+            vertex_vectors[label].stats = stats
         end
     end
 
@@ -80,8 +82,10 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
         edge_matrices[label] = Input(edge_matrix, :i, :j)
         edge_matrices[label].stats = stats_type(edge_matrices[label].tns.val, [:i, :j])
         if !isnothing(dbconn)
-            fill_table(dbconn, edge_matrices[label].args[2], [IndexExpr("i_1"), IndexExpr("i_2")], edge_label_to_table(label))
-            edge_matrices[label].args[2] = DuckDBTensor(edge_label_to_table(label), ["i_1", "i_2"])
+            stats = edge_matrices[label].stats
+            fill_table(dbconn, edge_matrix, [Index(:i), Index(:j)], edge_label_to_table(label))
+            edge_matrices[label] = Input(DuckDBTensor(edge_label_to_table(label), ["i", "j"]), :i, :j)
+            edge_matrices[label].stats  = stats
         end
     end
     return vertex_vectors, edge_matrices

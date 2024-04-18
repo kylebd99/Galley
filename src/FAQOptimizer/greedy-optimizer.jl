@@ -1,5 +1,8 @@
 
-function greedy_aq_to_plan(aq::AnnotatedQuery)
+
+
+function greedy_query_to_plan(input_query::PlanNode, ST)
+    aq = AnnotatedQuery(input_query, ST)
     queries = []
     reducible_idxs = get_reducible_idxs(aq)
     while !isempty(reducible_idxs)
@@ -12,8 +15,7 @@ function greedy_aq_to_plan(aq::AnnotatedQuery)
                 cheapest_cost = cost
             end
         end
-        query, new_aq = reduce_idx(cheapest_idx, aq)
-        aq = new_aq
+        query = reduce_idx!(cheapest_idx, aq)
         push!(queries, query)
         reducible_idxs = get_reducible_idxs(aq)
     end

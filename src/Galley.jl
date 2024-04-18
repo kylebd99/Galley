@@ -22,13 +22,13 @@ using DuckDB
 using PrettyPrinting
 
 export galley
-export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan
+export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan, IndexExpr
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
 export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, hypertree_width, greedy, ordering
 export expr_to_kernel, execute_tensor_kernel
-export load_to_duckdb, DuckDBTensor
+export load_to_duckdb, DuckDBTensor, fill_table
 
 IndexExpr = Symbol
 TensorId = String
@@ -37,7 +37,7 @@ TensorId = String
 # A subset of the allowed level formats provided by the Finch API
 @enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_undef = 4
 # The set of optimizers implemented by Galley
-@enum FAQ_OPTIMIZERS greedy
+@enum FAQ_OPTIMIZERS greedy naive
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
@@ -48,7 +48,15 @@ include("PhysicalOptimizer/PhysicalOptimizer.jl")
 include("ExecutionEngine/ExecutionEngine.jl")
 
 
-
+# InputQuery: Query(name, Materialize(formats..., idxs..., agg_map_expr))
+# Aggregate(op, idxs.., expr)
+# MapJoin(op, exprs...)
+# TODO:
+#   - Convert a Finch HL query to a galley query
+#   - On Finch Side:
+#           - One query at a time to galley
+#           - Isolate reformat_stats
+#           - Fuse mapjoins & permutations
 function galley(input_query::PlanNode;
                     faq_optimizer::FAQ_OPTIMIZERS=greedy,
                     ST=DCStats,
@@ -57,22 +65,34 @@ function galley(input_query::PlanNode;
 #    verbose >= 3 && println("Input FAQ : ", faq_problem)
     opt_start = time()
     faq_opt_start = time()
-    aq = AnnotatedQuery(input_query, ST)
-    verbose >= 1 && println("AQ Time: $(time()-faq_opt_start)")
-    logical_plan = greedy_aq_to_plan(aq)
+    output_order = input_query.expr.idx_order
+    logical_plan = high_level_optimize(faq_optimizer, input_query, ST)
+    # TODO: Add the step which splits up overly complex kernels back in
     faq_opt_end = time()
     verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
     if !isnothing(dbconn)
-        return
-#=      opt_end = time()
-        result = duckdb_htd_to_output(dbconn, htd)
-        verbose >= 1 && println("Plan: ", expr)
-        verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start))
-        verbose >= 1 && println("Time to Insert: ", result.insert_time)
-        verbose >= 1 && println("Time to Execute: ", result.execute_time)
-        return (value=result.value,
-                    opt_time=(opt_end-opt_start + result.opt_time),
-                    execute_time=result.execute_time)=#
+        opt_end = time()
+        output_order = input_query.expr.idx_order
+        duckdb_opt_time = (opt_end-opt_start)
+        duckdb_exec_time = 0
+        duckdb_insert_time = 0
+        for query in logical_plan.queries
+            query_timings = duckdb_execute_query(dbconn, query, verbose)
+            duckdb_opt_time += query_timings.opt_time
+            duckdb_exec_time += query_timings.execute_time
+            duckdb_insert_time += query_timings.insert_time
+        end
+        result = _duckdb_alias_to_tns(dbconn, input_query.name, output_order)
+        for query in logical_plan.queries
+            _duckdb_drop_alias(dbconn, query.name)
+        end
+        verbose >= 1 && println("Plan: ", logical_plan)
+        verbose >= 1 && println("Time to Optimize: ",  duckdb_opt_time)
+        verbose >= 1 && println("Time to Insert: ", duckdb_insert_time)
+        verbose >= 1 && println("Time to Execute: ", duckdb_exec_time)
+        return (value=result,
+                    opt_time=duckdb_opt_time,
+                    execute_time=duckdb_exec_time)
     end
     if verbose >= 3
         println("--------------- Logical Plan ---------------")

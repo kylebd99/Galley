@@ -89,41 +89,42 @@ for ST in [DCStats, NaiveStats]
     main_edge = edges[0]
 
     qt_balanced = query_triangle(main_edge, main_edge, main_edge)
-    qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
+    qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
+    qt_balanced_time = galley(qt_balanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
     println("Balanced Triangle [$ST]: ", qt_balanced_time)
     time_dict["balanced triangle"][string(ST) * "_duckdb"] = qt_balanced_time
 
     qt_unbalanced = query_triangle(edges[0], edges[1], edges[2])
-    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
+    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
+    qt_unbalanced_time = galley(qt_unbalanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
     println("Unbalanced Triangle [$ST]: ", qt_unbalanced_time)
     time_dict["unbalanced triangle"][string(ST) * "_duckdb"] = qt_unbalanced_time
 
     qp_balanced = query_path(main_edge, main_edge, main_edge, main_edge)
-    qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
+    qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
+    qp_balanced_time = galley(qp_balanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
     println("Balanced Path [$ST]: ", qp_balanced_time)
     time_dict["balanced path"][string(ST) * "_duckdb"] = qp_balanced_time
 
     qp_unbalanced = query_path(edges[0], edges[1], edges[2], edges[3])
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
+    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
+    qp_unbalanced_time = galley(qp_unbalanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
     println("Unbalanced Path [$ST]: ", qp_unbalanced_time)
     time_dict["unbalanced path"][string(ST) * "_duckdb"] = qp_unbalanced_time
 
     qb_balanced = query_bowtie(main_edge, main_edge, main_edge, main_edge, main_edge, main_edge)
-    qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
+    qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
+    qb_balanced_time = galley(qb_balanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
     println("Balanced Bowtie [$ST]: ", qb_balanced_time)
     time_dict["balanced bowtie"][string(ST) * "_duckdb"] = qb_balanced_time
 
     qb_unbalanced = query_bowtie(edges[0], edges[0], edges[0], edges[3], edges[3], edges[3])
-    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
-    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, verbose=verbosity)
+    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
+    qb_unbalanced_time = galley(qb_unbalanced, faq_optimizer=greedy, dbconn=dbconn, ST = ST, verbose=verbosity)
     println("Unbalanced Bowtie [$ST]: ", qb_unbalanced_time)
     time_dict["unbalanced bowtie"][string(ST) * "_duckdb"] = qb_unbalanced_time
 end
+verbosity = 0
 
 dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
 vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/aids/aids.txt", NaiveStats, dbconn)

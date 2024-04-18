@@ -5,13 +5,13 @@ struct DuckDBTensor
     columns::Vector{String}
 end
 
-function load_to_duckdb(dbconn::DBInterface.Connection ,q::PlanNode)
+function load_to_duckdb(dbconn::DBInterface.Connection, q::PlanNode)
     input_nodes = get_inputs(q)
     for input in input_nodes
         table_name = node_id_to_table_name(input.node_id)
         input.tns = table_name
         tensor = input.tns
-        indices = input.idxs
+        indices = [idx.name for idx in input.idxs]
         if tensor isa Tensor
             fill_table(dbconn, tensor, indices, tensor_name)
         end
@@ -26,7 +26,7 @@ function create_table(dbconn, idx_names, table_name)
     create_str = "CREATE OR REPLACE TABLE $table_name ("
     prefix = ""
     for idx in idx_names
-        create_str *= "$prefix $(idx.name) INT64"
+        create_str *= "$prefix $(idx) INT64"
         prefix = ", "
     end
     create_str *= "$prefix v DOUBLE)"
@@ -90,11 +90,11 @@ function get_select_statement(n::PlanNode)
     end
     all_indices = get_index_set(n.stats)
     if n.kind == MapJoin
+        def_val = get_default_value(n.stats)
         map_op = n.op.val
-        println(map_op)
         children = n.args
         child_table_names = Dict(child.node_id => node_id_to_table_name(child.node_id) for child in children)
-        v_stmt = "$agg_op(" * delimited_string(["$tbl.v" for tbl in values(child_table_names)], map_op_to_duckdb_op(map_op)) * ")"
+        v_stmt = "Coalesce($agg_op(" * delimited_string(["Coalesce($tbl.v, 0)" for tbl in values(child_table_names)], map_op_to_duckdb_op(map_op)) * "), $def_val) as v "
         idx_to_child_id = Dict()
         idx_to_table_idx = Dict()
         for idx in all_indices
@@ -136,7 +136,7 @@ function get_select_statement(n::PlanNode)
     elseif n.kind == Input
         duckdb_tns = n.tns.val
         tb_idx_to_tns_idx = Dict(n.idxs[i].name => duckdb_tns.columns[i] for i in eachindex(n.idxs))
-        v_stmt = "$agg_op(v)"
+        v_stmt = "$agg_op(v) as v"
         attribute_stmnt = delimited_string([v_stmt, [tb_idx_to_tns_idx[idx] * " as $idx" for idx in output_indices]...], ", ")
         table_name = duckdb_tns.name
         stmnt *= "$attribute_stmnt \n FROM $table_name"
@@ -144,9 +144,9 @@ function get_select_statement(n::PlanNode)
             stmnt *= "\n GROUP BY " * delimited_string(output_indices, ", ")
         end
     elseif n.kind == Alias
-        v_stmt = "$agg_op(v)"
+        v_stmt = "$agg_op(v) as v"
         attribute_stmnt = delimited_string([v_stmt, output_indices...], ", ")
-        table_name = n.name
+        table_name = alias_to_table_name(n)
         stmnt *= "$attribute_stmnt \n FROM $table_name"
         if length(output_indices) > 0  && length(output_indices) < length(get_index_set(n.stats))
             stmnt *= "\n GROUP BY " * delimited_string(output_indices, ", ")
@@ -156,7 +156,7 @@ function get_select_statement(n::PlanNode)
 end
 
 function get_query_stmnt(q::PlanNode)
-    stmnt = "INSERT INTO $(q.name.name) \n $(get_select_statement(q.expr))"
+    stmnt = "INSERT INTO $(alias_to_table_name(q.name)) BY NAME \n ($(get_select_statement(q.expr)))"
     return stmnt
 end
 
@@ -165,21 +165,27 @@ function get_explain_stmnt(q::PlanNode)
     return stmnt
 end
 
+function alias_to_table_name(a)
+    return replace(string(a.name), "#"=>"")
+end
+
 # This function recursively computes the result of bags and produces their output as a table in the
 # database under the name "b_$(bag.id)". It then drops the child bag's tables to reduce
 # memory consumption.
 function _duckdb_compute_query(dbconn, q::PlanNode, verbose)
-    table_name = q.name.name
+    table_name = alias_to_table_name(q.name)
     output_indices = get_index_set(q.expr.stats)
     create_table(dbconn, output_indices, table_name)
     explain_stmnt = get_explain_stmnt(q)
-    println(explain_stmnt)
     explain_result = @timed DuckDB.execute(dbconn, explain_stmnt)
     opt_time = explain_result.time
-    if verbose >=2
+    if verbose >=4
         println(explain_result.value)
     end
     query_stmnt = get_query_stmnt(q)
+    if verbose >= 3
+        println(query_stmnt)
+    end
     query_result = @timed DuckDB.execute(dbconn, query_stmnt)
     execute_time = query_result.time
     return opt_time, execute_time
@@ -203,7 +209,7 @@ function duckdb_execute_query(dbconn, q::PlanNode, verbose)
         for input in input_nodes
             table_name = node_id_to_table_name(input.node_id)
             tensor = input.tns
-            indices = input.idxs
+            indices = [idx.name for idx in input.idxs]
             if tensor isa Tensor
                 fill_table(dbconn, tensor, indices, tensor_name)
                 input.children[1] = DuckDBTensor(table_name, [string(idx) for idx in indices])
@@ -220,26 +226,26 @@ function duckdb_execute_query(dbconn, q::PlanNode, verbose)
     return (insert_time = insert_time, execute_time  = execute_time, opt_time = opt_time)
 end
 
-function _duckdb_alias_to_tns(dbconn, alias, output_indices)
+function _duckdb_query_to_tns(dbconn, query, output_indices)
     output = nothing
     if length(output_indices) > 0
         I = Tuple([Int[] for _ in output_indices])
         V = Float64[]
-        M = Tuple(get_dim_size(q.expr.stats, idx) for idx in output_indices)
-        for row in DuckDB.execute(dbconn, "SELECT * FROM $(alias.name)")
-            for i in eachindex(output_index_order)
-                idx = output_index_order[i]
-                push!(I[i], row[Symbol(idx.name)])
+        M = Tuple(get_dim_size(query.expr.stats, idx) for idx in output_indices)
+        for row in DuckDB.execute(dbconn, "SELECT * FROM $(alias_to_table_name(query.name))")
+            for i in eachindex(output_indices)
+                idx = output_indices[i]
+                push!(I[i], row[idx])
             end
             push!(V, row[:v])
         end
-        output = fsparse_fixed(I, V, M, +)
+        output = Finch.fsparse_impl(I, V, M, +)
     else
-        output = only(DuckDB.execute(dbconn, "SELECT * FROM $(alias.name)"))[:v]
+        output = only(DuckDB.execute(dbconn, "SELECT * FROM $(alias_to_table_name(query.name))"))[:v]
     end
     return output
 end
 
 function _duckdb_drop_alias(dbconn, alias)
-    DuckDB.execute(dbconn, "DROP TABLE $(alias.name)")
+    DuckDB.execute(dbconn, "DROP TABLE $(alias_to_table_name(alias))")
 end

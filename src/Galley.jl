@@ -82,7 +82,7 @@ function galley(input_query::PlanNode;
             duckdb_exec_time += query_timings.execute_time
             duckdb_insert_time += query_timings.insert_time
         end
-        result = _duckdb_alias_to_tns(dbconn, input_query.name, output_order)
+        result = _duckdb_query_to_tns(dbconn, logical_plan.queries[end], output_order)
         for query in logical_plan.queries
             _duckdb_drop_alias(dbconn, query.name)
         end

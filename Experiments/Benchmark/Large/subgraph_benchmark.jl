@@ -2,7 +2,7 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-data = aids
+data = human
 
 experiments = ExperimentParams[]
 #    push!(experiments, ExperimentParams(workload=data, faq_optimizer=naive))
@@ -13,7 +13,7 @@ push!(experiments, ExperimentParams(workload=data, faq_optimizer=naive; stats_ty
 #    push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=NaiveStats))
 #    push!(experiments, ExperimentParams(workload=data, faq_optimizer=ordering))
 
-#run_experiments(experiments)
+run_experiments(experiments)
 
 graph_grouped_box_plot(experiments; y_type=overall_time, grouping=description, filename="$(data)_subgraph_counting_overall")
 graph_grouped_box_plot(experiments; y_type=opt_time, grouping=description, filename="$(data)_subgraph_counting_opt")

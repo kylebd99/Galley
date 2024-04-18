@@ -27,14 +27,15 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         args = sort_mapjoin_args(args)
         return call_instance(literal_instance(op.val),
                                 [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)
+
     else
         throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin"))
     end
-
 end
 
 # To be executed, a query must be in the following format:
 # Query(name, Materialize(formats..., index_order..., Aggregate(op, idxs..., map_expr)))
+# TODO: use loop_order to label indexes
 function execute_query(alias_dict, q::PlanNode, verbose)
     tensor_counter = [0]
     index_sym_dict = Dict()
@@ -71,9 +72,10 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     end
     prgm_instance = block_instance(dec_instance, prgm_instance)
 
-    verbose >= 2 && display(prgm_instance)
     start_time = time()
     Finch.execute(prgm_instance, (mode=Finch.FastFinch(),))
+    verbose >= 1 && println("----------- Computing: $(q.name) -----------")
+    verbose >= 4 && display(prgm_instance)
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         verbose >= 2 && println("Output Size: 1")
@@ -82,4 +84,5 @@ function execute_query(alias_dict, q::PlanNode, verbose)
         verbose >= 2 && println("Output Size: ", countstored(output_tensor))
         alias_dict[name] = output_tensor
     end
+    verbose >= 2 && println("Expected Output Size: $(estimate_nnz(agg_expr.stats))")
 end

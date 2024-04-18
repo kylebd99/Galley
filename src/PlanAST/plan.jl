@@ -1,7 +1,6 @@
 # This file defines the logical query plan (LQP) language.
 # Each LQP is a tree of expressions where interior nodes refer to
 # function calls and leaf nodes refer to constants or input tensors.
-
 const IS_TREE = 1
 const IS_STATEFUL = 2
 const ID = 4
@@ -18,9 +17,6 @@ const ID = 4
     Outputs      =  9ID | IS_TREE   #  Outputs(args...::TI)
     Plan         = 10ID | IS_TREE   #  Alias(x::Union{String, Symbol})
 end
-
-
-
 
 # Here, we define the internal expression type that we use to describe logical query plans.
 mutable struct PlanNode
@@ -119,6 +115,32 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
     end
 end
 
+function Base.setproperty!(node::PlanNode, sym::Symbol, v)
+    if sym === :kind || sym === :val || sym === :children || sym == :stats || sym == :node_id
+        return Base.setfield!(node, sym, v)
+    elseif node.kind === Index && sym === :name node.val = v
+    elseif node.kind === Alias && sym === :name node.val = v
+    elseif node.kind === Input && sym === :tns node.children[1] = v
+    elseif node.kind === Input && sym === :idxs begin node.children = [node.children[1], v...] end
+    elseif node.kind === MapJoin && sym === :op node.children[1] = v
+    elseif node.kind === MapJoin && sym === :args begin node.children = [node.children[1], v...] end
+    elseif node.kind === Aggregate && sym === :op node.children[1]
+    elseif node.kind === Aggregate && sym === :idxs begin node.children = [node.children[1], v..., node.children[end]] end
+    elseif node.kind === Aggregate && sym === :arg node.children[end] = v
+    elseif node.kind === Materialize && sym === :formats begin node.children = [v..., node.idx_order..., node.expr] end
+    elseif node.kind === Materialize && sym === :idx_order begin node.children = [node.formats..., v..., node.expr] end
+    elseif node.kind === Materialize && sym === :expr node.children[end] = v
+    elseif node.kind === Query && sym === :name node.children[1] = v
+    elseif node.kind === Query && sym === :expr node.children[2] = v
+    elseif node.kind === Query && sym === :loop_order begin node.children = [node.name, node.expr, v...] end
+    elseif node.kind === Outputs && sym === :names node.children = v
+    elseif node.kind === Plan && sym === :queries begin node.children = [v..., node.outputs] end
+    elseif node.kind === Plan && sym === :outputs node.children[end] = v
+    else
+        error("type PlanNode($(node.kind), ...) has no property $sym")
+    end
+end
+
 function relabel_input(input::PlanNode, indices...)
     if input.kind != Input
         throw(ErrorException("Can't relabel a node other than input!"))
@@ -177,9 +199,18 @@ function planToString(n::PlanNode, depth::Int64)
     elseif n.kind == Input
         output *= "Input("
         prefix = ""
-        for arg in children(n)
-            output *= prefix * planToString(arg, depth + 1)
-            prefix =","
+        idxs = get_index_order(n.stats)
+        protocols = get_index_protocols(n.stats)
+        if !isnothing(get_index_protocols(n.stats))
+            for i in eachindex(idxs)
+                output *= "$prefix$(idxs[i])::$(protocols[i])"
+                prefix =","
+            end
+        else
+            for arg in children(n)
+                output *= prefix * planToString(arg, depth + 1)
+                prefix =","
+            end
         end
         output *= ")"
         return output

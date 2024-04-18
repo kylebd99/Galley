@@ -54,6 +54,9 @@ function get_output_compat(output_vars::Set{IndexExpr}, prefix::Vector{IndexExpr
 end
 
 @enum OUTPUT_COMPAT FULL_PREFIX=0 SET_PREFIX=1 NO_PREFIX=2
+PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
+PLAN = Tuple{Vector{IndexExpr}, Float64}
+
 # We use a version of Selinger's algorithm to determine the join loop ordering.
 # For each subset of variables, we calculate their optimal ordering via dynamic programming.
 # This is singly exponential in the number of loop variables, and it uses the statistics to
@@ -75,9 +78,12 @@ function get_join_loop_order(agg_op,
         output_vars = relative_sort(output_vars, output_order)
     end
 
-    # At all times, we keep track of the best plans for each level of output compatability.
-    # This will let us consider the cost of random writes and transposes at the end.
+    # At all times, we keep track of the best plans for each level of output compatability
+    # and conditioned on the inputs that it reformats. This will let us consider the cost of
+    # random writes and transposes at the end.
     reformat_costs = Dict(i => cost_of_reformat(input_stats[i]) for i in eachindex(input_stats))
+    join_stats = merge_tensor_stats(*, input_stats...)
+    condense_stats!(join_stats)
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
@@ -147,6 +153,9 @@ function get_join_loop_order(agg_op,
             cost_1 = plan_1[2]
             output_compat_1 = plan_class_1[2]
             reformat_set_1 = plan_class_1[3]
+            if cost_1 + cost_of_plan_class(plan_class_1, reformat_costs, output_size, num_flops) > cost_bound
+                continue
+            end
             is_dominated = false
             for (plan_class_2, plan_2) in plans_by_set[plan_class_1[1]]
                 cost_2 = plan_2[2]
@@ -161,6 +170,11 @@ function get_join_loop_order(agg_op,
                 undominated_plans[plan_class_1] = plan_1
             end
         end
+        if !isinf(top_k) && length(undominated_plans) > top_k
+            plan_and_cost = [(p[2] + cost_of_plan_class(pc, reformat_costs, output_size, num_flops), pc=>p) for (pc, p) in undominated_plans]
+            sort!(plan_and_cost, by=(x)->x[1])
+            undominated_plans = Dict(x[2] for x in plan_and_cost[1:top_k])
+        end
         optimal_plans = undominated_plans
     end
 
@@ -171,25 +185,25 @@ function get_join_loop_order(agg_op,
     num_flops = get_loop_lookups(agg_op, all_vars, join_stats)
 
     min_cost = Inf
+    best_plan_class = nothing
     best_prefix = nothing
     for (plan_class, plan) in optimal_plans
-        output_compat = plan_class[2]
-        rf_set = plan_class[3]
-        cur_cost = plan[2]
-        if output_compat == FULL_PREFIX
-            cur_cost += output_size * SeqWriteCost
-        elseif output_compat == SET_PREFIX
-            cur_cost += output_size * SeqWriteCost + transpose_cost
-        else
-            cur_cost += num_flops * RandomWriteCost
-        end
-        for i in rf_set
-            cur_cost += reformat_costs[i]
-        end
+        cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size, num_flops)
         if cur_cost < min_cost
             min_cost = cur_cost
             best_prefix = plan[1]
+            best_plan_class = plan_class
         end
     end
-    return best_prefix
+    return best_prefix, min_cost
+end
+
+GREEDY_PLAN_K = 10
+
+function get_join_loop_order(input_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Vector{IndexExpr})
+    join_stats = merge_tensor_stats(*, input_stats...)
+    condense_stats!(join_stats; timeout=Inf, only_for_estimation=true)
+    greedy_order, greedy_cost = get_join_loop_order_bounded(input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
+    exact_order, exact_cost = get_join_loop_order_bounded(input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
+    return exact_order
 end

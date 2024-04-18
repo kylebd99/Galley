@@ -9,31 +9,31 @@ end
 
 # In cannonical form, two aggregates in the plan shouldn't reduce out the same variable.
 # E.g. MapJoin(*, Aggregate(+, Input(tns, i, j)))
-function unique_indices(scope_dict, plan::PlanNode)
-    if plan.kind === Plan
-        return Plan([unique_indices(scope_dict, query) for query in plan.queries]..., plan.outputs)
-    elseif plan.kind === Query
-        return Query(plan.name, unique_indices(scope_dict, plan.expr))
-    elseif plan.kind === Materialize
-        return Materialize(plan.formats, plan.idx_order, unique_indices(scope_dict, plan.expr))
-    elseif plan.kind === MapJoin
-        return MapJoin(plan.op, [unique_indices(scope_dict, arg) for arg in plan.args]...)
-    elseif plan.kind === Input
-        return relabel_input(plan, [unique_indices(scope_dict, idx).name for idx in plan.idxs]...)
-    elseif plan.kind === Aggregate
+function unique_indices(scope_dict, n::PlanNode)
+    if n.kind === Plan
+        return Plan([unique_indices(scope_dict, query) for query in n.queries]..., n.outputs)
+    elseif n.kind === Query
+        return Query(n.name, unique_indices(scope_dict, n.expr))
+    elseif n.kind === Materialize
+        return Materialize(n.formats, n.idx_order, unique_indices(scope_dict, n.expr))
+    elseif n.kind === MapJoin
+        return MapJoin(n.op, [unique_indices(scope_dict, arg) for arg in n.args]...)
+    elseif n.kind === Input
+        return relabel_input(n, [unique_indices(scope_dict, idx).name for idx in n.idxs]...)
+    elseif n.kind === Aggregate
         new_scope_dict = deepcopy(scope_dict)
         new_idxs = []
-        for idx in plan.idxs
+        for idx in n.idxs
             old_idx = idx.val
             new_idx = haskey(new_scope_dict, old_idx) ? gensym(idx.val) : idx.val
             push!(new_idxs, new_idx)
             new_scope_dict[old_idx] = new_idx
         end
-        return Aggregate(plan.op, new_idxs..., unique_indices(new_scope_dict, plan.arg))
-    elseif plan.kind === Index
-        return Index(get(scope_dict, plan.name, plan.name))
+        return Aggregate(n.op, new_idxs..., unique_indices(new_scope_dict, n.arg))
+    elseif n.kind === Index
+        return Index(get(scope_dict, n.name, n.name))
     else
-        return deepcopy(plan)
+        return n
     end
 end
 

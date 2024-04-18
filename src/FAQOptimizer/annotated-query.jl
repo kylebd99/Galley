@@ -153,11 +153,10 @@ function cost_of_reduce(reduce_idx, aq)
     return estimate_nnz(comp_stats) * ComputeCost + estimate_nnz(mat_stats) * AllocateCost
 end
 
-function replace_and_remove_nodes(expr, node_id_to_replace, new_node, nodes_to_remove)
+function replace_and_remove_nodes!(expr, node_id_to_replace, new_node, nodes_to_remove)
     if expr.node_id == node_id_to_replace
         return new_node
     end
-    expr = deepcopy(expr)
     for node in PreOrderDFS(expr)
         if node.kind == Plan || node.kind == Query || node.kind == Aggregate
             throw(ErrorException("There should be no $(node.kind) nodes in a pointwise expression."))
@@ -177,13 +176,13 @@ end
 
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
-function reduce_idx(idx, aq)
+function reduce_idx!(idx, aq)
     query, node_to_replace, nodes_to_remove = get_reduce_query(idx, aq)
     reduced_idxs = query.expr.idxs
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
     alias_expr.stats = deepcopy(query.expr.stats)
-    new_point_expr = replace_and_remove_nodes(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
+    new_point_expr = replace_and_remove_nodes!(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
     new_id_to_node = Dict()
     for node in PreOrderDFS(new_point_expr)
         new_id_to_node[node.node_id] = node
@@ -204,16 +203,13 @@ function reduce_idx(idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-    return query, AnnotatedQuery(aq.ST,
-                    aq.output_name,
-                    aq.output_order,
-                    aq.output_format,
-                    new_reduce_idxs,
-                    new_point_expr,
-                    new_idx_lowest_root,
-                    new_idx_op,
-                    new_id_to_node,
-                    new_parent_idxs)
+    aq.reduce_idxs = new_reduce_idxs
+    aq.point_expr = new_point_expr
+    aq.idx_lowest_root = new_idx_lowest_root
+    aq.idx_op = new_idx_op
+    aq.id_to_node = new_id_to_node
+    aq.parent_idxs = new_parent_idxs
+    return query
 end
 
 # Returns the set of indices which are available to be reduced immediately.

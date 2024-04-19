@@ -174,6 +174,9 @@ function get_join_loop_order_bounded(agg_op,
             cost_1 = plan_1[2]
             output_compat_1 = plan_class_1[2]
             reformat_set_1 = plan_class_1[3]
+            if cost_1 + cost_of_plan_class(plan_class_1, reformat_costs, output_size, num_flops) > cost_bound
+                continue
+            end
             is_dominated = false
             for (plan_class_2, plan_2) in plans_by_set[plan_class_1[1]]
                 cost_2 = plan_2[2]

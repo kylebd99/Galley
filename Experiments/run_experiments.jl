@@ -39,7 +39,7 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
             num_attempted +=1
             try
                 if experiment.use_duckdb
-                    result = @timeout experiment.timeout galley(query.query; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0) "failed"
+                    result = @timeout experiment.timeout galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0) "failed"
                     if result == "failed"
                         push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", string(true)))
                     else

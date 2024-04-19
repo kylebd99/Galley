@@ -125,11 +125,11 @@ function get_sparsity_structure(tensor::Tensor)
 end
 
 function fully_compat_with_loop_prefix(tensor_order::Vector, loop_prefix::Vector)
-    for i in reverse(eachindex(tensor_order))
+    for i in eachindex(tensor_order)
         if i > length(loop_prefix)
             return true
         end
-        if tensor_order[i] != loop_prefix[i]
+        if reverse(tensor_order)[i] != loop_prefix[i]
             return false
         end
     end

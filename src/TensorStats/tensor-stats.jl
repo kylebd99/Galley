@@ -171,7 +171,7 @@ end
 function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
     all_dcs = Dict{DCKey, Float64}()
     for dc in dcs
-        all_dcs[(X = collect(dc.X), Y = collect(dc.Y))] = dc.d
+        all_dcs[(X = sort(collect(dc.X)), Y = sort(collect(dc.Y)))] = dc.d
     end
     prev_new_dcs = deepcopy(all_dcs)
     time = 1

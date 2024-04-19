@@ -144,15 +144,45 @@ get_def(stat::DCStats) = stat.def
 
 DCKey = NamedTuple{(:X, :Y), Tuple{Vector{IndexExpr}, Vector{IndexExpr}}}
 
-function union_then_diff(lY, rY, lX)
-    result = copy(lY)
-    for y in rY
-        if y in lY || y in lX
-            continue
-        end
-        push!(result, y)
+function union_then_diff(lY::Vector{IndexExpr}, rY::Vector{IndexExpr}, lX::Vector{IndexExpr})
+    if length(lY) == 0
+        return IndexExpr[]
     end
-    return sort(result)
+    if length(rY) == 0
+        return copy(lY)
+    end
+
+    result = Vector{IndexExpr}(undef, length(lY) + length(rY))
+    cur_idx = undef
+    cur_out_idx = 1
+    cur_l_pos = 1
+    cur_r_pos = 1
+    while cur_l_pos <= length(lY) || cur_r_pos <= length(rY)
+        if cur_l_pos <= length(lY) && cur_r_pos <= length(rY)
+            if rY[cur_r_pos] == lY[cur_l_pos]
+                cur_idx = rY[cur_r_pos]
+                cur_r_pos += 1
+                cur_l_pos += 1
+            elseif rY[cur_r_pos] < lY[cur_l_pos]
+                cur_idx = rY[cur_r_pos]
+                cur_r_pos += 1
+            else
+                cur_idx = lY[cur_l_pos]
+                cur_l_pos += 1
+            end
+        elseif cur_l_pos <= length(lY)
+            cur_idx = lY[cur_l_pos]
+            cur_l_pos += 1
+        elseif cur_r_pos <= length(rY)
+            cur_idx = rY[cur_r_pos]
+            cur_r_pos += 1
+        end
+        if !(cur_idx in lX)
+            result[cur_out_idx] = cur_idx
+            cur_out_idx += 1
+        end
+    end
+    return result[1:cur_out_idx-1]
 end
 
 function infer_dc(l, ld, r, rd, all_dcs, new_dcs)
@@ -171,17 +201,19 @@ end
 function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
     all_dcs = Dict{DCKey, Float64}()
     for dc in dcs
-        all_dcs[(X = sort(collect(dc.X)), Y = sort(collect(dc.Y)))] = dc.d
+        all_dcs[(X = sort!(collect(dc.X)), Y = sort!(collect(dc.Y)))] = dc.d
     end
-    prev_new_dcs = deepcopy(all_dcs)
+    prev_new_dcs = all_dcs
     time = 1
     finished = false
+    max_dc_size = maximum([length(x.Y) for x in keys(all_dcs)], init=0)
     while time < timeout && !finished
         new_dcs = Dict{DCKey, Float64}()
 
         for (l, ld) in all_dcs
             cheap && length(l.X) > 0 && continue
             for (r, rd) in prev_new_dcs
+                cheap && length(r.Y) + length(l.Y) < max_dc_size && continue
                 infer_dc(l, ld, r, rd, all_dcs, new_dcs)
                 time +=1
                 time > timeout && break
@@ -192,6 +224,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
         for (l, ld) in prev_new_dcs
             cheap && length(l.X) > 0 && continue
             for (r, rd) in all_dcs
+                cheap && length(r.Y) + length(l.Y) < max_dc_size && continue
                 infer_dc(l, ld, r, rd, all_dcs, new_dcs)
                 time +=1
                 time > timeout && break
@@ -199,9 +232,14 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
             time > timeout && break
         end
 
-        prev_new_dcs = new_dcs
+        if cheap
+            max_dc_size = maximum([length(x.Y) for x in keys(new_dcs)], init=0)
+        end
+        prev_new_dcs = Dict()
         for (dc_key, dc) in new_dcs
+            cheap && length(dc_key.Y) < max_dc_size && continue
             all_dcs[dc_key] = dc
+            prev_new_dcs[dc_key] = dc
         end
         if length(prev_new_dcs) == 0
             finished = true
@@ -215,9 +253,9 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
     return final_dcs
 end
 
-function condense_stats!(stat::DCStats; timeout=Inf)
+function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
     current_indices = get_index_set(stat)
-    inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, cheap=true)
+    inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, cheap=cheap)
     min_dcs = Dict()
     for dc in inferred_dcs
         valid = true

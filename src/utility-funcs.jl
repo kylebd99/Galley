@@ -125,15 +125,8 @@ function get_sparsity_structure(tensor::Tensor)
 end
 
 function fully_compat_with_loop_prefix(tensor_order::Vector, loop_prefix::Vector)
-    for i in reverse(eachindex(tensor_order))
-        if i > length(loop_prefix)
-            return true
-        end
-        if tensor_order[i] != loop_prefix[i]
-            return false
-        end
-    end
-    return true
+    min_size = min(length(tensor_order), length(loop_prefix))
+    return reverse(tensor_order)[1:min_size] == loop_prefix[1:min_size]
 end
 
 # This function determines whether any ordering of the `l_set` is a prefix of `r_vec`.

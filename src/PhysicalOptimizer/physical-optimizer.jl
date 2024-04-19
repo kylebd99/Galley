@@ -95,48 +95,36 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
             append!(queries, reorder_queries)
         end
     end
+    input_indices = get_input_indices(kernel.kernel_root)
+    @assert  input_indices == Set(kernel.loop_order)
 
-    # Determine the optimal output format & add a further query to reformat if necessary.
-    output_order = isnothing(output_order) ? relative_sort(get_index_set(output_stats), loop_order, rev=true) : output_order
-    first_formats = select_output_format(output_stats, loop_order, output_order)
-
-    agg_op = isnothing(agg_op) ? initwrite(get_default_value(output_stats)) : agg_op
-    expr = Aggregate(agg_op, reduce_idxs..., expr)
-    expr.stats = output_stats
-
-    needs_intermediate = any([f == t_hash for f in first_formats]) || !isnothing(output_formats)
-    if needs_intermediate
-        intermediate_query = Query(Alias(gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
-        reorder_stats = deepcopy(expr.stats)
-        reorder_def = get_def(reorder_stats)
-        reorder_def.index_order = output_order
-        reorder_def.level_formats = first_formats
-        alias_stats[intermediate_query.name] = reorder_stats
-        intermediate_query.expr.stats = reorder_stats
-        push!(queries, intermediate_query)
-        best_formats = !isnothing(output_formats) ? output_formats : select_output_format(output_stats, reverse(output_order), output_order)
-        alias_expr = Alias(intermediate_query.name.name)
-        alias_expr.stats = reorder_stats
-        result_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
-        result_expr.stats = reorder_stats
-        result_query = Query(query.name, Materialize(best_formats... , output_order..., result_expr), reverse(output_order)...)
-        result_stats = deepcopy(reorder_stats)
-        result_def = get_def(result_stats)
-        result_def.index_order = output_order
-        result_def.level_formats = best_formats
-        result_query.expr.stats = result_stats
-        push!(queries, result_query)
-    else
-        result_query = Query(query.name, Materialize(first_formats..., output_order..., expr), loop_order...)
-        reorder_stats = deepcopy(expr.stats)
-        reorder_def = get_def(reorder_stats)
-        reorder_def.index_order =  output_order
-        reorder_def.level_formats = first_formats
-        result_query.expr.stats = reorder_stats
-        push!(queries, result_query)
+    function get_output_indices(n::TensorExpression)
+        return if n isa InputExpr
+            Set(n.input_indices)
+        elseif n isa AggregateExpr
+            setdiff(get_input_indices(n.input), n.aggregate_indices)
+        elseif n isa OperatorExpr
+            union([get_input_indices(input) for input in n.inputs]...)
+        elseif n isa ReorderExpr
+            get_input_indices(n.input)
+        end
     end
-    for query in queries
-        alias_stats[query.name] = query.expr.stats
+    output_indices = get_output_indices(kernel.kernel_root)
+    @assert output_indices ⊆ input_indices
+    @assert length(output_indices) == length(kernel.output_formats)
+
+    function check_sorted_inputs(n::TensorExpression)
+        if n isa InputExpr
+            @assert is_sorted_wrt_index_order(n.input_indices, kernel.loop_order; loop_order=true)
+        elseif n isa AggregateExpr
+            check_sorted_inputs(n.input)
+        elseif n isa OperatorExpr
+            for input in n.inputs
+                check_sorted_inputs(input)
+            end
+        elseif n isa ReorderExpr
+            check_sorted_inputs(n.input)
+        end
     end
-    return queries
+    check_sorted_inputs(kernel.kernel_root)
 end

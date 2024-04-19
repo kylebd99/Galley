@@ -184,7 +184,24 @@ end
 function planToString(n::PlanNode, depth::Int64)
     output = ""
     if n.kind == Alias
-        output *= "Alias($(n.name))"
+        output *= "Alias($(n.name)"
+        if isnothing(n.stats)
+            output *= ")"
+            return output
+        end
+        idxs = get_index_order(n.stats)
+        protocols = get_index_protocols(n.stats)
+        prefix = ","
+        if !isnothing(get_index_protocols(n.stats))
+            for i in eachindex(idxs)
+                output *= "$prefix$(idxs[i])::$(protocols[i])"
+            end
+        else
+            for idx in get_index_set(n.stats)
+                output *= prefix * string(idx)
+            end
+        end
+        output *= ")"
         return output
     elseif n.kind == Index
         output *= "$(n.name)"

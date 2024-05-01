@@ -101,7 +101,7 @@ end
 
 get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats) = stat.cardinality
-condense_stats!(::NaiveStats; timeout=100000) = nothing
+condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
 
 NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)

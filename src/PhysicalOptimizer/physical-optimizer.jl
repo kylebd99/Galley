@@ -54,7 +54,8 @@ end
 # `alias_stats` is a dictionary which holds stats objects for the results of any previous
 # queries. This is needed to get the stats for `Alias` inputs.
 function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorStats}, query::PlanNode; verbose = 0)
-    if !(@capture query Query(~name, Aggregate(~args...))) &&
+    if !(@capture query Query(~name, Materialize(~args...))) &&
+            !(@capture query Query(~name, Aggregate(~args...))) &&
             !(@capture query Query(~name, MapJoin(~args...)))
         throw(ErrorException("Physical optimizer only takes in properly formatted single queries."))
     end
@@ -68,15 +69,15 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     output_formats = nothing
     output_order = nothing
     if expr.kind == Materialize
-        if !any([f == t_undef for f in expr.formats])
-            output_formats = expr.formats
+        if !any([f.val == t_undef for f in expr.formats])
+            output_formats = [f.val for f in expr.formats]
         end
         output_order = [idx.name for idx in expr.idx_order]
         expr = expr.expr
     end
 
     agg_op = nothing
-    reduce_idxs = Set()
+    reduce_idxs = Set{IndexExpr}()
     if expr.kind == Aggregate
         agg_op = expr.op
         reduce_idxs = expr.idxs
@@ -86,6 +87,8 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     # Determine the optimal loop order for the query
     input_stats = get_input_stats(alias_stats, expr)
     condense_stats!(expr.stats)
+    agg_op = isnothing(agg_op) ? initwrite(get_default_value(expr.stats)) : agg_op
+
     output_stats = reduce_tensor_stats(agg_op, reduce_idxs, expr.stats)
     loop_order = get_join_loop_order(agg_op, Vector{TensorStats}(collect(values(input_stats))), expr.stats, output_stats, output_order)
     queries = []
@@ -100,7 +103,6 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     output_order = isnothing(output_order) ? relative_sort(get_index_set(output_stats), loop_order, rev=true) : output_order
     first_formats = select_output_format(output_stats, loop_order, output_order)
 
-    agg_op = isnothing(agg_op) ? initwrite(get_default_value(output_stats)) : agg_op
     expr = Aggregate(agg_op, reduce_idxs..., expr)
     expr.stats = output_stats
 

@@ -94,7 +94,7 @@ function galley(input_query::PlanNode;
                     opt_time=duckdb_opt_time,
                     execute_time=duckdb_exec_time)
     end
-    if verbose >= 3
+    if verbose >= 1
         println("--------------- Logical Plan ---------------")
         println(logical_plan)
         println("--------------------------------------------")
@@ -117,7 +117,7 @@ function galley(input_query::PlanNode;
 
     opt_end = time()
     verbose >= 1 && println("Physical Opt Time: $(opt_end - faq_opt_end)")
-    if verbose >= 3
+    if verbose >= 2
         println("--------------- Physical Plan ---------------")
         for query in physical_queries
             println(query)

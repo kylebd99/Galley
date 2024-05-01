@@ -213,6 +213,14 @@ function reduce_idx!(idx, aq)
     return query
 end
 
+function get_remaining_query(aq)
+    expr = aq.point_expr
+    condense_stats!(expr.stats; cheap=false)
+    query = Query(aq.output_name, expr)
+    insert_statistics!(aq.ST, query)
+    return query
+end
+
 # Returns the set of indices which are available to be reduced immediately.
 function get_reducible_idxs(aq)
     reducible_idxs = [idx for idx in aq.reduce_idxs if length(aq.parent_idxs[idx]) == 0]

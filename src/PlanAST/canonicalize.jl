@@ -53,7 +53,9 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
             def.level_formats = [f.val for f in expr.formats]
             def.index_order = [idx.name for idx in expr.idx_order]
         elseif expr.kind === Alias
-            expr.stats = get(bindings, expr, nothing)
+            if isnothing(expr.stats)
+                expr.stats = get(bindings, expr, nothing)
+            end
         elseif @capture expr Input(~tns, ~idxs...)
             if !isnothing(expr.stats) && !replace
                 continue

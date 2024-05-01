@@ -27,9 +27,8 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         args = sort_mapjoin_args(args)
         return call_instance(literal_instance(op.val),
                                 [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)
-
     else
-        throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin"))
+        throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin: $rhs"))
     end
 end
 

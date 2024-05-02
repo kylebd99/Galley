@@ -37,8 +37,24 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
         return PlanNode(kind, PlanNode[], args[1], nothing)
     else
         args = vcat(args...)
-        if (kind === Input && length(args) >= 1) ||
-            (kind === MapJoin && length(args) >= 2) ||
+        if (kind === Input && length(args) >= 1)
+            if args[1] isa Tensor
+                PlanNode(kind, args, nothing, nothing)
+            elseif args[1].kind === Value
+                PlanNode(kind, args, nothing, nothing)
+            elseif args[1].kind === Materialize
+                mat_expr = args[1]
+                new_idxs = args[2:end]
+                old_idxs = mat_expr.idx_order
+                @assert length(new_idxs) == length(old_idxs)
+                idx_translate = Dict(old_idxs[i] => new_idxs[i] for i in eachindex(old_idxs))
+                internal_expr = mat_expr.expr
+                result_expr = Rewrite(Postwalk(@rule ~x => idx_translate[x] where ((x.kind === Index) && (x ∈ keys(idx_translate)))))(internal_expr)
+                return result_expr
+            else
+                error("a reused plan expression must be wrapped in a materialize!")
+            end
+        elseif (kind === MapJoin && length(args) >= 2) ||
             (kind === Aggregate && length(args) >= 2) ||
             (kind === Materialize && length(args) >= 1 && length(args) % 2 == 1) ||
             (kind === Query && length(args) >= 2) ||
@@ -196,7 +212,7 @@ function planToString(n::PlanNode, depth::Int64)
             for i in eachindex(idxs)
                 output *= "$prefix$(idxs[i])::$(protocols[i])"
             end
-        else
+        elseif !isnothing(get_index_set(n.stats))
             for idx in get_index_set(n.stats)
                 output *= prefix * string(idx)
             end
@@ -216,9 +232,9 @@ function planToString(n::PlanNode, depth::Int64)
     elseif n.kind == Input
         output *= "Input("
         prefix = ""
-        idxs = get_index_order(n.stats)
-        protocols = get_index_protocols(n.stats)
-        if !isnothing(get_index_protocols(n.stats))
+        idxs = n.idxs
+        if !isnothing(n.stats) && !isnothing(get_index_protocols(n.stats))
+            protocols = get_index_protocols(n.stats)
             for i in eachindex(idxs)
                 output *= "$prefix$(idxs[i])::$(protocols[i])"
                 prefix =","

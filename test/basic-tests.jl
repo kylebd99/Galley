@@ -122,28 +122,6 @@ verbose = 0
         correct_matrix = sum(a_matrix)
         @test result.value == correct_matrix
     end
-#=
-    @testset "100x100 matrices, multi-line, matrix mult" begin
-        a_matrix = sprand(Bool, 100, 100, .1)
-        a_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(a_data, a_matrix)
-        a = InputTensor(a_data)
-        b_matrix = sprand(Bool, 100, 100, .1)
-        b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(b_data, b_matrix)
-        b = InputTensor(b_data)
-        c_matrix = sprand(Bool, 100, 100, .1)
-        c_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
-        copyto!(c_data, c_matrix)
-        c = InputTensor(c_data)
-        d = OutTensor()
-        e = OutTensor()
-        d["i", "k"] = ∑("j", a["i","j"] * b["j", "k"])
-        e["i", "l"] = ∑("k", d["i","k"] * c["k", "l"])
-        galley_matrix = galley(e, optimize=true, verbose=verbose)
-        correct_matrix = a_matrix * b_matrix * c_matrix
-        @test galley_matrix == correct_matrix
-    end =#
 
     @testset "100x100 matrices, multi-line, matrix mult" begin
         a_matrix = sprand(Bool, 100, 100, .1)
@@ -164,6 +142,24 @@ verbose = 0
         result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * c_matrix
+        @test result.value == correct_matrix
+    end
+
+    @testset "100x100 matrices, multi-line, matrix mult, reuse" begin
+        a_matrix = sprand(Bool, 100, 100, .1)
+        a_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_data, a_matrix)
+        a = Input(a_data, :i, :j)
+        b_matrix = sprand(Bool, 100, 100, .1)
+        b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_data, b_matrix)
+        b = Input(b_data, :j, :k)
+        d = Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, :j, MapJoin(*, a, b)))
+        e = Query(:out, Materialize(t_dense, t_dense, :i, :l, Aggregate(+, :k, MapJoin(*, Input(d, :i, :k), Input(d, :k, :l)))))
+        println(e)
+        result = galley(e, verbose=3)
+        d_matrix = a_matrix * b_matrix
+        correct_matrix = d_matrix * d_matrix
         @test result.value == correct_matrix
     end
 

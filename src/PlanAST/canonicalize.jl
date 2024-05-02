@@ -29,6 +29,13 @@ function unique_indices(scope_dict, n::PlanNode)
             push!(new_idxs, new_idx)
             new_scope_dict[old_idx] = new_idx
         end
+        # In case a sibling in the tree aggregates the same indices, we update the parent's
+        # scope dict to include them.
+        for idx in n.idxs
+            if idx.val ∉ keys(scope_dict)
+                scope_dict[idx.val] = idx.val
+            end
+        end
         return Aggregate(n.op, new_idxs..., unique_indices(new_scope_dict, n.arg))
     elseif n.kind === Index
         return Index(get(scope_dict, n.name, n.name))

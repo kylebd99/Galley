@@ -19,7 +19,10 @@ function greedy_query_to_plan(input_query::PlanNode, ST)
         push!(queries, query)
         reducible_idxs = get_reducible_idxs(aq)
     end
-    push!(queries, get_remaining_query(aq))
+    remaining_q = get_remaining_query(aq)
+    if !isnothing(remaining_q)
+        push!(queries, remaining_q)
+    end
     last_query = queries[end]
     last_query.expr = Materialize(aq.output_format..., aq.output_order..., last_query.expr)
     return Plan(queries..., Outputs(queries[end].name))

@@ -307,8 +307,8 @@ end
 DCStats() = DCStats(TensorDef(), Set())
 
 function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::Vector{IndexExpr}, s::Tensor)
-    Z = setdiff(indices, ∪(X,Y)) # Indices that we want to project out before counting
-    XY_ordered = setdiff(indices, Z)
+    Z = [i for i in indices if i ∉ ∪(X,Y)] # Indices that we want to project out before counting
+    XY_ordered = [i for i in indices if i ∉ Z]
     if length(Z) > 0
         XY_tensor = one_off_reduce(max, indices, XY_ordered, s)
     else

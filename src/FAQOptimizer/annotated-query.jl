@@ -19,6 +19,7 @@ function AnnotatedQuery(q::PlanNode, ST)
     if !(@capture q Query(~name, Materialize(~formats..., ~index_order..., ~agg_map_expr)))
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr))"))
     end
+    insert_statistics!(ST, q)
     q = canonicalize(q)
     insert_statistics!(ST, q)
     output_name = q.name
@@ -215,6 +216,9 @@ end
 
 function get_remaining_query(aq)
     expr = aq.point_expr
+    if expr.kind === Alias
+        return nothing
+    end
     condense_stats!(expr.stats; cheap=false)
     query = Query(aq.output_name, expr)
     insert_statistics!(aq.ST, query)

@@ -153,7 +153,12 @@ function one_off_reduce(op,
                         output_indices,
                         s::Tensor)
     s_stats = TensorDef(s, input_indices)
-    loop_order = reverse(input_indices)
+    loop_order = []
+    for i in reverse(input_indices)
+        if i ∉ loop_order
+            push!(loop_order, i)
+        end
+    end
     output_dims = [get_dim_size(s_stats, idx) for idx in output_indices]
     output_formats = [t_hash for _ in output_indices]
     if fully_compat_with_loop_prefix(output_indices, loop_order)
@@ -162,7 +167,6 @@ function one_off_reduce(op,
     index_sym_dict = Dict()
     tensor_instance = initialize_access(:s, s, input_indices, [t_default for _ in input_indices], index_sym_dict)
     output_tensor = initialize_tensor(output_formats, output_dims, 0.0)
-
     loop_index_instances = [index_instance(index_sym_dict[idx]) for idx in loop_order]
     output_variable = tag_instance(variable_instance(:output_tensor), output_tensor)
     output_access = initialize_access(:output_tensor, output_tensor, output_indices, [t_default for _ in output_indices], index_sym_dict; read=false)

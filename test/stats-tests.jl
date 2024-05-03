@@ -170,3 +170,5 @@ end
         @test estimate_nnz(reduce_stats) == 5
     end
 end
+
+nothing

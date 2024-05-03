@@ -1,8 +1,7 @@
 
 
-verbose = 0
-
-@testset "matrix operations" begin
+@testset verbose = true "matrix operations" begin
+    verbose = 0
     @testset "2x2 matrices, element-wise mult" begin
         a_matrix = [1 0; 0 1]
         a_data = Tensor(SparseList(SparseList(Element(0.0), 2), 2))
@@ -156,8 +155,7 @@ verbose = 0
         b = Input(b_data, :j, :k)
         d = Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, :j, MapJoin(*, a, b)))
         e = Query(:out, Materialize(t_dense, t_dense, :i, :l, Aggregate(+, :k, MapJoin(*, Input(d, :i, :k), Input(d, :k, :l)))))
-        println(e)
-        result = galley(e, verbose=3)
+        result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * d_matrix
         @test result.value == correct_matrix
@@ -179,6 +177,24 @@ verbose = 0
             correct_matrix[i] = a_matrix[i,i] * b_matrix[i,i]
         end
         @test result.value == correct_matrix
+    end
+
+    @testset "100x100 matrices, diagonal mult, then sum" begin
+        a_matrix = sprand(Bool, 100, 100, .1)
+        a_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_data, a_matrix)
+        a = Input(a_data, :i, :i)
+        b_matrix = sprand(Bool, 100, 100, .1)
+        b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_data, b_matrix)
+        b = Input(b_data, :i, :i)
+        d = Query(:out, Materialize(Aggregate(+, :i, MapJoin(*, a, b))))
+        result = galley(d, verbose=verbose)
+        correct_result = 0
+        for i in 1:100
+            correct_result += a_matrix[i,i] * b_matrix[i,i]
+        end
+        @test result.value == correct_result
     end
 end
 

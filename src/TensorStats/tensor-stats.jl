@@ -112,7 +112,7 @@ function NaiveStats(tensor::Tensor, indices::Vector{IndexExpr})
 end
 
 function NaiveStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing, nothing)
     return NaiveStats(def, 1)
 end
 

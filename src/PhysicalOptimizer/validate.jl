@@ -10,6 +10,8 @@ function get_input_indices(n::PlanNode)
         get_index_set(n.stats)
     elseif n.kind == Alias
         get_index_set(n.stats)
+    elseif n.kind == Value
+        Set{IndexExpr}()
     elseif  n.kind == Aggregate
         get_input_indices(n.arg)
     elseif  n.kind == MapJoin

@@ -25,5 +25,6 @@ function greedy_query_to_plan(input_query::PlanNode, ST)
     end
     last_query = queries[end]
     last_query.expr = Materialize(aq.output_format..., aq.output_order..., last_query.expr)
+    last_query.expr.stats = last_query.expr.expr.stats
     return Plan(queries..., Outputs(queries[end].name))
 end

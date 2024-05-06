@@ -44,12 +44,13 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
                 PlanNode(kind, args, nothing, nothing)
             elseif args[1].kind === Materialize
                 mat_expr = args[1]
-                new_idxs = args[2:end]
-                old_idxs = [idx.name for idx in mat_expr.idx_order]
+                new_idxs = [Index(x) for x  in args[2:end]]
+                old_idxs = [idx for idx in mat_expr.idx_order]
                 @assert length(new_idxs) == length(old_idxs)
-                idx_translate = Dict(old_idxs[i] => new_idxs[i] for i in eachindex(old_idxs))
+                idx_translate = merge(Dict(new_idxs[i].name => Index(gensym(new_idxs[i].name)) for i in eachindex(old_idxs)),
+                                        Dict(old_idxs[i].name => new_idxs[i] for i in eachindex(old_idxs)))
                 internal_expr = mat_expr.expr
-                result_expr = Rewrite(Postwalk(@rule ~x => idx_translate[x] where ((x.kind === Index) && (x ∈ keys(idx_translate)))))(internal_expr)
+                result_expr = Rewrite(Postwalk(@rule ~x => idx_translate[x.name] where  ((x.kind === Index) && (x.name in keys(idx_translate)))))(internal_expr)
                 return result_expr
             else
                 error("a reused plan expression must be wrapped in a materialize!")

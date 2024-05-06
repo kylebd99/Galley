@@ -69,15 +69,23 @@ function galley(input_query::PlanNode;
     logical_plan = high_level_optimize(faq_optimizer, input_query, ST)
     # TODO: Add the step which splits up overly complex kernels back in
     faq_opt_end = time()
+    if verbose >= 1
+        println("--------------- Logical Plan ---------------")
+        println(logical_plan)
+        println("--------------------------------------------")
+    end
     verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
     if !isnothing(dbconn)
+        verbose
         opt_end = time()
         output_order = input_query.expr.idx_order
         duckdb_opt_time = (opt_end-opt_start)
         duckdb_exec_time = 0
         duckdb_insert_time = 0
         for query in logical_plan.queries
+            verbose >= 1 && println("-------------- Computing Alias $(query.name) -------------")
             query_timings = duckdb_execute_query(dbconn, query, verbose)
+            verbose >= 1 && println("$query_timings")
             duckdb_opt_time += query_timings.opt_time
             duckdb_exec_time += query_timings.execute_time
             duckdb_insert_time += query_timings.insert_time
@@ -86,18 +94,13 @@ function galley(input_query::PlanNode;
         for query in logical_plan.queries
             _duckdb_drop_alias(dbconn, query.name)
         end
-        verbose >= 1 && println("Plan: ", logical_plan)
         verbose >= 1 && println("Time to Optimize: ",  duckdb_opt_time)
         verbose >= 1 && println("Time to Insert: ", duckdb_insert_time)
         verbose >= 1 && println("Time to Execute: ", duckdb_exec_time)
         return (value=result,
                     opt_time=duckdb_opt_time,
+                    insert_time = duckdb_insert_time,
                     execute_time=duckdb_exec_time)
-    end
-    if verbose >= 1
-        println("--------------- Logical Plan ---------------")
-        println(logical_plan)
-        println("--------------------------------------------")
     end
     alias_stats = Dict{PlanNode, TensorStats}()
     physical_queries = []

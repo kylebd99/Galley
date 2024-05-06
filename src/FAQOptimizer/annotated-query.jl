@@ -20,9 +20,7 @@ function AnnotatedQuery(q::PlanNode, ST)
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr))"))
     end
     insert_statistics!(ST, q)
-    println(q)
     q = canonicalize(q)
-    println(q)
     insert_statistics!(ST, q)
     output_name = q.name
     mat_expr = q.expr

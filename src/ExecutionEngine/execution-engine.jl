@@ -22,7 +22,10 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         t_name = get_tensor_symbol(tensor_counter[1])
         tensor_counter[1] += 1
         return initialize_access(t_name, tns.val, idxs, protocols, index_sym_dict, read=true)
-
+    elseif rhs.kind == Value
+        if rhs.val isa Number
+            return literal_instance(rhs.val)
+        end
     elseif @capture rhs MapJoin(~op, ~args...)
         args = sort_mapjoin_args(args)
         return call_instance(literal_instance(op.val),

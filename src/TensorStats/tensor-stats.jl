@@ -12,7 +12,7 @@
     index_order::Union{Nothing, Vector{IndexExpr}}
     index_protocols::Union{Nothing, Vector{AccessProtocol}}
 end
-TensorDef(default) = TensorDef(Set(), Dict(), default, nothing, nothing, nothing)
+TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
 
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
@@ -103,7 +103,6 @@ get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats) = stat.cardinality
 condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
 
-NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
 function NaiveStats(tensor::Tensor, indices::Vector{IndexExpr})
@@ -139,7 +138,7 @@ end
     dcs::Set{DC}
 end
 
-DCStats(default) = DCStats(TensorDef(default), Set())
+DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def
 
 DCKey = NamedTuple{(:X, :Y), Tuple{Vector{IndexExpr}, Vector{IndexExpr}}}

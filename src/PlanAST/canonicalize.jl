@@ -68,6 +68,10 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
                 continue
             end
             expr.stats = ST(tns.val, IndexExpr[idx.val for idx in idxs])
+        elseif expr.kind === Value
+            if expr.val isa Number
+                expr.stats = ST(expr.val)
+            end
         end
     end
 end

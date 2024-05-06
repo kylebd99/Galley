@@ -4,9 +4,9 @@ using Galley
 using Galley: canonicalize, insert_statistics!, get_reduce_query, AnnotatedQuery, reduce_idx!, cost_of_reduce, greedy_query_to_plan
 using Finch
 
-A = Tensor(Dense(Sparse(Element(0.0))), fsprand(5, 5, .2))
+@testset verbose = true "Annotated Queries" begin
+    A = Tensor(Dense(Sparse(Element(0.0))), fsprand(5, 5, .2))
 
-@testset "Annotated Queries" begin
     @testset "get_reduce_query" begin
         chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j), Input(A, :j, :k)))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
@@ -31,18 +31,14 @@ A = Tensor(Dense(Sparse(Element(0.0))), fsprand(5, 5, .2))
         expected_expr = Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j), Input(A, :j, :k)))
         @test query.expr == expected_expr
 
-
         # Check that we respect aggregates' position in the exression
         chain_expr = Query(:out, Materialize(Aggregate(+, :j, :k, MapJoin(max, Aggregate(+, :i, Input(A, :i, :j)), Input(A, :j, :k)))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
         query = reduce_idx!(Index(:i), aq)
         expected_expr = Aggregate(+, :i, Input(A, :i, :j))
         @test query.expr == expected_expr
-    end
-
-
-    @testset "get_reduce_query" begin
-
 
     end
 end
+
+nothing

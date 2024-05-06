@@ -45,7 +45,7 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
             elseif args[1].kind === Materialize
                 mat_expr = args[1]
                 new_idxs = args[2:end]
-                old_idxs = mat_expr.idx_order
+                old_idxs = [idx.name for idx in mat_expr.idx_order]
                 @assert length(new_idxs) == length(old_idxs)
                 idx_translate = Dict(old_idxs[i] => new_idxs[i] for i in eachindex(old_idxs))
                 internal_expr = mat_expr.expr
@@ -165,7 +165,6 @@ function relabel_input(input::PlanNode, indices...)
     relabeled_input.stats = reindex_stats(input.stats, collect(indices))
     return relabeled_input
 end
-
 
 function Base.:(==)(a::PlanNode, b::PlanNode)
     if a.kind === Value

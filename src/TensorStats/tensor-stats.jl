@@ -351,11 +351,6 @@ function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
     return DCStats(def, dcs)
 end
 
-function DCStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
-    return DCStats(def, Set([DC(Set(), Set(), 1)]))
-end
-
 function reindex_stats(stat::DCStats, indices::Vector{IndexExpr})
     new_def = reindex_def(indices, stat.def)
     rename_dict = Dict(get_index_order(stat)[i]=> indices[i] for i in eachindex(indices))

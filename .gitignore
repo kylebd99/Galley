@@ -2,3 +2,4 @@
 /Experiments/Figures/*
 /Experiments/Results/*
 /DatasetExport
+workflows/CI.yml

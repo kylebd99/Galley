@@ -16,19 +16,26 @@ function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     fixed_order = relative_sort(input_order, loop_order, rev=true)
     agg_expr = Aggregate(initwrite(get_default_value(input.stats)), input)
     agg_expr.stats = input.stats
-    reorder_query = Query(Alias(gensym("A")), Materialize([t_hash for _ in fixed_order], fixed_order..., agg_expr), reverse(input_order)...)
+    formats = select_output_format(agg_expr.stats, reverse(input_order), fixed_order)
+    reorder_query = Query(Alias(gensym("A")), Materialize(formats..., fixed_order..., agg_expr), reverse(input_order)...)
     reorder_stats = deepcopy(input.stats)
     reorder_def = get_def(reorder_stats)
     reorder_def.index_order = fixed_order
-    reorder_def.level_formats = [t_hash for _ in fixed_order]
+    reorder_def.level_formats = formats
     reorder_query.expr.stats = reorder_stats
+    if formats == select_output_format(agg_expr.stats, reverse(fixed_order), fixed_order)
+        final_alias_expr = Alias(reorder_query.name.name)
+        final_alias_expr.stats = deepcopy(reorder_stats)
+        expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
+        return [reorder_query], expr
+    end
 
     fixed_formats = select_output_format(reorder_stats, reverse(fixed_order), fixed_order)
     alias_expr = Alias(reorder_query.name.name)
     alias_expr.stats = deepcopy(reorder_stats)
     alias_agg_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
     alias_agg_expr.stats = alias_expr.stats
-    reformat_query = Query(Alias(gensym("A")), Materialize(fixed_formats, fixed_order..., alias_agg_expr), reverse(fixed_order)... )
+    reformat_query = Query(Alias(gensym("A")), Materialize(fixed_formats..., fixed_order..., alias_agg_expr), reverse(fixed_order)... )
     reformat_stats = deepcopy(alias_expr.stats)
     reformat_def = get_def(reformat_stats)
     reformat_def.level_formats = fixed_formats
@@ -64,7 +71,6 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     for node in PreOrderDFS(query)
         id_to_node[node.node_id] = node
     end
-
     expr = query.expr
     output_formats = nothing
     output_order = nothing

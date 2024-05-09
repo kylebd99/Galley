@@ -184,6 +184,6 @@ function one_off_reduce(op,
     end
     initializer = declare_instance(output_variable, literal_instance(0.0))
     full_prgm = block_instance(initializer, full_prgm)
-    Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
+    Finch.execute(full_prgm, mode=:fast)
     return output_tensor
 end

@@ -205,7 +205,6 @@ function _duckdb_compute_query(dbconn, q::PlanNode, verbose)
     output_indices = get_index_set(q.expr.stats)
     create_table(dbconn, output_indices, table_name)
     explain_stmnt = get_explain_stmnt(q)
-    println(explain_stmnt)
     explain_result = @timed DuckDB.execute(dbconn, explain_stmnt)
     opt_time = explain_result.time
     if verbose >=4

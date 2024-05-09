@@ -156,7 +156,9 @@ function get_select_statement(n::PlanNode)
         end
         join_delim = inner_join ? "\n INNER JOIN " : "\n OUTER JOIN "
         stmnt *= delimited_string(child_join_lines, join_delim)
-        stmnt *= "\n GROUP BY " * delimited_string([idx_to_table_idx[idx] for idx in output_indices], ", ")
+        if length(output_indices) > 0
+            stmnt *= "\n GROUP BY " * delimited_string([idx_to_table_idx[idx] for idx in output_indices], ", ")
+        end
     elseif n.kind == Input
         duckdb_tns = n.tns.val
         tb_idx_to_tns_idx = Dict(n.idxs[i].name => duckdb_tns.columns[i] for i in eachindex(n.idxs))
@@ -203,6 +205,7 @@ function _duckdb_compute_query(dbconn, q::PlanNode, verbose)
     output_indices = get_index_set(q.expr.stats)
     create_table(dbconn, output_indices, table_name)
     explain_stmnt = get_explain_stmnt(q)
+    println(explain_stmnt)
     explain_result = @timed DuckDB.execute(dbconn, explain_stmnt)
     opt_time = explain_result.time
     if verbose >=4

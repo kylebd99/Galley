@@ -364,11 +364,11 @@ weakdeps = ["PDMats", "SparseArrays", "Statistics"]
 
 [[deps.Finch]]
 deps = ["AbstractTrees", "Compat", "DataStructures", "Distributions", "JSON", "LinearAlgebra", "PrecompileTools", "Random", "Requires", "RewriteTools", "SyntaxInterface"]
-git-tree-sha1 = "131d3764ea9b420b5dbad567920fcf8884615dba"
-repo-rev = "main"
+git-tree-sha1 = "12d9df03fd7bfb9fcfe254c2c766e3b23e16c86d"
+repo-rev = "kbd-wrapperize-fix"
 repo-url = "https://github.com/willow-ahrens/Finch.jl.git"
 uuid = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"
-version = "0.6.21"
+version = "0.6.26"
 
     [deps.Finch.extensions]
     HDF5Ext = "HDF5"

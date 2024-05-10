@@ -77,6 +77,11 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     start_time = time()
     verbose >= 1 && println("----------- Computing: $(q.name) -----------")
     verbose >= 4 && display(prgm_instance)
+    verbose >= 5 &&  println(Finch.execute_code(:ex, typeof(prgm_instance), mode=:fast)
+                                                                |> Finch.pretty
+                                                                |>  Finch.unresolve
+                                                                |>  Finch.dataflow
+                                                                |>  Finch.unquote_literals)
     Finch.execute(prgm_instance, mode=:fast)
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar

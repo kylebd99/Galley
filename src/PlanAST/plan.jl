@@ -38,7 +38,7 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
     else
         args = vcat(args...)
         if (kind === Input && length(args) >= 1)
-            if args[1] isa Tensor
+            if args[1] isa Tensor || args[1] isa DuckDBTensor
                 PlanNode(kind, args, nothing, nothing)
             elseif args[1].kind === Value
                 PlanNode(kind, args, nothing, nothing)

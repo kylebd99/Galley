@@ -29,7 +29,7 @@ function create_table(dbconn, idx_names, table_name)
         create_str *= "$prefix $(idx) INT64"
         prefix = ", "
     end
-    create_str *= "$prefix v DECIMAL)"
+    create_str *= "$prefix v DOUBLE)"
     create_str = replace(create_str, "#"=>"")
     DBInterface.execute(dbconn, create_str)
 end
@@ -112,7 +112,7 @@ function get_select_statement(n::PlanNode)
         children = n.args
         child_tables = [child for child in children if child.kind in (Alias, Input, MapJoin)]
         child_table_names = Dict(child.node_id => node_id_to_table_name(child.node_id) for child in child_tables)
-        literals = ["CAST($(c.val) as DECIMAL)" for c in children if c.kind === Value]
+        literals = ["CAST($(c.val) as DOUBLE)" for c in children if c.kind === Value]
         v_stmt_inputs = [["Coalesce($tbl.v, 0.0)" for tbl in values(child_table_names)]..., literals...]
         v_stmt = "Coalesce($agg_op("
         if is_infix_op(map_op)

@@ -53,10 +53,12 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
         num_sparse_lists = sum([f == t_sparse_list for f in formats])
         use_gallop = false
         if num_sparse_lists > 1
-            # Gallop incurs additional code size, so we penalize it by a constant amount here.
-            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost * 4
+            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost
             walk_cost = maximum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * SeqReadCost
             use_gallop = gallop_cost < walk_cost
+            # It seems as though Gallop is generally the correct choice, and it is
+            # asymptotically better than walk. So, we just always set it to be conservative.
+            use_gallop = true
         end
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]

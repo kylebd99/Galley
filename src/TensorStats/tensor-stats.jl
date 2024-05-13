@@ -197,7 +197,7 @@ end
 
 # When we're only attempting to infer for nnz estimation, we only need to consider
 # left dcs which have X = {}.
-function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
+function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
     all_dcs = Dict{DCKey, Float64}()
     for dc in dcs
         all_dcs[(X = sort!(collect(dc.X)), Y = sort!(collect(dc.Y)))] = dc.d
@@ -205,14 +205,17 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
     prev_new_dcs = all_dcs
     time = 1
     finished = false
-    max_dc_size = maximum([length(x.Y) for x in keys(all_dcs)], init=0)
+    max_dc_size = 0
     while time < timeout && !finished
+        if strength <= 0
+            max_dc_size = maximum([length(x.Y) for x in keys(prev_new_dcs)], init=0)
+        end
         new_dcs = Dict{DCKey, Float64}()
 
         for (l, ld) in all_dcs
-            cheap && length(l.X) > 0 && continue
+            strength <= 1 && length(l.X) > 0 && continue
             for (r, rd) in prev_new_dcs
-                cheap && length(r.Y) + length(l.Y) < max_dc_size && continue
+                strength <= 0 && length(r.Y) + length(l.Y) < max_dc_size && continue
                 infer_dc(l, ld, r, rd, all_dcs, new_dcs)
                 time +=1
                 time > timeout && break
@@ -221,9 +224,9 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
         end
 
         for (l, ld) in prev_new_dcs
-            cheap && length(l.X) > 0 && continue
+            strength <= 1 && length(l.X) > 0 && continue
             for (r, rd) in all_dcs
-                cheap && length(r.Y) + length(l.Y) < max_dc_size && continue
+                strength <= 0 && length(r.Y) + length(l.Y) < max_dc_size && continue
                 infer_dc(l, ld, r, rd, all_dcs, new_dcs)
                 time +=1
                 time > timeout && break
@@ -231,12 +234,9 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
             time > timeout && break
         end
 
-        if cheap
-            max_dc_size = maximum([length(x.Y) for x in keys(new_dcs)], init=0)
-        end
         prev_new_dcs = Dict()
         for (dc_key, dc) in new_dcs
-            cheap && length(dc_key.Y) < max_dc_size && continue
+            strength <= 0 && length(dc_key.Y) < max_dc_size && continue
             all_dcs[dc_key] = dc
             prev_new_dcs[dc_key] = dc
         end
@@ -254,7 +254,13 @@ end
 
 function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
     current_indices = get_index_set(stat)
-    inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, cheap=cheap)
+    inferred_dcs = nothing
+    if !cheap
+        inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, strength=2)
+    else
+        inferred_dcs = _infer_dcs(stat.dcs; timeout=min(timeout, 10000), strength=0)
+        inferred_dcs = _infer_dcs(inferred_dcs; timeout=max(timeout - 10000, 0), strength=1)
+    end
     min_dcs = Dict()
     for dc in inferred_dcs
         valid = true
@@ -291,7 +297,8 @@ function estimate_nnz(stat::DCStats)
         end
     end
     min_card < Inf && return min_card
-    inferred_dcs = _infer_dcs(dcs; cheap=true)
+    condense_stats!(stat, cheap=true)
+    inferred_dcs = stat.dcs
     for dc in inferred_dcs
         if isempty(dc.X) && dc.Y ⊇ indices
             min_card = min(min_card, dc.d)

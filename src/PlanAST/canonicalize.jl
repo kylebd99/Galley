@@ -21,22 +21,14 @@ function unique_indices(scope_dict, n::PlanNode)
     elseif n.kind === Input
         return relabel_input(n, [unique_indices(scope_dict, idx).name for idx in n.idxs]...)
     elseif n.kind === Aggregate
-        new_scope_dict = deepcopy(scope_dict)
         new_idxs = []
         for idx in n.idxs
             old_idx = idx.val
-            new_idx = haskey(new_scope_dict, old_idx) ? gensym(idx.val) : idx.val
+            new_idx = haskey(scope_dict, old_idx) ? gensym(idx.val) : idx.val
             push!(new_idxs, new_idx)
-            new_scope_dict[old_idx] = new_idx
+            scope_dict[old_idx] = new_idx
         end
-        # In case a sibling in the tree aggregates the same indices, we update the parent's
-        # scope dict to include them.
-        for idx in n.idxs
-            if idx.val ∉ keys(scope_dict)
-                scope_dict[idx.val] = idx.val
-            end
-        end
-        return Aggregate(n.op, new_idxs..., unique_indices(new_scope_dict, n.arg))
+        return Aggregate(n.op, new_idxs..., unique_indices(scope_dict, n.arg))
     elseif n.kind === Index
         return Index(get(scope_dict, n.name, n.name))
     else

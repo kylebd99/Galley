@@ -205,6 +205,7 @@ function reduce_idx!(idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
+    insert_statistics!(aq.ST, new_point_expr)
     aq.reduce_idxs = new_reduce_idxs
     aq.point_expr = new_point_expr
     aq.idx_lowest_root = new_idx_lowest_root
@@ -216,6 +217,7 @@ end
 
 function get_remaining_query(aq)
     expr = aq.point_expr
+    insert_statistics!(aq.ST, expr)
     if expr.kind === Alias
         return nothing
     end

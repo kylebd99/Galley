@@ -6,7 +6,7 @@
 # intermediates but is required to be defined for the inputs to an executable query.
 @auto_hash_equals mutable struct TensorDef
     index_set::Set{IndexExpr}
-    dim_sizes::Dict{IndexExpr, Int}
+    dim_sizes::Dict{IndexExpr, UInt128}
     default_value::Any
     level_formats::Union{Nothing, Vector{LevelFormat}}
     index_order::Union{Nothing, Vector{IndexExpr}}
@@ -72,9 +72,12 @@ get_index_protocol(def::TensorDef, idx::IndexExpr) = def.index_protocols[findfir
 get_index_protocols(def::TensorDef) = def.index_protocols
 
 function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
-    dim_space_size = 1
+    dim_space_size::UInt128 = 1
     for idx in indices
         dim_space_size *= def.dim_sizes[idx]
+    end
+    if dim_space_size > typemax(Int)
+        return Inf
     end
     return dim_space_size
 end
@@ -272,7 +275,8 @@ function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
         end
         valid == false && continue
         new_Y = dc.Y ∩ current_indices
-        min_dcs[(dc.X, new_Y)] = min(get(min_dcs, (dc.X, new_Y), Inf), dc.d)
+        y_dim_size = get_dim_space_size(stat.def, new_Y)
+        min_dcs[(dc.X, new_Y)] = min(get(min_dcs, (dc.X, new_Y), Inf), dc.d, y_dim_size)
     end
 
     end_dcs = Set{DC}()

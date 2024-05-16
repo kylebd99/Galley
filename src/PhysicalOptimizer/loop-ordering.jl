@@ -59,16 +59,17 @@ PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
 PLAN = Tuple{Vector{IndexExpr}, Float64}
 
 function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size, num_flops)
-    transpose_cost = output_size * RandomWriteCost
     output_compat = pc[2]
     rf_set = pc[3]
     pc_cost = 0
     if output_compat == FULL_PREFIX
         pc_cost += output_size * SeqWriteCost
     elseif output_compat == SET_PREFIX
-        pc_cost += output_size * SeqWriteCost + transpose_cost
+        pc_cost += output_size * SeqWriteCost
     else
-        pc_cost += num_flops * RandomWriteCost
+        # Theoretically, this should be num_flops * RandomWriteCost, but we've seen that
+        # lead to aggressive transposing of inputs.
+        pc_cost += output_size * RandomWriteCost
     end
     for i in rf_set
         pc_cost += reformat_costs[i]
@@ -96,6 +97,8 @@ function get_join_loop_order_bounded(agg_op,
     num_flops = estimate_nnz(join_stats)
     output_size = estimate_nnz(output_stats)
     output_vars = get_index_set(output_stats)
+#    println("num_flops: $num_flops")
+#    println("output_size: $output_size")
 
     output_vars = get_index_set(output_stats)
     if !isnothing(output_order)
@@ -105,6 +108,7 @@ function get_join_loop_order_bounded(agg_op,
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
     reformat_costs = Dict(i => cost_of_reformat(input_stats[i]) for i in eachindex(input_stats))
+#    println(reformat_costs)
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
@@ -200,7 +204,7 @@ function get_join_loop_order_bounded(agg_op,
         optimal_plans = undominated_plans
     end
 
-
+#    println(optimal_plans)
     min_cost = Inf
     best_prefix = nothing
     best_plan_class = nothing

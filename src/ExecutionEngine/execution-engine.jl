@@ -27,7 +27,9 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
             return literal_instance(rhs.val)
         end
     elseif @capture rhs MapJoin(~op, ~args...)
-        args = sort_mapjoin_args(args)
+        if iscommutative(op)
+            args = sort_mapjoin_args(args)
+        end
         return call_instance(literal_instance(op.val),
                                 [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)
     else

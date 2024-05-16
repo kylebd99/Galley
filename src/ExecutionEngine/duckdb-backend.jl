@@ -22,20 +22,20 @@ function tensor_to_vec_of_tuples(t::Tensor)
     return collect(zip(ffindnz(t)...))
 end
 
-function create_table(dbconn, idx_names, table_name)
+function create_table(dbconn, idx_names, table_name, val_type)
     create_str = "CREATE OR REPLACE TABLE $table_name ("
     prefix = ""
     for idx in idx_names
         create_str *= "$prefix $(idx) INT64"
         prefix = ", "
     end
-    create_str *= "$prefix v DOUBLE)"
+    create_str *= "$prefix v $(type_to_duckdb_type(val_type)))"
     create_str = replace(create_str, "#"=>"")
     DBInterface.execute(dbconn, create_str)
 end
 
 function fill_table(dbconn, tensor, idx_names, table_name)
-    create_table(dbconn, idx_names, table_name)
+    create_table(dbconn, idx_names, table_name, typeof(default(tensor)))
     appender = DuckDB.Appender(dbconn, "$table_name")
     data = tensor_to_vec_of_tuples(tensor)
     for row in data
@@ -55,6 +55,8 @@ function agg_op_to_duckdb_op(op)
         return "MIN"
     elseif op == max
         return "MAX"
+    elseif op isa Finch.Chooser
+        return "ANY_VALUE"
     end
 end
 
@@ -66,21 +68,36 @@ function map_op_to_infix_duckdb_op(op)
         return " * "
     elseif op == -
         return " - "
+    elseif op == |
+        return " OR "
+    elseif op == &
+        return " AND "
     end
     println("OP NOT RECOGNIZED")
 end
 
+function type_to_duckdb_type(t)
+    if t == Float64
+        return "DOUBLE"
+    elseif t == Int64
+        return "INT"
+    elseif t == Bool
+        return "BOOL"
+    end
+end
 
 function map_op_to_prefix_duckdb_op(op)
     if op == max
         return "greatest"
     elseif op == min
         return "least"
+    elseif op == !
+        return "NOT"
     end
     println("OP NOT RECOGNIZED")
 end
 
-is_infix_op(op) = op in (+, *, -)
+is_infix_op(op) = op in (+, *, -, |, &)
 
 node_id_to_table_name(id) = "T_$id"
 
@@ -94,8 +111,9 @@ function delimited_string(args, delimiter)
     return output
 end
 
-function get_select_statement(n::PlanNode)
+function get_select_statement(n::PlanNode, indent_count = 0)
     stmnt = "SELECT "
+    indents = prod([" " for _ in 1:(2*indent_count)]; init = "")
     agg_op = ""
     output_indices = get_index_set(n.stats)
     if n.kind == Aggregate
@@ -110,10 +128,11 @@ function get_select_statement(n::PlanNode)
         end
         map_op = n.op.val
         children = n.args
+        child_defaults = [get_default_value(child.stats) for child in children if child.kind in (Alias, Input, MapJoin)]
         child_tables = [child for child in children if child.kind in (Alias, Input, MapJoin)]
         child_table_names = Dict(child.node_id => node_id_to_table_name(child.node_id) for child in child_tables)
-        literals = ["CAST($(c.val) as DOUBLE)" for c in children if c.kind === Value]
-        v_stmt_inputs = [["Coalesce($tbl.v, 0.0)" for tbl in values(child_table_names)]..., literals...]
+        literals = ["CAST($(c.val) as $(type_to_duckdb_type(typeof(c.val))))" for c in children if c.kind === Value]
+        v_stmt_inputs = [["Coalesce($(child_table_names[child_tables[i].node_id]).v, $(child_defaults[i]))" for i in eachindex(child_tables)]..., literals...]
         v_stmt = "Coalesce($agg_op("
         if is_infix_op(map_op)
             v_stmt *= delimited_string(v_stmt_inputs, map_op_to_infix_duckdb_op(map_op))
@@ -122,23 +141,30 @@ function get_select_statement(n::PlanNode)
         end
         v_stmt *= "), $def_val) as v "
         idx_to_child_id = Dict()
+        idx_to_output_idx = Dict()
+        idx_to_coalesce_idx = Dict()
         idx_to_table_idx = Dict()
         for idx in all_indices
+            relevant_children = []
             for child in child_tables
                 if idx ∈ get_index_set(child.stats)
-                    idx_to_table_idx[idx] = child_table_names[child.node_id] * ".$idx"
-                    idx_to_child_id[idx] = child.node_id
-                    break
+                    push!(relevant_children, child_table_names[child.node_id] * ".$idx")
+                    if !haskey(idx_to_table_idx, idx)
+                        idx_to_table_idx[idx] = child_table_names[child.node_id] * ".$idx"
+                        idx_to_child_id[idx] = child.node_id
+                    end
                 end
             end
+            idx_to_output_idx[idx] = "Coalesce($(delimited_string(relevant_children, ","))) as $idx"
+            idx_to_coalesce_idx[idx] = "Coalesce($(delimited_string(relevant_children, ",")))"
         end
-        attribute_stmt = delimited_string([v_stmt, [idx_to_table_idx[idx] for idx in output_indices]...], ", ")
-        stmnt *= attribute_stmt * "\n FROM "
+        attribute_stmt = delimited_string([v_stmt, [idx_to_output_idx[idx] for idx in output_indices]...], ", ")
+        stmnt *= attribute_stmt * "\n$(indents)FROM "
         inner_join = isannihilator(map_op, get_default_value(n.stats))
         is_first = true
         child_join_lines = []
         for child in child_tables
-            join_line = "($(get_select_statement(child))) as $(child_table_names[child.node_id])"
+            join_line = "($(get_select_statement(child, indent_count + 1))) as $(child_table_names[child.node_id])"
             join_equalities = []
             for idx in get_index_set(child.stats)
                 if idx_to_child_id[idx] == child.node_id
@@ -154,28 +180,37 @@ function get_select_statement(n::PlanNode)
             push!(child_join_lines, join_line)
             is_first = false
         end
-        join_delim = inner_join ? "\n INNER JOIN " : "\n OUTER JOIN "
+        join_delim = inner_join ? "\n$(indents)INNER JOIN " : "\n$(indents)FULL OUTER JOIN "
         stmnt *= delimited_string(child_join_lines, join_delim)
         if length(output_indices) > 0
-            stmnt *= "\n GROUP BY " * delimited_string([idx_to_table_idx[idx] for idx in output_indices], ", ")
+            stmnt *= "\n$(indents)GROUP BY " * delimited_string([idx_to_coalesce_idx[idx] for idx in output_indices], ", ")
         end
     elseif n.kind == Input
+        has_groupby = length(output_indices) > 0 && length(output_indices) < length(n.idxs)
+        if has_groupby && agg_op == ""
+            agg_op = "ANY_VALUE"
+        end
         duckdb_tns = n.tns.val
         tb_idx_to_tns_idx = Dict(n.idxs[i].name => duckdb_tns.columns[i] for i in eachindex(n.idxs))
-        v_stmt = "$agg_op(v) as v"
+        v_stmt = has_groupby ? "$agg_op(v) as v" : " v"
         attribute_stmnt = delimited_string([v_stmt, [tb_idx_to_tns_idx[idx] * " as $idx" for idx in output_indices]...], ", ")
         table_name = duckdb_tns.name
-        stmnt *= "$attribute_stmnt \n FROM $table_name"
-        if length(output_indices) > 0 && length(output_indices) < length(n.idxs)
-            stmnt *= "\n GROUP BY " * delimited_string(output_indices, ", ")
+        stmnt *= "$attribute_stmnt \n$(indents)FROM $table_name"
+        if has_groupby
+            stmnt *= "\n$(indents)GROUP BY " * delimited_string(output_indices, ", ")
         end
     elseif n.kind == Alias
-        v_stmt = "$agg_op(v) as v"
+        has_groupby = length(output_indices) > 0 && length(output_indices) < length(get_index_set(n.stats))
+        if has_groupby && agg_op == ""
+            agg_op = "ANY_VALUE"
+        end
+
+        v_stmt = has_groupby ? "$agg_op(v) as v" : " v"
         attribute_stmnt = delimited_string([v_stmt, output_indices...], ", ")
         table_name = alias_to_table_name(n)
-        stmnt *= "$attribute_stmnt \n FROM $table_name"
-        if length(output_indices) > 0  && length(output_indices) < length(get_index_set(n.stats))
-            stmnt *= "\n GROUP BY " * delimited_string(output_indices, ", ")
+        stmnt *= "$attribute_stmnt \n$(indents)FROM $table_name"
+        if has_groupby
+            stmnt *= "\n$(indents)GROUP BY " * delimited_string(output_indices, ", ")
         end
     end
     return stmnt
@@ -203,7 +238,8 @@ end
 function _duckdb_compute_query(dbconn, q::PlanNode, verbose)
     table_name = alias_to_table_name(q.name)
     output_indices = get_index_set(q.expr.stats)
-    create_table(dbconn, output_indices, table_name)
+    output_type = typeof(get_default_value(q.expr.stats))
+    create_table(dbconn, output_indices, table_name, output_type)
     explain_stmnt = get_explain_stmnt(q)
     explain_result = @timed DuckDB.execute(dbconn, explain_stmnt)
     opt_time = explain_result.time
@@ -257,15 +293,17 @@ function _duckdb_query_to_tns(dbconn, query, output_indices)
     output = nothing
     if length(output_indices) > 0
         I = Tuple([Int[] for _ in output_indices])
-        V = Float64[]
+        V = []
         M = Tuple(get_dim_size(query.expr.stats, idx.name) for idx in output_indices)
         for row in DuckDB.execute(dbconn, "SELECT * FROM $(alias_to_table_name(query.name))")
             for i in eachindex(output_indices)
                 idx = output_indices[i].name
+                ismissing(row[idx]) && continue
                 push!(I[i], row[idx])
             end
             push!(V, row[:v])
         end
+        V = Vector{typeof(V[1])}(V)
         output = Finch.fsparse_impl(I, V, M, +)
     else
         output = only(DuckDB.execute(dbconn, "SELECT * FROM $(alias_to_table_name(query.name))"))[:v]

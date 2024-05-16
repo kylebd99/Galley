@@ -258,8 +258,8 @@ function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
     if !cheap
         inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, strength=2)
     else
-        inferred_dcs = _infer_dcs(stat.dcs; timeout=min(timeout, 10000), strength=0)
-        inferred_dcs = _infer_dcs(inferred_dcs; timeout=max(timeout - 10000, 0), strength=1)
+        inferred_dcs = _infer_dcs(stat.dcs; timeout=min(timeout, 10000), strength=1)
+        inferred_dcs = _infer_dcs(inferred_dcs; timeout=max(timeout - 10000, 0), strength=0)
     end
     min_dcs = Dict()
     for dc in inferred_dcs

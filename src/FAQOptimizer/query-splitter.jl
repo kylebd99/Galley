@@ -16,19 +16,21 @@ end
 
 function get_connected_subsets(nodes)
     ss = []
-    for s in subsets(nodes)
-        if length(s) < 2
-            continue
-        end
-        is_cross_prod = false
-        for n in s
-            if isempty(∩(get_index_set(n.stats), union([get_index_set(n2.stats) for n2 in s if n2.node_id != n.node_id]...)))
-                is_cross_prod = true
-                break
+    for k in 1:3
+        for s in subsets(nodes, k)
+            if length(s) < 2
+                continue
             end
-        end
-        if !is_cross_prod
-            push!(ss, s)
+            is_cross_prod = false
+            for n in s
+                if isempty(∩(get_index_set(n.stats), union([get_index_set(n2.stats) for n2 in s if n2.node_id != n.node_id]...)))
+                    is_cross_prod = true
+                    break
+                end
+            end
+            if !is_cross_prod
+                push!(ss, s)
+            end
         end
     end
     return ss
@@ -65,7 +67,7 @@ function split_query(ST, q::PlanNode)
                     n_mat_stats =  has_agg ? node.stats : reduce_tensor_stats(agg_op.val, n_reduce_idxs, node.stats)
                     cost_cache[cache_key] = (get_reducible_idxs(aq, node),
                                             n_mat_stats,
-                                            estimate_nnz(node.stats) * ComputeCost + estimate_nnz(n_mat_stats) * AllocateCost)
+                                            estimate_nnz(n_mat_stats))
             end
             n_reduce_idxs, n_mat_stats, n_cost = cost_cache[cache_key]
             if n_cost < min_cost && count_index_occurences([node]) < cur_occurences
@@ -81,7 +83,6 @@ function split_query(ST, q::PlanNode)
                     cache_key = sort([n.node_id for n in s])
                     if !haskey(cost_cache, cache_key)
                         s_stat = merge_tensor_stats(node.op.val, [n.stats for n in s]...)
-                        condense_stats!(s_stat, cheap=true)
                         s_reduce_idxs = Set{IndexExpr}()
                         for idx in n_reduce_idxs
                             if !any([idx ∈ get_index_set(n.stats) for n in setdiff(node.args, s)])
@@ -89,7 +90,7 @@ function split_query(ST, q::PlanNode)
                             end
                         end
                         s_mat_stats =  has_agg ? s_stat : reduce_tensor_stats(agg_op.val, s_reduce_idxs, s_stat)
-                        s_cost = estimate_nnz(s_stat) * ComputeCost + estimate_nnz(s_mat_stats) * AllocateCost
+                        s_cost = estimate_nnz(s_mat_stats) * AllocateCost
                         cost_cache[cache_key] = (s_reduce_idxs, s_mat_stats, s_cost)
                     end
                     s_reduce_idxs, s_mat_stats, s_cost = cost_cache[cache_key]
@@ -108,6 +109,7 @@ function split_query(ST, q::PlanNode)
         end
         push!(queries, new_query)
         setdiff!(aq.reduce_idxs, new_agg_idxs)
+        condense_stats!(new_query.expr.stats; cheap=false)
         alias = deepcopy(new_query.name)
         alias.stats = deepcopy(new_query.expr.stats)
         alias.node_id = node_id_counter
@@ -116,6 +118,7 @@ function split_query(ST, q::PlanNode)
         cur_occurences = count_index_occurences([pe])
     end
     remainder_expr = has_agg ? Aggregate(agg_op, remaining_idxs..., pe) : pe
+
     final_query = Query(q.name, remainder_expr)
     push!(queries,  final_query)
     for query in queries

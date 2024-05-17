@@ -2,7 +2,7 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-data = human
+data = aids
 
 experiments = ExperimentParams[]
 #    push!(experiments, ExperimentParams(workload=data, faq_optimizer=naive))

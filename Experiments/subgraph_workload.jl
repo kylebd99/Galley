@@ -267,6 +267,7 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
     query_directories[patents] = ["/patents"]
     query_directories[eu2005] = ["/eu2005"]
     query_directories[dblp] = ["/dblp"]
+    query_directories[dblp_lite] = ["/dblp-lite"]
 
     query_paths = [readdir("Experiments/Data/Subgraph_Queries" * dir, join=true) for dir in query_directories[dataset]]
     query_paths = [(query_paths...)...]
@@ -276,6 +277,8 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
         graph_dataset = yeast
     elseif dataset == hprd_lite
         graph_dataset = hprd
+    elseif dataset == dblp_lite
+        graph_dataset = dblp
     end
 
     vertex_vectors, edge_matrices = load_subgraph_dataset(graph_dataset, stats_type, dbconn)

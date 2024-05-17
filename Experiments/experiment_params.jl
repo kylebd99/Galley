@@ -1,6 +1,6 @@
 
 
-@enum WORKLOAD aids human lubm80 yago yeast yeast_lite hprd hprd_lite wordnet dblp youtube eu2005 patents
+@enum WORKLOAD aids human lubm80 yago yeast yeast_lite hprd hprd_lite wordnet dblp dblp_lite youtube eu2005 patents
 
 
 const IS_GCARE_DATASET = Dict(aids=>true, human=>true, lubm80=>true, yago=>true,
@@ -9,7 +9,7 @@ const IS_GCARE_DATASET = Dict(aids=>true, human=>true, lubm80=>true, yago=>true,
 
 const IS_SUBGRAPH_WORKLOAD = Dict(aids=>true, human=>true, lubm80=>true, yago=>true,
      yeast=>true, yeast_lite=>true, hprd=>true, hprd_lite=>true, wordnet=>true,
-     dblp=>true, youtube=>true, eu2005=>true, patents=>true)
+     dblp=>true, dblp_lite=>true, youtube=>true, eu2005=>true, patents=>true)
 
 
 struct ExperimentParams

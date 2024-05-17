@@ -16,9 +16,9 @@ end
 
 function get_connected_subsets(nodes)
     ss = []
-    for k in 1:3
+    for k in 2:4
         for s in subsets(nodes, k)
-            if length(s) < 2
+            if count_index_occurences(s) > MAX_INDEX_OCCURENCES
                 continue
             end
             is_cross_prod = false

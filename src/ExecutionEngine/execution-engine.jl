@@ -16,22 +16,22 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         tensor_counter[1] += 1
         return initialize_access(t_name, tns, idxs, protocols, index_sym_dict, read=true)
 
-    elseif @capture rhs Input(~tns, ~idxs...)
+    elseif rhs.kind === Input
         idxs = get_index_order(rhs.stats)
         protocols = [get_index_protocol(rhs.stats, idx) for idx in idxs]
         t_name = get_tensor_symbol(tensor_counter[1])
         tensor_counter[1] += 1
-        return initialize_access(t_name, tns.val, idxs, protocols, index_sym_dict, read=true)
+        return initialize_access(t_name, rhs.tns.val, idxs, protocols, index_sym_dict, read=true)
     elseif rhs.kind == Value
         if rhs.val isa Number
             return literal_instance(rhs.val)
         end
-    elseif @capture rhs MapJoin(~op, ~args...)
-        if iscommutative(op)
-            args = sort_mapjoin_args(args)
+    elseif rhs.kind === MapJoin
+        if iscommutative(rhs.op)
+            rhs.args = sort_mapjoin_args(rhs.args)
         end
-        return call_instance(literal_instance(op.val),
-                                [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)
+        return call_instance(literal_instance(rhs.op.val),
+                                [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in rhs.args]...)
     else
         throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin: $rhs"))
     end

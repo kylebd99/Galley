@@ -1,6 +1,7 @@
 
 include("annotated-query.jl")
 include("greedy-optimizer.jl")
+include("query-splitter.jl")
 
 
 function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST)

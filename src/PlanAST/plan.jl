@@ -15,7 +15,7 @@ const ID = 4
     Materialize  =  7ID | IS_TREE   #  Materialize(formats::Vector{Formats}, idx_order::Vector{TI}, arg:PlanNode)
     Query        =  8ID | IS_TREE   #  Query(name::Alias, expr::PlanNode)
     Outputs      =  9ID | IS_TREE   #  Outputs(args...::TI)
-    Plan         = 10ID | IS_TREE   #  Alias(x::Union{String, Symbol})
+    Plan         = 10ID | IS_TREE   #  Plan(Queries..., Outputs)
 end
 
 # Here, we define the internal expression type that we use to describe logical query plans.

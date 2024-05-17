@@ -86,7 +86,7 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     reduce_idxs = Set{IndexExpr}()
     if expr.kind == Aggregate
         agg_op = expr.op
-        reduce_idxs = expr.idxs
+        reduce_idxs = Set{IndexExpr}([i.name for i in expr.idxs])
         expr = expr.arg
     end
 

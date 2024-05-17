@@ -35,7 +35,7 @@ TensorId = String
 # This defines the list of access protocols allowed by the Finch API
 @enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4 t_default = 5
 # A subset of the allowed level formats provided by the Finch API
-@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_undef = 4
+@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_bytemap = 4 t_undef = 5
 # The set of optimizers implemented by Galley
 @enum FAQ_OPTIMIZERS greedy naive
 
@@ -62,19 +62,24 @@ function galley(input_query::PlanNode;
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     verbose=0)
-#    verbose >= 3 && println("Input FAQ : ", faq_problem)
+    verbose >= 2 && println("Input Query : ", input_query)
     opt_start = time()
     faq_opt_start = time()
     output_order = input_query.expr.idx_order
     logical_plan = high_level_optimize(faq_optimizer, input_query, ST)
-    # TODO: Add the step which splits up overly complex kernels back in
     faq_opt_end = time()
+    verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
+    split_start = time()
+    logical_plan = split_queries(ST, logical_plan)
+    split_end = time()
+    verbose >= 1 && println("Split Opt Time: $(split_end-split_start)")
+
+    # TODO: Add the step which splits up overly complex kernels back in
     if verbose >= 1
         println("--------------- Logical Plan ---------------")
         println(logical_plan)
         println("--------------------------------------------")
     end
-    verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
     if !isnothing(dbconn)
         verbose
         opt_end = time()
@@ -129,7 +134,7 @@ function galley(input_query::PlanNode;
     end
     alias_result = Dict()
     for query in physical_queries
-        validate_physical_query(query)
+        verbose > 3 && validate_physical_query(query)
         execute_query(alias_result, query, verbose)
     end
     exec_end = time()

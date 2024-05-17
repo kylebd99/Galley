@@ -1,4 +1,3 @@
-
 mutable struct AnnotatedQuery
     ST
     output_name
@@ -15,18 +14,25 @@ end
 # Takes in a query and preprocesses it to gather relevant info
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
+#      - or of the form Query(name, agg_map_expr)
 function AnnotatedQuery(q::PlanNode, ST)
-    if !(@capture q Query(~name, Materialize(~formats..., ~index_order..., ~agg_map_expr)))
-        throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr))"))
+    if !(@capture q Query(~name, ~expr))
+        throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr)) or Query(name, agg_map_expr)"))
     end
     insert_statistics!(ST, q)
     q = canonicalize(q)
     insert_statistics!(ST, q)
     output_name = q.name
-    mat_expr = q.expr
-    output_formats = mat_expr.formats
-    output_index_order = mat_expr.idx_order
-    expr = mat_expr.expr
+    has_mat_expr = q.expr.kind === Materialize
+    expr, output_formats, output_index_order = (nothing, nothing, nothing)
+    if has_mat_expr
+        mat_expr = q.expr
+        output_formats = mat_expr.formats
+        output_index_order = mat_expr.idx_order
+        expr = mat_expr.expr
+    else
+        expr = q.expr
+    end
     reduce_idxs = []
     idx_starting_root = Dict()
     idx_op = Dict()
@@ -231,6 +237,18 @@ end
 function get_reducible_idxs(aq)
     reducible_idxs = [idx for idx in aq.reduce_idxs if length(aq.parent_idxs[idx]) == 0]
     return reducible_idxs
+end
+
+# Given a node in the tree, return all indices which can be reduced after computing that subtree.
+function get_reducible_idxs(aq, n)
+    reduce_idxs = Set()
+    for idx in aq.reduce_idxs
+        idx_root = aq.idx_lowest_root[idx]
+        if intree(idx_root, n)
+            push!(reduce_idxs, idx)
+        end
+    end
+    return reduce_idxs
 end
 
 # Returns the lowest set of nodes that the reduction can be pushed to

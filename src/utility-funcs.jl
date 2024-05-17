@@ -68,7 +68,7 @@ function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, inde
     return tensor_access
 end
 
-function initialize_tensor(formats, dims::Vector{Int64}, default_value)
+function initialize_tensor(formats, dims, default_value)
     if length(dims) == 0
         return Finch.Scalar(default_value)
     end

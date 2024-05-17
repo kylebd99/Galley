@@ -4,12 +4,13 @@
 function greedy_query_to_plan(input_query::PlanNode, ST)
     aq = AnnotatedQuery(input_query, ST)
     queries = []
+    cost_cache = Dict()
     reducible_idxs = get_reducible_idxs(aq)
     while !isempty(reducible_idxs)
         cheapest_idx = nothing
         cheapest_cost = Inf
         for idx in reducible_idxs
-            cost = cost_of_reduce(idx, aq)
+            cost = cost_of_reduce(idx, aq, cost_cache)
             if cost < cheapest_cost
                 cheapest_idx = idx
                 cheapest_cost = cost

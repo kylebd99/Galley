@@ -1,17 +1,20 @@
-MAX_INDEX_OCCURENCES = 8
+MAX_INDEX_OCCURENCES = 4
 
 function count_index_occurences(nodes)
+    vars = Set()
     occurences = 0
     for n in nodes
         for c in PostOrderDFS(n)
             if c.kind == Input
                 occurences += length(c.idxs)
+                union!(vars, [idx.val for idx in c.idxs])
             elseif c.kind == Alias
                 occurences += length(get_index_set(c.stats))
+                union!(vars, get_index_set(c.stats))
             end
         end
     end
-    return occurences
+    return occurences - length(vars)
 end
 
 function get_connected_subsets(nodes)
@@ -59,7 +62,7 @@ function split_query(ST, q::PlanNode)
         new_agg_idxs = nothing
         min_cost = Inf
         for node in PostOrderDFS(pe)
-            if node.kind in (Value, Input, Alias, Index) || count_index_occurences([node]) == length(get_index_set(node.stats))
+            if node.kind in (Value, Input, Alias, Index) || count_index_occurences([node]) == 0
                 continue
             end
             cache_key = [node.node_id]
@@ -94,7 +97,7 @@ function split_query(ST, q::PlanNode)
                         cost_cache[cache_key] = (s_reduce_idxs, s_mat_stats, s_cost)
                     end
                     s_reduce_idxs, s_mat_stats, s_cost = cost_cache[cache_key]
-                    if s_cost < min_cost && count_index_occurences(s) > length(union([get_index_set(n.stats) for n in s]...))
+                    if s_cost < min_cost
                         nodes_to_remove = [n.node_id for n in s]
                         new_expr = (has_agg && !isempty(s_reduce_idxs)) ?
                                                 Aggregate(agg_op, s_reduce_idxs..., MapJoin(node.op, s...)) :

@@ -153,11 +153,16 @@ function get_reduce_query(reduce_idx, aq)
 end
 
 # Returns the cost of reducing out an index
-function cost_of_reduce(reduce_idx, aq)
+function cost_of_reduce(reduce_idx, aq, cache=Dict())
     query, _, _ = get_reduce_query(reduce_idx, aq)
-    comp_stats = query.expr.arg.stats
-    mat_stats = query.expr.stats
-    return estimate_nnz(comp_stats) * ComputeCost + estimate_nnz(mat_stats) * AllocateCost
+    cache_key = sort([n.node_id for n in PostOrderDFS(query.expr)])
+    if !haskey(cache, cache_key)
+        comp_stats = query.expr.arg.stats
+        mat_stats = query.expr.stats
+        cost = estimate_nnz(comp_stats) * ComputeCost + estimate_nnz(mat_stats) * AllocateCost
+        cache[cache_key] = cost
+    end
+    return cache[cache_key]
 end
 
 function replace_and_remove_nodes!(expr, node_id_to_replace, new_node, nodes_to_remove)

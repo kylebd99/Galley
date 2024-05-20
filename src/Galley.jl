@@ -70,7 +70,9 @@ function galley(input_query::PlanNode;
     faq_opt_end = time()
     verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
     split_start = time()
-    logical_plan = split_queries(ST, logical_plan)
+    if faq_optimizer != naive
+        logical_plan = split_queries(ST, logical_plan)
+    end
     split_end = time()
     verbose >= 1 && println("Split Opt Time: $(split_end-split_start)")
 

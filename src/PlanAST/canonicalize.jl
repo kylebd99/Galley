@@ -1,9 +1,9 @@
 
 function merge_mapjoins(plan::PlanNode)
     Rewrite(Postwalk(Chain([
-        (@rule MapJoin(~f::isvalue, ~a..., MapJoin(~f, ~b...), ~c...) => MapJoin(~f, ~a..., ~b..., ~c...) where isassociative(f.val)),
-        (@rule MapJoin(~f::isvalue, ~a..., MapJoin(~f, ~b...)) => MapJoin(~f, ~a..., ~b...) where isassociative(f.val)),
-        (@rule MapJoin(~f::isvalue, MapJoin(~f, ~a...), ~b...) => MapJoin(~f, ~a..., ~b...) where isassociative(f.val)),
+        (@rule MapJoin(~f, ~a..., MapJoin(~f, ~b...), ~c...) => MapJoin(f, a..., b..., c...) where isassociative(f.val)),
+        (@rule MapJoin(~f, ~a..., MapJoin(~f, ~b...)) => MapJoin(f, a..., b...) where isassociative(f.val)),
+        (@rule MapJoin(~f, MapJoin(~f, ~a...), ~b...) => MapJoin(f, a..., b...) where isassociative(f.val)),
     ])))(plan)
 end
 
@@ -78,9 +78,20 @@ function insert_node_ids!(plan::PlanNode)
     end
 end
 
+function distribute_mapjoins(plan::PlanNode)
+    Rewrite(Fixpoint(Postwalk(Chain([
+        (@rule MapJoin(~f, ~x..., MapJoin(~g, ~args...)) => MapJoin(g, [MapJoin(f, x..., arg) for arg in args]...) where isdistributive(f.val, g.val)),
+        (@rule MapJoin(~f, MapJoin(~g, ~args...), ~x...) => MapJoin(g, [MapJoin(f, arg, x...) for arg in args]...) where isdistributive(f.val, g.val)),
+        (@rule MapJoin(~f,  ~x..., MapJoin(~g, ~args...), ~y...) => MapJoin(g, [MapJoin(f, x..., arg, y...) for arg in args]...) where isdistributive(f.val, g.val))]))))(plan)
+end
+
 
 function canonicalize(plan::PlanNode)
     plan = merge_mapjoins(plan)
+    println(plan)
+    plan = distribute_mapjoins(plan)
+    plan = merge_mapjoins(plan)
+    println(plan)
     plan = unique_indices(Dict(), plan)
     insert_node_ids!(plan)
     return plan

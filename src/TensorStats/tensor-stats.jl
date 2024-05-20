@@ -247,7 +247,6 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
             finished = true
         end
     end
-    time>timeout && println("Hit Timeout: $(time>timeout)")
     final_dcs = Set{DC}()
     for (dc_key, dc) in all_dcs
         push!(final_dcs, DC(Set(dc_key.X), Set(dc_key.Y), dc))

@@ -8,6 +8,9 @@ function select_output_format(output_stats::TensorStats,
 
     approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
     if approx_sparsity > .1
+        if get_dim_space_size(get_def(output_stats), get_index_set(output_stats)) > 10^9
+            throw(OutOfMemoryError())
+        end
         return [t_dense for _ in output_indices]
     end
 

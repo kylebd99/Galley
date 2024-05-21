@@ -254,7 +254,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
     return final_dcs
 end
 
-function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
+function condense_stats!(stat::DCStats; timeout=100000, cheap=false)
     current_indices = get_index_set(stat)
     inferred_dcs = nothing
     if !cheap
@@ -286,7 +286,7 @@ function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
     return nothing
 end
 
-
+#=
 function estimate_nnz(stat::DCStats)
     indices = get_index_set(stat)
     if length(indices) == 0
@@ -311,6 +311,45 @@ function estimate_nnz(stat::DCStats)
         println("ESTIMATED INF!")
     end
     return min_card
+end =#
+
+
+
+function estimate_nnz(stat::DCStats)
+    indices = get_index_set(stat)
+    if length(indices) == 0
+        return 1
+    end
+    current_weights = Dict{Vector{IndexExpr}, Float64}(Vector{IndexExpr}()=>1)
+    frontier = Set([Vector{IndexExpr}()])
+    finished = false
+    while !finished
+        new_frontier = Set()
+        finished = true
+        for x in frontier
+            weight = current_weights[x]
+            for dc in stat.dcs
+                if x ⊇ dc.X
+                    y = sort!(∪(x, dc.Y))
+                    if get(current_weights, y, Inf) >  weight * dc.d
+                        current_weights[y] = weight * dc.d
+                        finished = false
+                        if y ∉ new_frontier
+                            push!(new_frontier, y)
+                        end
+                    end
+                end
+            end
+        end
+        frontier = new_frontier
+    end
+    min_weight = Inf
+    for (x, weight) in current_weights
+        if x ⊇ indices
+            min_weight = min(min_weight, weight)
+        end
+    end
+    return min_weight
 end
 
 DCStats() = DCStats(TensorDef(), Set())
@@ -356,7 +395,7 @@ end
 
 function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
     def = TensorDef(tensor, indices)
-    sparsity_structure = get_sparsity_structure(tensor)
+    sparsity_structure = pattern!(deepcopy(tensor))
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)
 end

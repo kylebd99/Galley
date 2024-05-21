@@ -84,6 +84,7 @@ function execute_query(alias_dict, q::PlanNode, verbose)
                                                                 |>  Finch.unresolve
                                                                 |>  Finch.dataflow
                                                                 |>  Finch.unquote_literals)
+    verbose >= 2 && println("Expected Output Size: $(estimate_nnz(agg_expr.stats))")
     Finch.execute(prgm_instance, mode=:fast)
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
@@ -93,5 +94,5 @@ function execute_query(alias_dict, q::PlanNode, verbose)
         verbose >= 2 && println("Output Size: ", countstored(output_tensor))
         alias_dict[name] = output_tensor
     end
-    verbose >= 2 && println("Expected Output Size: $(estimate_nnz(agg_expr.stats))")
+
 end

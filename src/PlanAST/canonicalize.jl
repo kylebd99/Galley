@@ -38,6 +38,9 @@ end
 
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
     for expr in PostOrderDFS(plan)
+        if !isnothing(expr.stats) && !replace
+            continue
+        end
         if @capture expr Query(~a, ~expr)
             bindings[a] = expr.stats
         elseif @capture expr Query(~a, ~expr, ~loop_order...)
@@ -88,10 +91,8 @@ end
 
 function canonicalize(plan::PlanNode)
     plan = merge_mapjoins(plan)
-    println(plan)
     plan = distribute_mapjoins(plan)
     plan = merge_mapjoins(plan)
-    println(plan)
     plan = unique_indices(Dict(), plan)
     insert_node_ids!(plan)
     return plan

@@ -92,7 +92,6 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
 
     # Determine the optimal loop order for the query
     input_stats = get_input_stats(alias_stats, expr)
-    condense_stats!(expr.stats)
     agg_op = isnothing(agg_op) ? initwrite(get_default_value(expr.stats)) : agg_op
 
     output_stats = reduce_tensor_stats(agg_op, reduce_idxs, expr.stats)

@@ -67,10 +67,10 @@ function split_query(ST, q::PlanNode)
             end
             cache_key = [node.node_id]
             if !haskey(cost_cache, cache_key)
-                    n_mat_stats =  has_agg ? node.stats : reduce_tensor_stats(agg_op.val, n_reduce_idxs, node.stats)
-                    cost_cache[cache_key] = (get_reducible_idxs(aq, node),
-                                            n_mat_stats,
-                                            estimate_nnz(n_mat_stats))
+                n_mat_stats =  has_agg ? node.stats : reduce_tensor_stats(agg_op.val, n_reduce_idxs, node.stats)
+                cost_cache[cache_key] = (get_reducible_idxs(aq, node),
+                                        n_mat_stats,
+                                        estimate_nnz(n_mat_stats))
             end
             n_reduce_idxs, n_mat_stats, n_cost = cost_cache[cache_key]
             if n_cost < min_cost && count_index_occurences([node]) < cur_occurences
@@ -105,7 +105,7 @@ function split_query(ST, q::PlanNode)
                         new_expr.stats = s_mat_stats
                         new_query = Query(Alias(gensym(:A)), new_expr)
                         new_agg_idxs = s_reduce_idxs
-                        min_cost = s_cost
+                        min_cost = s_cost - length(s) * 1000
                     end
                 end
             end

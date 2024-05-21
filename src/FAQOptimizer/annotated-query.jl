@@ -99,7 +99,7 @@ function get_reduce_query(reduce_idx, aq)
     nodes_to_remove = Set()
     node_to_replace = -1
     reducible_idxs = get_reducible_idxs(aq)
-    if root_node.kind === MapJoin && isdistributive(reduce_op, root_node.op.val)
+    if root_node.kind === MapJoin && isdistributive(root_node.op.val, reduce_op)
         # If you're already reducing one index, then it may make sense to reduce others as well.
         # E.g. when you reduce one vertex of a triangle, you should do the other two as well.
         args_with_reduce_idx = [arg for arg in root_node.args if reduce_idx.name in get_index_set(arg.stats)]
@@ -145,7 +145,6 @@ function get_reduce_query(reduce_idx, aq)
             end
         end
     end
-    condense_stats!(query_expr.stats)
     query_expr = Aggregate(aq.idx_op[reduce_idx], idxs_to_be_reduced..., query_expr)
     query_expr.stats = reduce_tensor_stats(query_expr.op, Set(query_expr.idxs), query_expr.arg.stats)
     query = Query(Alias(gensym("A")), query_expr)
@@ -190,11 +189,11 @@ end
 # along with the properly formed query which performs that reduction.
 function reduce_idx!(idx, aq)
     query, node_to_replace, nodes_to_remove = get_reduce_query(idx, aq)
+    condense_stats!(query.expr.stats)
     reduced_idxs = query.expr.idxs
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
     alias_expr.stats = deepcopy(query.expr.stats)
-    condense_stats!(alias_expr.stats; cheap=false)
     new_point_expr = replace_and_remove_nodes!(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
     new_id_to_node = Dict()
     for node in PreOrderDFS(new_point_expr)
@@ -260,7 +259,7 @@ end
 function find_lowest_roots(op, idx, root)
     if @capture root MapJoin(~f, ~args...)
         args_with_idx = [arg for arg in args if idx.name in get_index_set(arg.stats)]
-        if isdistributive(op, f.val) && length(args_with_idx) == 1
+        if isdistributive(f.val, op) && length(args_with_idx) == 1
             return find_lowest_roots(op, idx, only(args_with_idx))
         else
             return [root.node_id]

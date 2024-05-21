@@ -193,7 +193,7 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 execute_times,
                                 group = groups,
                                 yscale =:log10,
-                                ylims=[10^-3, 1],
+                                ylims=[10^-4, 1],
                                 legend = :outertopleft,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")

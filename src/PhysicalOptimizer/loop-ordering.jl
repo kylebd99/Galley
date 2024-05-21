@@ -108,7 +108,6 @@ function get_join_loop_order_bounded(agg_op,
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
     reformat_costs = Dict(i => cost_of_reformat(input_stats[i]) for i in eachindex(input_stats))
-#    println(reformat_costs)
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
@@ -156,7 +155,7 @@ function get_join_loop_order_bounded(agg_op,
                     alt_cost = new_plans[plan_class][2]
                 end
 
-                if new_cost < alt_cost
+                if new_cost <= alt_cost
                     new_plans[new_plan_class] = new_plan
                 end
             end
@@ -204,13 +203,12 @@ function get_join_loop_order_bounded(agg_op,
         optimal_plans = undominated_plans
     end
 
-#    println(optimal_plans)
     min_cost = Inf
     best_prefix = nothing
     best_plan_class = nothing
     for (plan_class, plan) in optimal_plans
         cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size, num_flops)
-        if cur_cost < min_cost
+        if cur_cost <= min_cost
             min_cost = cur_cost
             best_prefix = plan[1]
             best_plan_class = plan_class
@@ -224,5 +222,8 @@ GREEDY_PLAN_K = 10
 function get_join_loop_order(agg_op, input_stats::Vector{TensorStats}, join_stats::TensorStats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
     greedy_order, greedy_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
     exact_order, exact_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
+    if exact_cost == Inf
+        println("EXACT COST INFINITY!")
+    end
     return exact_order
 end

@@ -121,7 +121,9 @@ function split_query(ST, q::PlanNode)
         cur_occurences = count_index_occurences([pe])
     end
     remainder_expr = has_agg ? Aggregate(agg_op, remaining_idxs..., pe) : pe
-
+    if !isnothing(aq.output_order)
+        remainder_expr = Materialize(aq.output_format..., aq.output_order..., remainder_expr)
+    end
     final_query = Query(q.name, remainder_expr)
     push!(queries,  final_query)
     for query in queries

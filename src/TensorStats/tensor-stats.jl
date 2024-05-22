@@ -103,7 +103,7 @@ get_index_protocols(stat::TensorStats) = get_index_protocols(get_def(stat))
 end
 
 get_def(stat::NaiveStats) = stat.def
-estimate_nnz(stat::NaiveStats) = stat.cardinality
+estimate_nnz(stat::NaiveStats; indices = get_index_set(stat)) = stat.cardinality
 condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
 
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
@@ -315,16 +315,15 @@ end =#
 
 
 
-function estimate_nnz(stat::DCStats)
-    indices = get_index_set(stat)
+function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
     if length(indices) == 0
         return 1
     end
     current_weights = Dict{Vector{IndexExpr}, Float64}(Vector{IndexExpr}()=>1)
-    frontier = Set([Vector{IndexExpr}()])
+    frontier = Set{Vector{IndexExpr}}([Vector{IndexExpr}()])
     finished = false
     while !finished
-        new_frontier = Set()
+        new_frontier = Set{Vector{IndexExpr}}()
         finished = true
         for x in frontier
             weight = current_weights[x]

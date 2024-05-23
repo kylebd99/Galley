@@ -9,7 +9,7 @@ function iscommutative(f)
 end
 function isdistributive(f, g)
 #    distributes = Finch.isdistributive(Finch.DefaultAlgebra(), f, g)
-    distributes = (((g == max) || (g == min)) && ((f == +) || (f == *)))
+    distributes = (((g == max) || (g == min)) && (f == +))
     distributes = distributes || ((f == &) && (g == |))
     distributes = distributes || ((f == *) && (g == +))
     return distributes

@@ -88,10 +88,17 @@ function distribute_mapjoins(plan::PlanNode)
         (@rule MapJoin(~f,  ~x..., MapJoin(~g, ~args...), ~y...) => MapJoin(g, [MapJoin(f, x..., arg, y...) for arg in args]...) where isdistributive(f.val, g.val))]))))(plan)
 end
 
+function remove_extraneous_mapjoins(plan::PlanNode)
+    Rewrite(Fixpoint(Postwalk(Chain([
+        (@rule MapJoin(~f, ~x..., ~v) => v where (v.kind == Value && isannihilator(f.val, v.val))),
+        (@rule MapJoin(~f,  ~v, ~x...) => v where (v.kind == Value && isannihilator(f.val, v.val))),
+        (@rule MapJoin(~f,  ~x..., ~v, ~y...) => v where (v.kind == Value && isannihilator(f.val, v.val)))]))))(plan)
 
+end
 function canonicalize(plan::PlanNode)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan)
+    plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
     plan = unique_indices(Dict(), plan)
     insert_node_ids!(plan)

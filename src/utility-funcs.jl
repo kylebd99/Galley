@@ -28,6 +28,9 @@ function relative_sort(indices::Set{IndexExpr}, index_order; rev=false)
 end
 
 function is_sorted_wrt_index_order(indices::Vector, index_order::Vector; loop_order=false)
+    if length(indices) == 0
+        return true
+    end
     if loop_order
         return issorted(indexin(indices, index_order), rev=true)
     else
@@ -40,6 +43,10 @@ get_tensor_symbol(tns_num) = Symbol("t_$(tns_num)")
 
 # This file performs the actual execution of physical query plan.
 function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, index_sym_dict; read=true)
+    if tensor isa Number
+        return literal_instance(tensor)
+    end
+
     mode = read ? Reader() : Updater()
     mode = literal_instance(mode)
     index_expressions = []

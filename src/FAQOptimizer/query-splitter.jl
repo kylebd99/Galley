@@ -1,4 +1,4 @@
-MAX_INDEX_OCCURENCES = 4
+MAX_INDEX_OCCURENCES = 5
 
 function count_index_occurences(nodes)
     vars = Set()

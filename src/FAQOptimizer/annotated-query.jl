@@ -21,7 +21,6 @@ function AnnotatedQuery(q::PlanNode, ST)
     end
     insert_statistics!(ST, q)
     q = canonicalize(q)
-    insert_statistics!(ST, q)
     output_name = q.name
     has_mat_expr = q.expr.kind === Materialize
     expr, output_formats, output_index_order = (nothing, nothing, nothing)
@@ -33,8 +32,8 @@ function AnnotatedQuery(q::PlanNode, ST)
     else
         expr = q.expr
     end
-    reduce_idxs = []
-    idx_starting_root = Dict()
+    starting_reduce_idxs = []
+    idx_starting_root = Dict{PlanNode, Int}()
     idx_op = Dict()
     point_expr = Rewrite(Postwalk(Chain([
         (@rule Aggregate(~f::isvalue, ~idxs..., ~a) => begin
@@ -42,20 +41,48 @@ function AnnotatedQuery(q::PlanNode, ST)
             idx_starting_root[idx] = a.node_id
             idx_op[idx] = f.val
         end
-        append!(reduce_idxs, idxs)
+        append!(starting_reduce_idxs, idxs)
         a
         end),
     ])))(expr)
+    insert_statistics!(ST, point_expr)
 
     id_to_node = Dict()
     for node in PreOrderDFS(point_expr)
         id_to_node[node.node_id] = node
     end
+    reduce_idxs = copy(starting_reduce_idxs)
     idx_lowest_root = Dict()
-    for idx in reduce_idxs
-        # TODO: When we implement pushing addition over addition, we should rename variables when the aggregate is split.
-        # This way, each variable has a unique lowest root.
-        idx_lowest_root[idx] = only(find_lowest_roots(idx_op[idx], idx, id_to_node[idx_starting_root[idx]]))
+    for idx in starting_reduce_idxs
+        agg_op = idx_op[idx]
+        idx_dim_size = get_dim_size(point_expr.stats, idx.name)
+        lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]])
+        if length(lowest_roots) == 1
+            idx_lowest_root[idx] = only(lowest_roots)
+        else
+            new_idxs = [gensym(idx.name) for _ in lowest_roots]
+            new_idxs[1] = idx.name
+            append!(reduce_idxs, [Index(i) for i in new_idxs[2:end]])
+            for i in eachindex(lowest_roots)
+                node = id_to_node[lowest_roots[i]]
+                if idx.name ∉ get_index_set(node.stats)
+                    if isnothing(repeat_operator(agg_op))
+                        continue
+                    else
+                        f = repeat_operator(agg_op)
+                        new_node = MapJoin(f, node, Value(idx_dim_size))
+                        new_node.node_id = maximum(keys(id_to_node)) + 1
+                        id_to_node[new_node.node_id] = new_node
+                        replace_and_remove_nodes!(point_expr, node.node_id, new_node, [])
+                    end
+                end
+                new_idx = new_idxs[i]
+                relabel_index(node, idx.name, new_idx)
+                idx_op[Index(new_idx)] = agg_op
+                idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
+                idx_lowest_root[Index(new_idx)] = lowest_roots[i]
+            end
+        end
     end
     parent_idxs = Dict(i=>[] for i in reduce_idxs)
     for idx1 in reduce_idxs
@@ -146,8 +173,9 @@ function get_reduce_query(reduce_idx, aq)
         end
     end
     query_expr = Aggregate(aq.idx_op[reduce_idx], idxs_to_be_reduced..., query_expr)
-    query_expr.stats = reduce_tensor_stats(query_expr.op, Set(query_expr.idxs), query_expr.arg.stats)
+    query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx.name for idx in idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(gensym("A")), query_expr)
+    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
     return query, node_to_replace, nodes_to_remove
 end
 
@@ -190,6 +218,7 @@ end
 function reduce_idx!(idx, aq)
     query, node_to_replace, nodes_to_remove = get_reduce_query(idx, aq)
     condense_stats!(query.expr.stats)
+
     reduced_idxs = query.expr.idxs
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
@@ -216,6 +245,7 @@ function reduce_idx!(idx, aq)
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
     insert_statistics!(aq.ST, new_point_expr)
+    @assert idx.name ∉ get_index_set(new_point_expr.stats)
     aq.reduce_idxs = new_reduce_idxs
     aq.point_expr = new_point_expr
     aq.idx_lowest_root = new_idx_lowest_root
@@ -259,8 +289,12 @@ end
 function find_lowest_roots(op, idx, root)
     if @capture root MapJoin(~f, ~args...)
         args_with_idx = [arg for arg in args if idx.name in get_index_set(arg.stats)]
+        args_without_idx = [arg for arg in args if idx.name ∉ get_index_set(arg.stats)]
         if isdistributive(f.val, op) && length(args_with_idx) == 1
             return find_lowest_roots(op, idx, only(args_with_idx))
+        elseif cansplitpush(f.val, op)
+            return [[arg.node_id for arg in args_without_idx]...,
+                    reduce(vcat, [find_lowest_roots(op, idx, arg) for arg in args_with_idx])...]
         else
             return [root.node_id]
         end

@@ -61,6 +61,23 @@ function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
     return TensorDef(new_index_set, new_dim_sizes, def.default_value, def.level_formats, indices, def.index_protocols)
 end
 
+function relabel_index!(def::TensorDef, i::IndexExpr, j::IndexExpr)
+    if i == j || i ∉ def.index_set
+        return
+    end
+    delete!(def.index_set, i)
+    push!(def.index_set, j)
+    def.dim_sizes[j] = def.dim_sizes[i]
+    delete!(def.dim_sizes, i)
+    if !isnothing(def.index_order)
+        for k in eachindex(def.index_order)
+            if def.index_order[k] == i
+                def.index_order[k] = j
+            end
+        end
+    end
+end
+
 get_dim_sizes(def::TensorDef) = def.dim_sizes
 get_dim_size(def::TensorDef, idx::IndexExpr) = def.dim_sizes[idx]
 get_index_set(def::TensorDef) = def.index_set
@@ -121,6 +138,10 @@ end
 
 function reindex_stats(stat::NaiveStats, indices::Vector{IndexExpr})
     return NaiveStats(reindex_def(indices, stat.def), stat.cardinality)
+end
+
+function relabel_index!(stats::NaiveStats, i::IndexExpr, j::IndexExpr)
+    relabel_index!(stats.def, i, j)
 end
 
 #################  DCStats Definition ######################################################
@@ -313,8 +334,6 @@ function estimate_nnz(stat::DCStats)
     return min_card
 end =#
 
-
-
 function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
     if length(indices) == 0
         return 1
@@ -347,6 +366,13 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
         if x ⊇ indices
             min_weight = min(min_weight, weight)
         end
+    end
+    if isinf(min_weight)
+        println("-----------------------------")
+        for dc in stat.dcs
+            println(dc)
+        end
+        println(indices)
     end
     return min_weight
 end
@@ -409,4 +435,15 @@ function reindex_stats(stat::DCStats, indices::Vector{IndexExpr})
         push!(new_dcs, DC(new_X, new_Y, dc.d))
     end
     return DCStats(new_def, new_dcs)
+end
+
+function relabel_index!(stats::DCStats, i::IndexExpr, j::IndexExpr)
+    relabel_index!(stats.def, i, j)
+    new_dcs = Set()
+    for dc in stats.dcs
+        new_X = Set(x == i ? j : x for x in dc.X)
+        new_Y = Set(y == i ? j : y  for y in dc.Y)
+        push!(new_dcs, DC(new_X, new_Y, dc.d))
+    end
+    stats.dcs = new_dcs
 end

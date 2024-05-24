@@ -7,6 +7,17 @@ function merge_mapjoins(plan::PlanNode)
     ])))(plan)
 end
 
+function relabel_index(n::PlanNode, i::IndexExpr, j::IndexExpr)
+    for node in PostOrderDFS(n)
+        if node.kind == Index && node.name == i
+            node.name = j
+        end
+        if !isnothing(node.stats)
+            relabel_index!(node.stats, i, j)
+        end
+    end
+end
+
 # In cannonical form, two aggregates in the plan shouldn't reduce out the same variable.
 # E.g. MapJoin(*, Aggregate(+, Input(tns, i, j)))
 function unique_indices(scope_dict, n::PlanNode)
@@ -38,9 +49,6 @@ end
 
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
     for expr in PostOrderDFS(plan)
-        if !isnothing(expr.stats) && !replace
-            continue
-        end
         if @capture expr Query(~a, ~expr)
             bindings[a] = expr.stats
         elseif @capture expr Query(~a, ~expr, ~loop_order...)
@@ -59,10 +67,9 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
                 expr.stats = get(bindings, expr, nothing)
             end
         elseif @capture expr Input(~tns, ~idxs...)
-            if !isnothing(expr.stats) && !replace
-                continue
+            if isnothing(expr.stats) || replace
+                expr.stats = ST(tns.val, IndexExpr[idx.val for idx in idxs])
             end
-            expr.stats = ST(tns.val, IndexExpr[idx.val for idx in idxs])
         elseif expr.kind === Value
             if expr.val isa Number
                 expr.stats = ST(expr.val)
@@ -81,8 +88,17 @@ function insert_node_ids!(plan::PlanNode)
     end
 end
 
+function lift_aggregates(plan::PlanNode)
+    Rewrite(Postwalk(Chain([
+    ])))(plan)
+end
+
+
 function distribute_mapjoins(plan::PlanNode)
     Rewrite(Fixpoint(Postwalk(Chain([
+        (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg), ~c...) => Aggregate(g, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
+        (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg)) => Aggregate(g, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
+        (@rule MapJoin(~f, Aggregate(~g, ~idxs..., ~arg), ~b...) => Aggregate(g, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val)),
         (@rule MapJoin(~f, ~x..., MapJoin(~g, ~args...)) => MapJoin(g, [MapJoin(f, x..., arg) for arg in args]...) where isdistributive(f.val, g.val)),
         (@rule MapJoin(~f, MapJoin(~g, ~args...), ~x...) => MapJoin(g, [MapJoin(f, arg, x...) for arg in args]...) where isdistributive(f.val, g.val)),
         (@rule MapJoin(~f,  ~x..., MapJoin(~g, ~args...), ~y...) => MapJoin(g, [MapJoin(f, x..., arg, y...) for arg in args]...) where isdistributive(f.val, g.val))]))))(plan)
@@ -100,6 +116,7 @@ function canonicalize(plan::PlanNode)
     plan = distribute_mapjoins(plan)
     plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
+    plan = distribute_mapjoins(plan)
     plan = unique_indices(Dict(), plan)
     insert_node_ids!(plan)
     return plan

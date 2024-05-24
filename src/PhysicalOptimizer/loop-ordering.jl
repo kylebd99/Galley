@@ -97,8 +97,6 @@ function get_join_loop_order_bounded(agg_op,
     num_flops = estimate_nnz(join_stats)
     output_size = estimate_nnz(output_stats)
     output_vars = get_index_set(output_stats)
-#    println("num_flops: $num_flops")
-#    println("output_size: $output_size")
 
     output_vars = get_index_set(output_stats)
     if !isnothing(output_order)
@@ -202,7 +200,6 @@ function get_join_loop_order_bounded(agg_op,
         end
         optimal_plans = undominated_plans
     end
-
     min_cost = Inf
     best_prefix = nothing
     best_plan_class = nothing
@@ -220,10 +217,14 @@ end
 GREEDY_PLAN_K = 10
 
 function get_join_loop_order(agg_op, input_stats::Vector{TensorStats}, join_stats::TensorStats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
+    if length(get_index_set(join_stats)) == 0
+        return IndexExpr[]
+    end
     greedy_order, greedy_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
     exact_order, exact_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
     if exact_cost == Inf
         println("EXACT COST INFINITY!")
+        println("Greedy Cost: $greedy_cost")
     end
     return exact_order
 end

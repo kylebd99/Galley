@@ -295,8 +295,8 @@ function plan_copy(n::PlanNode)
     else
         stats = deepcopy(n.stats)
         children = []
-        for i in eachindex(p.children)
-            push!(plan_copy(p.children[i]))
+        for i in eachindex(n.children)
+            push!(children, plan_copy(n.children[i]))
         end
         return PlanNode(n.kind, children, n.val, stats, n.node_id)
     end

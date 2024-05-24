@@ -47,11 +47,13 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
                 new_idxs = [Index(x) for x  in args[2:end]]
                 old_idxs = [idx for idx in mat_expr.idx_order]
                 @assert length(new_idxs) == length(old_idxs)
-                idx_translate = merge(Dict(new_idxs[i].name => Index(gensym(new_idxs[i].name)) for i in eachindex(old_idxs)),
-                                        Dict(old_idxs[i].name => new_idxs[i] for i in eachindex(old_idxs)))
-                internal_expr = mat_expr.expr
-                result_expr = Rewrite(Postwalk(@rule ~x => idx_translate[x.name] where  ((x.kind === Index) && (x.name in keys(idx_translate)))))(internal_expr)
-                return result_expr
+                idx_translate = merge(Dict(new_idxs[i].name => gensym(new_idxs[i].name) for i in eachindex(old_idxs)),
+                                        Dict(old_idxs[i].name => new_idxs[i].name for i in eachindex(old_idxs)))
+                internal_expr = plan_copy(mat_expr.expr)
+                for (i, j) in idx_translate
+                    relabel_index(internal_expr, i, j)
+                end
+                return internal_expr
             else
                 error("a reused plan expression must be wrapped in a materialize!")
             end
@@ -281,4 +283,21 @@ end
 
 function Base.show(io::IO, input::PlanNode)
     print(io, planToString(input, 0))
+end
+
+
+# The goal of this is to emulate deepcopy except for the actual data
+function plan_copy(n::PlanNode)
+    if n.kind === Input
+        p = Input(n.tns, deepcopy(n.idxs)...)
+        p.stats = deepcopy(n.stats)
+        return p
+    else
+        stats = deepcopy(n.stats)
+        children = []
+        for i in eachindex(p.children)
+            push!(plan_copy(p.children[i]))
+        end
+        return PlanNode(n.kind, children, n.val, stats, n.node_id)
+    end
 end

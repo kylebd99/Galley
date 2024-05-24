@@ -1,11 +1,12 @@
 using Finch
 using Galley
+include("../Experiments.jl")
 
-vertex_vectors, edge_matrices = load_subgraph_dataset(wordnet, DCStats, nothing)
-X = Tensor(Dense(SparseList(Element(0))), edge_matrices[0].tns.val)
-n = size(X)[1]
-#n = 100000
-#A = Tensor(Dense(SparseList(Pattern())), fsprand(Bool, n, n, 20 * (1.0/n)))
+#vertex_vectors, edge_matrices = load_subgraph_dataset(yeast, DCStats, nothing)
+#X = Tensor(Dense(SparseList(Element(0))), edge_matrices[0].tns.val)
+#n = size(X)[1]
+n = 10000
+X = Tensor(Dense(SparseList(Element(0))), fsprand(Bool, n, n, 20 * (1.0/n)))
 u = Tensor(Dense(Element(0)), rand(Int, n) .% 100)
 v = Tensor(Dense(Element(0)), rand(Int, n) .% 100)
 l = Scalar(0)

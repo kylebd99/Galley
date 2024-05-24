@@ -112,12 +112,12 @@ function remove_extraneous_mapjoins(plan::PlanNode)
 
 end
 function canonicalize(plan::PlanNode)
+    plan = unique_indices(Dict(), plan)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan)
     plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan)
-    plan = unique_indices(Dict(), plan)
     insert_node_ids!(plan)
     return plan
 end

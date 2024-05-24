@@ -3,7 +3,7 @@ using Finch
 using SparseArrays
 using DuckDB
 using Galley
-using Galley: t_sparse_list
+using Galley: t_sparse_list, t_dense
 
 
 # run subtests

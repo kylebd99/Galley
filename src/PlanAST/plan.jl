@@ -47,10 +47,15 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
                 new_idxs = [Index(x) for x  in args[2:end]]
                 old_idxs = [idx for idx in mat_expr.idx_order]
                 @assert length(new_idxs) == length(old_idxs)
-                idx_translate = merge(Dict(new_idxs[i].name => gensym(new_idxs[i].name) for i in eachindex(old_idxs)),
-                                        Dict(old_idxs[i].name => new_idxs[i].name for i in eachindex(old_idxs)))
                 internal_expr = plan_copy(mat_expr.expr)
-                for (i, j) in idx_translate
+                # If the somewhere down the expression tree, there exists a reference to
+                # new_idxs[i], then we would like to rename it to avoid conflict.
+                prior_idx_translate = Dict(new_idxs[i].name => gensym(new_idxs[i].name) for i in eachindex(old_idxs) if new_idxs[i] ∉ old_idxs)
+                for (i, j) in prior_idx_translate
+                    relabel_index(internal_expr, i, j)
+                end
+                new_idx_translate = Dict(old_idxs[i].name => new_idxs[i].name for i in eachindex(old_idxs))
+                for (i, j) in new_idx_translate
                     relabel_index(internal_expr, i, j)
                 end
                 return internal_expr

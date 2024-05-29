@@ -30,11 +30,6 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
             end
             f = @spawnat worker_pid attempt_experiment(experiment, cur_query, results_channel, status_channel)
             load_start = time()
-            while time() - load_start < 100
-                if isready(f)
-                    break
-                end
-            end
             finished = false
             last_result = time()
             while !finished
@@ -44,8 +39,9 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     cur_query += 1
                     last_result = time()
                 end
-                if time()-last_result > experiment.timeout || isready(f)
+                if ((time()-last_result) > experiment.timeout) && (time() - load_start > 100)
                     println("REMOVING WORKER")
+                    interrupt(worker_pid)
                     rmprocs(worker_pid)
                     num_attempted, num_completed, num_correct, num_with_values, exp_finished = take!(status_channel)
                     if !exp_finished

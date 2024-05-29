@@ -367,13 +367,6 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
             min_weight = min(min_weight, weight)
         end
     end
-    if isinf(min_weight)
-        println("-----------------------------")
-        for dc in stat.dcs
-            println(dc)
-        end
-        println(indices)
-    end
     return min_weight
 end
 

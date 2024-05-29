@@ -1,5 +1,3 @@
-
-
 # This struct holds the high-level definition of a tensor. This information should be
 # agnostic to the statistics used for cardinality estimation. Any information which may be
 # `Nothing` is considered a part of the physical definition which may be undefined for logical
@@ -17,7 +15,7 @@ TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
         return t_sparse_list
-    elseif typeof(lvl) <: SparseLevel
+    elseif typeof(lvl) <: SparseHashLevel
         return t_hash
     elseif typeof(lvl) <: DenseLevel
         return t_dense

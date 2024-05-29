@@ -18,7 +18,7 @@ function select_output_format(output_stats::TensorStats,
             end
             push!(formats, t_dense)
         elseif approx_sparsity > .01
-            if get_dim_space_size(output_stats, Set(prefix)) > 10^11
+            if get_dim_space_size(output_stats, Set(prefix)) > 10^9
                 throw(OutOfMemoryError())
             end
             push!(formats, t_bytemap)
@@ -28,7 +28,7 @@ function select_output_format(output_stats::TensorStats,
             push!(formats, t_sparse_list)
         end
     end
-    return formats
+    return reverse(formats)
 end
 
 

@@ -19,7 +19,7 @@ function select_follower_protocol(format::LevelFormat)
     elseif format == t_bytemap
         return t_follow
     elseif format == t_hash
-        return t_default
+        return t_follow
     end
 end
 
@@ -52,7 +52,7 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
             push!(costs, max(1, size_after_var/size_before_var))
         end
         min_cost = minimum(costs)
-        needs_leader = length(relevant_inputs) > 1
+        needs_leader = true
         formats = [get_index_format(input, var) for input in relevant_inputs]
         num_sparse_lists = sum([f == t_sparse_list for f in formats])
         use_gallop = false

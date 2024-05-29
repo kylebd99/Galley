@@ -19,6 +19,9 @@ function isdistributive(f, g)
     end
 #    distributes = Finch.isdistributive(Finch.DefaultAlgebra(), f, g)
     distributes = (((g == max) || (g == min)) && (f == +))
+    distributes = distributes || ((f == choose(false)) && (g == |))
+    distributes = distributes || ((f == |) && (g == choose(false)))
+    distributes = distributes || ((f == &) && (g == choose(false)))
     distributes = distributes || ((f == &) && (g == |))
     distributes = distributes || ((f == *) && (g == +))
     return distributes
@@ -28,7 +31,12 @@ function cansplitpush(f, g)
     if typeof(f) == PlanNode && typeof(g) == PlanNode
         throw(error("Can't check splitpush of plan nodes!"))
     end
-    return !ismissing(repeat_operator(f)) && f == g && iscommutative(f) && isassociative(f)
+    if !ismissing(repeat_operator(f)) && f == g && iscommutative(f) && isassociative(f)
+        return true
+    elseif (f == choose(false)) && (g == |)
+        return true
+    end
+    return false
 end
 
 # If there exists a g such that f(x_,...{n times},...x) = g(x, n),

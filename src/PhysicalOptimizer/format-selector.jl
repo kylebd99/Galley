@@ -5,22 +5,28 @@ function select_output_format(output_stats::TensorStats,
     if length(output_indices) == 0
         return LevelFormat[]
     end
-    approx_sparsity = estimate_nnz(output_stats) / get_dim_space_size(get_def(output_stats), get_index_set(output_stats))
-    if approx_sparsity > .1
-        if get_dim_space_size(get_def(output_stats), get_index_set(output_stats)) > 10^9
-            throw(OutOfMemoryError())
+
+    formats = []
+    for i in eachindex(output_indices)
+        prefix = output_indices[length(output_indices)-i+1:end]
+        needs_rw = !fully_compat_with_loop_prefix(prefix, loop_order)
+        approx_sparsity = estimate_nnz(output_stats; indices=prefix) / get_dim_space_size(output_stats, Set(prefix))
+
+        if approx_sparsity > .2
+            if get_dim_space_size(output_stats, Set(prefix)) > 10^9
+                throw(OutOfMemoryError())
+            end
+            push!(formats, t_dense)
+        elseif approx_sparsity > .01
+            if get_dim_space_size(output_stats, Set(prefix)) > 10^11
+                throw(OutOfMemoryError())
+            end
+            push!(formats, t_bytemap)
+        elseif needs_rw
+            push!(formats, t_hash)
+        else
+            push!(formats, t_sparse_list)
         end
-        return [t_dense for _ in output_indices]
-    end
-
-    formats = if fully_compat_with_loop_prefix(output_indices, loop_order)
-        [t_sparse_list for _ in output_indices]
-    else
-        [t_hash for _ in output_indices]
-    end
-
-    if length(formats) > 1
-        formats[length(formats)] = t_dense
     end
     return formats
 end

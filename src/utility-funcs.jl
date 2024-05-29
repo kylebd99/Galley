@@ -85,6 +85,8 @@ function initialize_tensor(formats, dims, default_value)
             B = SparseList(B, dims[i])
         elseif formats[i] == t_dense
             B = Dense(B, dims[i])
+        elseif formats[i] == t_bytemap
+            B = Dense(B, dims[i])
         elseif formats[i] == t_hash
             B = Sparse(B, dims[i])
         else

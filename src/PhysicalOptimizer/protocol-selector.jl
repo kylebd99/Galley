@@ -33,13 +33,13 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
         relevant_inputs = [i for i in input_stats if var ∈ get_index_set(i)]
         costs = []
         for input in relevant_inputs
-            if get_index_format(input, var) == t_dense
+            if get_index_format(input, var) == t_dense || get_index_format(input, var) == t_bytemap
                 push!(costs, get_dim_size(input, var))
                 continue
             end
             size_before_var = 1
             indices_before_var = []
-            for index in get_index_set(input)
+            for index in get_index_order(input)
                 index == var && break
                 push!(indices_before_var, index)
             end

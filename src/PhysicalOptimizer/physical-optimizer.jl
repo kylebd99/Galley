@@ -111,7 +111,7 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     expr = Aggregate(agg_op, reduce_idxs..., expr)
     expr.stats = output_stats
 
-    needs_intermediate = length(output_order) > 0 && (any([f == t_hash for f in first_formats]) || !isnothing(output_formats))
+    needs_intermediate = length(output_order) > 0 && (any([f == t_hash for f in first_formats]) || (!isnothing(output_formats) && first_formats != output_formats))
     if needs_intermediate
         intermediate_query = Query(Alias(gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
         reorder_stats = deepcopy(expr.stats)

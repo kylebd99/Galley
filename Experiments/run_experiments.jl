@@ -38,6 +38,8 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
                     push!(results, take!(results_channel))
                     cur_query += 1
                     last_result = time()
+                    num_attempted, num_completed, num_correct, num_with_values, exp_finished = fetch(status_channel)
+                    finished = exp_finished
                 end
                 if ((time()-last_result) > experiment.timeout) && (time() - load_start > 100)
                     println("REMOVING WORKER")

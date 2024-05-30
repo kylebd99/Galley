@@ -49,6 +49,7 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
                     println("Warm Start Time: $warm_start_time")
                 end
                 result = galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, verbose=0)
+                println(result)
                 if result == "failed"
                     put!(results_channel, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", "0.0", string(true)))
                 else

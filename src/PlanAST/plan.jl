@@ -296,6 +296,7 @@ function plan_copy(n::PlanNode)
     if n.kind === Input
         p = Input(n.tns, deepcopy(n.idxs)...)
         p.stats = deepcopy(n.stats)
+        p.node_id = n.node_id
         return p
     else
         stats = deepcopy(n.stats)

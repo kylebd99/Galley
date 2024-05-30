@@ -26,7 +26,7 @@ export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Qu
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
 export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
-export naive, hypertree_width, greedy, ordering
+export naive, hypertree_width, greedy, pruned
 export expr_to_kernel, execute_tensor_kernel
 export load_to_duckdb, DuckDBTensor, fill_table
 
@@ -37,7 +37,7 @@ TensorId = String
 # A subset of the allowed level formats provided by the Finch API
 @enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_bytemap = 4 t_undef = 5
 # The set of optimizers implemented by Galley
-@enum FAQ_OPTIMIZERS greedy naive
+@enum FAQ_OPTIMIZERS greedy naive pruned
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
@@ -58,7 +58,7 @@ include("ExecutionEngine/ExecutionEngine.jl")
 #           - Isolate reformat_stats
 #           - Fuse mapjoins & permutations
 function galley(input_query::PlanNode;
-                    faq_optimizer::FAQ_OPTIMIZERS=greedy,
+                    faq_optimizer::FAQ_OPTIMIZERS=pruned,
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     verbose=0)

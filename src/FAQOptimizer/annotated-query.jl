@@ -11,6 +11,24 @@ mutable struct AnnotatedQuery
     parent_idxs
 end
 
+function Base.copy(aq::AnnotatedQuery)
+    new_point_expr = plan_copy(aq.point_expr)
+    id_to_node = Dict()
+    for node in PreOrderDFS(new_point_expr)
+        id_to_node[node.node_id] = node
+    end
+    return AnnotatedQuery(aq.ST,
+                          deepcopy(aq.output_name),
+                          deepcopy(aq.output_order),
+                          deepcopy(aq.output_format),
+                          deepcopy(aq.reduce_idxs),
+                          plan_copy(aq.point_expr),
+                          deepcopy(aq.idx_lowest_root),
+                          deepcopy(aq.idx_op),
+                          id_to_node,
+                          deepcopy(aq.parent_idxs),
+                          )
+end
 # Takes in a query and preprocesses it to gather relevant info
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
@@ -189,7 +207,7 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict())
         cost = estimate_nnz(comp_stats) * ComputeCost + estimate_nnz(mat_stats) * AllocateCost
         cache[cache_key] = cost
     end
-    return cache[cache_key]
+    return cache[cache_key], query.expr.idxs
 end
 
 function replace_and_remove_nodes!(expr, node_id_to_replace, new_node, nodes_to_remove)

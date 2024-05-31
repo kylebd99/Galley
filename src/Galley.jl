@@ -120,13 +120,15 @@ function galley(input_query::PlanNode;
             physical_queries = logical_query_to_physical_queries(alias_stats, s_query)
             total_phys_opt_time += time() - phys_opt_start
             for p_query in physical_queries
+                phys_opt_start = time()
                 input_stats = get_input_stats(alias_stats, p_query.expr)
                 modify_protocols!(collect(values(input_stats)))
+                total_phys_opt_time += time() - phys_opt_start
                 alias_stats[p_query.name] = p_query.expr.stats
 
                 verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
                 verbose > 2 && println(p_query)
-                verbose > 3 && validate_physical_query(p_query)
+                verbose > 2 && validate_physical_query(p_query)
                 exec_start = time()
                 execute_query(alias_result, p_query, verbose)
                 total_exec_time += time() - exec_start
@@ -135,6 +137,7 @@ function galley(input_query::PlanNode;
                     fix_cardinality!(alias_stats[p_query.name], countstored(alias_result[p_query.name]))
                     total_count_time += time() - count_start
                 end
+                condense_stats!(alias_stats[p_query.name]; cheap=false)
             end
         end
     end

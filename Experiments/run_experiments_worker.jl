@@ -13,6 +13,13 @@ include("/local1/kdeeds/Galley/Experiments/experiment_params.jl")
 include("/local1/kdeeds/Galley/Experiments/subgraph_workload.jl")
 include("/local1/kdeeds/Galley/Experiments/load_workload.jl")
 
+
+function clear_channel(c)
+    while isready(c)
+        take!(c)
+    end
+end
+
 function attempt_experiment(experiment::ExperimentParams, starting_query, results_channel, status_channel)
     println("Starting Worker Experiment")
     dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
@@ -21,9 +28,9 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, false))
     for query in queries[starting_query:end]
         println("Query Path: ", query.query_path)
-#             if !occursin("Tree_9/uf_Q_3_7.txt", query.query_path)
-#                continue
-#            end
+#        if !occursin("query_dense_4_16", query.query_path)
+#            continue
+#        end
         num_attempted +=1
         try
             if experiment.use_duckdb
@@ -66,13 +73,14 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
                     num_completed += 1
                 end
             end
-            take!(status_channel)
+
+            clear_channel(status_channel)
             put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, false))
         catch e
             println("Error Occurred: ", e)
             throw(e)
         end
     end
-    take!(status_channel)
+    clear_channel(status_channel)
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, true))
 end

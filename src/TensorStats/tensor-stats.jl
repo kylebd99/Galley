@@ -120,6 +120,9 @@ end
 get_def(stat::NaiveStats) = stat.def
 estimate_nnz(stat::NaiveStats; indices = get_index_set(stat)) = stat.cardinality
 condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
+function fix_cardinality!(stat::NaiveStats, card)
+    stat.cardinality = card
+end
 
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
@@ -162,6 +165,22 @@ end
 
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def
+
+function fix_cardinality!(stat::DCStats, card)
+    had_dc = false
+    new_dcs = Set{DC}()
+    for dc in stat.dcs
+        if length(dc.X) == 0 && dc.Y == get_index_set(stat)
+            push!(new_dcs, DC(Set{IndexExpr}(), get_index_set(stat), min(card, dc.d)))
+        else
+            push!(new_dcs, dc)
+        end
+    end
+    if !had_dc
+        push!(new_dcs, DC(Set{IndexExpr}(), get_index_set(stat), card))
+    end
+    stat.dcs = new_dcs
+end
 
 DCKey = NamedTuple{(:X, :Y), Tuple{Vector{IndexExpr}, Vector{IndexExpr}}}
 

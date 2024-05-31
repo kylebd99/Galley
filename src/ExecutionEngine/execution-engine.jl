@@ -77,7 +77,6 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     prgm_instance = block_instance(dec_instance, prgm_instance)
 
     start_time = time()
-    verbose >= 1 && println("----------- Computing: $(q.name) -----------")
     verbose >= 4 && display(prgm_instance)
     verbose >= 5 &&  println(Finch.execute_code(:ex, typeof(prgm_instance), mode=:fast)
                                                                 |> Finch.pretty

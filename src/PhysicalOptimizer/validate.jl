@@ -53,11 +53,9 @@ end
 
 function check_protocols(n::PlanNode)
     return if n.kind == Input
-        println(n)
         @assert !isnothing(get_index_protocols(n.stats))
         @assert length(get_index_set(n.stats)) == length(get_index_protocols(n.stats))
     elseif n.kind == Alias
-        println(n)
         @assert !isnothing(get_index_protocols(n.stats))
         @assert length(get_index_set(n.stats)) == length(get_index_protocols(n.stats))
     elseif n.kind == Aggregate

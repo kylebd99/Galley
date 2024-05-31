@@ -153,6 +153,7 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
         push!(queries, result_query)
     end
     for query in queries
+        insert_node_ids!(query)
         alias_stats[query.name] = query.expr.stats
     end
     return queries

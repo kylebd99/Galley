@@ -11,6 +11,16 @@ function get_input_stats(alias_stats::Dict{PlanNode, TensorStats}, expr::PlanNod
     return input_stats
 end
 
+function get_aliases(expr::PlanNode)
+    aliases = []
+    for n in PostOrderDFS(expr)
+        if n.kind == Alias
+            push!(aliases, n)
+        end
+    end
+    return aliases
+end
+
 function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     input_order = get_index_order(input.stats)
     fixed_order = relative_sort(input_order, loop_order, rev=true)

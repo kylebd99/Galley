@@ -19,13 +19,13 @@ function select_follower_protocol(format::LevelFormat)
     elseif format == t_bytemap
         return t_follow
     elseif format == t_hash
-        return t_follow
+        return t_default
     end
 end
 
 function modify_protocols!(input_stats::Vector{ST}) where ST
     for input in input_stats
-        get_def(input).index_protocols = [t_default for _ in get_index_set(input)]
+        get_def(input).index_protocols = [t_default for _ in get_index_order(input)]
     end
 
     vars = union([get_index_set(i) for i in input_stats]...)
@@ -68,23 +68,23 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]
             input_def = get_def(input)
-            var_index = findfirst(x->x==var, get_index_order(input))
+            var_index = findall(x->x==var, get_index_order(input))
             is_leader = costs[i] == min_cost
             if formats[i] == t_sparse_list
                 if use_gallop
-                    input_def.index_protocols[var_index] = t_gallop
+                    input_def.index_protocols[var_index] .= t_gallop
                 else
-                    input_def.index_protocols[var_index] = t_walk
+                    input_def.index_protocols[var_index] .= t_walk
                 end
                 needs_leader = false
                 continue
             end
 
             if is_leader && needs_leader
-                input_def.index_protocols[var_index] = select_leader_protocol(formats[i])
+                input_def.index_protocols[var_index] .= select_leader_protocol(formats[i])
                 needs_leader = false
             else
-                input_def.index_protocols[var_index] = select_follower_protocol(formats[i])
+                input_def.index_protocols[var_index] .= select_follower_protocol(formats[i])
             end
         end
     end

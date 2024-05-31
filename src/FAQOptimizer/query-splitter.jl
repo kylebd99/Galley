@@ -44,11 +44,11 @@ end
 #   Query(name, Materialzie(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
 # It outputs a set of queries where the final one binds `name` and each
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
-function split_query(ST, q::PlanNode)
+function split_query(ST, q::PlanNode, alias_stats)
     insert_node_ids!(q)
     aq = AnnotatedQuery(q, ST)
     pe = aq.point_expr
-    insert_statistics!(ST, pe)
+    insert_statistics!(ST, pe, bindings=alias_stats)
     has_agg = length(aq.reduce_idxs) > 0
     agg_op = has_agg ? aq.idx_op[first(aq.reduce_idxs)] : nothing
     node_id_counter = maximum([n.node_id for n in PostOrderDFS(pe)]) + 1
@@ -128,14 +128,15 @@ function split_query(ST, q::PlanNode)
     push!(queries,  final_query)
     for query in queries
         insert_statistics!(ST, query)
+        insert_node_ids!(query)
     end
     return queries
 end
 
-function split_queries(ST, p::PlanNode)
+function split_queries(ST, p::PlanNode; alias_stats=Dict())
     new_queries = []
     for query in p.queries
-        append!(new_queries, split_query(ST, query))
+        append!(new_queries, split_query(ST, query, alias_stats))
     end
     new_plan = Plan(new_queries..., p.outputs)
     insert_node_ids!(new_plan)

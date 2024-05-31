@@ -68,14 +68,8 @@ function galley(input_query::PlanNode;
     faq_opt_start = time()
     output_order = input_query.expr.idx_order
     logical_plan = high_level_optimize(faq_optimizer, input_query, ST)
-    faq_opt_end = time()
-    verbose >= 1 && println("FAQ Opt Time: $(faq_opt_end-faq_opt_start)")
-    split_start = time()
-    if faq_optimizer != naive
-        logical_plan = split_queries(ST, logical_plan)
-    end
-    split_end = time()
-    verbose >= 1 && println("Split Opt Time: $(split_end-split_start)")
+    faq_opt_time = time() - faq_opt_start
+    verbose >= 1 && println("FAQ Opt Time: $faq_opt_time")
 
     # TODO: Add the step which splits up overly complex kernels back in
     if verbose >= 1
@@ -111,38 +105,49 @@ function galley(input_query::PlanNode;
                     execute_time=duckdb_exec_time)
     end
     opt_end = time()
+    total_split_time = 0
     total_phys_opt_time = 0
     total_exec_time = 0
     total_count_time = 0
     alias_stats = Dict{PlanNode, TensorStats}()
     alias_result = Dict()
-    for query in logical_plan.queries
-        phys_opt_start = time()
-        translated_queries = logical_query_to_physical_queries(alias_stats, query)
-        total_phys_opt_time += time() - phys_opt_start
-        for query in translated_queries
-            input_stats = get_input_stats(alias_stats, query.expr)
-            modify_protocols!(collect(values(input_stats)))
-            alias_stats[query.name] = query.expr.stats
+    for l_query in logical_plan.queries
+        split_start = time()
+        split_queries = split_query(ST, l_query, alias_stats)
+        total_split_time  += time() - split_start
+        for s_query in split_queries
+            phys_opt_start = time()
+            physical_queries = logical_query_to_physical_queries(alias_stats, s_query)
+            total_phys_opt_time += time() - phys_opt_start
+            for p_query in physical_queries
+                input_stats = get_input_stats(alias_stats, p_query.expr)
+                modify_protocols!(collect(values(input_stats)))
+                alias_stats[p_query.name] = p_query.expr.stats
 
-            verbose > 2 && println("--------------- Computing: $(query.name) ---------------")
-            verbose > 2 && println(query)
-            verbose > 3 && validate_physical_query(query)
-            exec_start = time()
-            execute_query(alias_result, query, verbose)
-            total_exec_time += time() - exec_start
-            if alias_result[query.name] isa Tensor
-                count_start = time()
-                fix_cardinality!(alias_stats[query.name], countstored(alias_result[query.name]))
-                total_count_time += time() - count_start
+                verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
+                verbose > 2 && println(p_query)
+                verbose > 3 && validate_physical_query(p_query)
+                exec_start = time()
+                execute_query(alias_result, p_query, verbose)
+                total_exec_time += time() - exec_start
+                if alias_result[p_query.name] isa Tensor
+                    count_start = time()
+                    fix_cardinality!(alias_stats[p_query.name], countstored(alias_result[p_query.name]))
+                    total_count_time += time() - count_start
+                end
             end
         end
     end
 
-    verbose >= 1 && println("Time to Optimize: ", (opt_end-opt_start + total_phys_opt_time))
+    verbose >= 2 && println("Time to FAQ Opt: ", faq_opt_time)
+    verbose >= 2 && println("Time to Split Opt: ", total_split_time)
+    verbose >= 2 && println("Time to Phys Opt: ", total_phys_opt_time)
+    verbose >= 1 && println("Time to Optimize: ", (faq_opt_time + total_split_time + total_phys_opt_time))
     verbose >= 1 && println("Time to Execute: ", total_exec_time)
     verbose >= 1 && println("Time to count: ", total_count_time)
-    return (value=alias_result[logical_plan.queries[end].name], opt_time=(opt_end-opt_start + total_phys_opt_time), execute_time= total_exec_time)
+    return (value=alias_result[logical_plan.queries[end].name],
+            opt_time=(faq_opt_time + total_split_time + total_phys_opt_time),
+            execute_time= total_exec_time)
 end
 
 end

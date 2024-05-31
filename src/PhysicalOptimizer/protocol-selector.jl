@@ -39,7 +39,7 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
             end
             size_before_var = 1
             indices_before_var = []
-            for index in get_index_order(input)
+            for index in reverse(get_index_order(input))
                 index == var && break
                 push!(indices_before_var, index)
             end
@@ -63,6 +63,7 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
             # It seems as though Gallop is generally the correct choice, and it is
             # asymptotically better than walk. So, we just always set it to be conservative.
             use_gallop = true
+            needs_leader = false
         end
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]

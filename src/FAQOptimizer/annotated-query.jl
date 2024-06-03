@@ -39,14 +39,6 @@ function AnnotatedQuery(q::PlanNode, ST)
     end
     insert_statistics!(ST, q)
     q = canonicalize(q)
-    ids = []
-    for n in PostOrderDFS(q)
-        if n.kind in (Input,)
-           println(n.node_id)
-           push!(ids, n.node_id)
-        end
-    end
-    println("Unique: $(length(unique(ids))) \n Full: $(length(ids))")
     output_name = q.name
     has_mat_expr = q.expr.kind === Materialize
     expr, output_formats, output_index_order = (nothing, nothing, nothing)
@@ -106,8 +98,6 @@ function AnnotatedQuery(q::PlanNode, ST)
                 idx_op[Index(new_idx)] = agg_op
                 idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
-                println("IDX: $new_idx")
-                println("INITIAL ASSIGNMENT: $(id_to_node[idx_lowest_root[Index(new_idx)]])")
             end
         end
     end
@@ -133,12 +123,6 @@ function AnnotatedQuery(q::PlanNode, ST)
             end
         end
     end
-    println("OVERALL POINT EXPR: $point_expr")
-    for idx in reduce_idxs
-        println("IDX: ", idx)
-        println(id_to_node[idx_lowest_root[idx]])
-    end
-
     return AnnotatedQuery(ST,
                             output_name,
                             output_index_order,

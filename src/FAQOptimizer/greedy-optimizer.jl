@@ -16,8 +16,6 @@ function greedy_query_to_plan(input_query::PlanNode, ST)
         query = reduce_idx!(cheapest_idx, aq)
         push!(queries, query)
         reducible_idxs = get_reducible_idxs(aq)
-        println("QUERY: ", query)
-        println("REDUCIBLE: ", reducible_idxs)
     end
     remaining_q = get_remaining_query(aq)
     if !isnothing(remaining_q)

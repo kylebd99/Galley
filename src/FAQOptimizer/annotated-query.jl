@@ -63,12 +63,15 @@ function AnnotatedQuery(q::PlanNode, ST)
         a
         end),
     ])))(expr)
+    point_expr = plan_copy(point_expr) # Need to sanitize
     insert_statistics!(ST, point_expr)
+
     id_to_node = Dict()
     for node in PreOrderDFS(point_expr)
         id_to_node[node.node_id] = node
     end
-    reduce_idxs = copy(starting_reduce_idxs)
+
+    reduce_idxs = []
     idx_lowest_root = Dict()
     for idx in starting_reduce_idxs
         agg_op = idx_op[idx]
@@ -76,21 +79,31 @@ function AnnotatedQuery(q::PlanNode, ST)
         lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]])
         if length(lowest_roots) == 1
             idx_lowest_root[idx] = only(lowest_roots)
+            push!(reduce_idxs, idx)
         else
             new_idxs = [gensym(idx.name) for _ in lowest_roots]
             new_idxs[1] = idx.name
-            append!(reduce_idxs, [Index(i) for i in new_idxs[2:end]])
             for i in eachindex(lowest_roots)
                 node = id_to_node[lowest_roots[i]]
                 if idx.name ∉ get_index_set(node.stats)
+                    # If the lowest root doesn't contain the reduction index, we attempt
+                    # to remove the reduction via a repeat_operator, i.e.
+                    # ∑_i B_j = B_j*|Dom(i)|
                     if isnothing(repeat_operator(agg_op))
                         continue
                     else
                         f = repeat_operator(agg_op)
-                        new_node = MapJoin(f, node, Value(idx_dim_size))
+                        dim_val = Value(idx_dim_size)
+                        dim_val.stats = ST(idx_dim_size)
+                        dim_val.node_id = maximum(keys(id_to_node)) + 1
+                        id_to_node[dim_val.node_id] = dim_val
+                        new_node = MapJoin(f, node, dim_val)
+                        new_node.stats = merge_tensor_stats(f, node.stats, dim_val.stats)
+                        new_node.node_id = node.node_id
                         new_node.node_id = maximum(keys(id_to_node)) + 1
                         id_to_node[new_node.node_id] = new_node
-                        replace_and_remove_nodes!(point_expr, node.node_id, new_node, [])
+                        point_expr = replace_and_remove_nodes!(point_expr, node.node_id, new_node, [])
+                        continue
                     end
                 end
                 new_idx = new_idxs[i]
@@ -98,6 +111,7 @@ function AnnotatedQuery(q::PlanNode, ST)
                 idx_op[Index(new_idx)] = agg_op
                 idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
+                push!(reduce_idxs, Index(new_idx))
             end
         end
     end
@@ -214,7 +228,7 @@ function replace_and_remove_nodes!(expr, node_id_to_replace, new_node, nodes_to_
     if expr.node_id == node_id_to_replace
         return new_node
     end
-    for node in PreOrderDFS(expr)
+    for node in PostOrderDFS(expr)
         if node.kind == Plan || node.kind == Query || node.kind == Aggregate
             throw(ErrorException("There should be no $(node.kind) nodes in a pointwise expression."))
         end

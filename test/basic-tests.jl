@@ -196,6 +196,39 @@
         end
         @test result.value == correct_result
     end
+
+
+    @testset "100x100 matrices, elementwise +, then sum" begin
+        a_matrix = sprand(Bool, 100, 100, .1)
+        a_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_data, a_matrix)
+        a = Input(a_data, :i, :j)
+        b_matrix = sprand(Bool, 100, 100, .1)
+        b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_data, b_matrix)
+        b = Input(b_data, :i, :j)
+        d = Query(:out, Materialize(Aggregate(+, :i, :j, MapJoin(+, a, b))))
+        result = galley(d, verbose=verbose)
+        correct_result = sum(a_matrix) + sum(b_matrix)
+        @test result.value == correct_result
+    end
+
+    @testset "100x100 matrices, + on j, then sum all" begin
+        a_matrix = sprand(Bool, 100, 100, .1)
+        a_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(a_data, a_matrix)
+        a = Input(a_data, :i, :j)
+        b_matrix = sprand(Bool, 100, 100, .1)
+        b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
+        copyto!(b_data, b_matrix)
+        b = Input(b_data, :j, :k)
+        d = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(+, a, b))))
+        println(d)
+        result = galley(d, verbose=3)
+        correct_result = sum(a_matrix)*100 + sum(b_matrix)*100
+        @test result.value == correct_result
+    end
+
 end
 
 nothing

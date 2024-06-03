@@ -12,6 +12,13 @@
 end
 TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
 
+Base.copy(def::TensorDef) = TensorDef(copy(def.index_set),
+                                copy(def.dim_sizes),
+                                copy(def.default_value),
+                                isnothing(def.level_formats) ? nothing : copy(def.level_formats),
+                                isnothing(def.index_order) ? nothing : copy(def.index_order),
+                                isnothing(def.index_protocols) ? nothing : copy(def.index_protocols))
+
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
         return t_sparse_list
@@ -123,6 +130,7 @@ condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
 function fix_cardinality!(stat::NaiveStats, card)
     stat.cardinality = card
 end
+Base.copy(stat::NaiveStats) = NaiveStats(copy(stat.def), stat.cardinality)
 
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
@@ -162,6 +170,8 @@ end
     def::TensorDef
     dcs::Set{DC}
 end
+
+Base.copy(stat::DCStats) = DCStats(copy(stat.def), copy(stat.dcs))
 
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def

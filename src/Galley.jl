@@ -62,7 +62,7 @@ function galley(input_query::PlanNode;
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     verbose=0)
-    input_query = plan_copy(input_query)
+    overall_start = time()
     verbose >= 2 && println("Input Query : ", input_query)
     opt_start = time()
     faq_opt_start = time()
@@ -137,20 +137,24 @@ function galley(input_query::PlanNode;
                     fix_cardinality!(alias_stats[p_query.name], countstored(alias_result[p_query.name]))
                     total_count_time += time() - count_start
                 end
+                phys_opt_start = time()
                 condense_stats!(alias_stats[p_query.name]; cheap=false)
+                total_phys_opt_time += time() - phys_opt_start
             end
         end
     end
-
+    total_overall_time = time()-overall_start
     verbose >= 2 && println("Time to FAQ Opt: ", faq_opt_time)
     verbose >= 2 && println("Time to Split Opt: ", total_split_time)
     verbose >= 2 && println("Time to Phys Opt: ", total_phys_opt_time)
     verbose >= 1 && println("Time to Optimize: ", (faq_opt_time + total_split_time + total_phys_opt_time))
     verbose >= 1 && println("Time to Execute: ", total_exec_time)
     verbose >= 1 && println("Time to count: ", total_count_time)
+    verbose >= 1 && println("Overall Time: ", total_overall_time)
     return (value=alias_result[logical_plan.queries[end].name],
             opt_time=(faq_opt_time + total_split_time + total_phys_opt_time),
-            execute_time= total_exec_time)
+            execute_time= total_exec_time,
+            overall_time=total_overall_time)
 end
 
 end

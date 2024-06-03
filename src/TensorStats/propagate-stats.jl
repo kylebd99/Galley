@@ -158,16 +158,13 @@ function merge_tensor_stats_union(op, all_stats::Vararg{DCStats})
     new_dcs = Dict()
     for stats in all_stats
         # We need to infer dcs before unioning to make sure that we properly add
-        condense_stats!(stats)
         new_idxs = collect(setdiff(get_index_set(stats), get_index_set(new_def)))
         for dc in stats.dcs
-            for Z in subsets(new_idxs)
-                Z = Set(Z)
-                Z_dimension_space_size = get_dim_space_size(new_def, Z)
-                dc_key = (X=dc.X, Y=∪(dc.Y, Z))
-                current_dc = get(new_dcs, dc_key, 0)
-                new_dcs[dc_key] = current_dc + dc.d*Z_dimension_space_size
-            end
+            Z = Set(new_idxs)
+            Z_dimension_space_size = get_dim_space_size(new_def, Z)
+            dc_key = (X=dc.X, Y=∪(dc.Y, Z))
+            current_dc = get(new_dcs, dc_key, 0)
+            new_dcs[dc_key] = current_dc + dc.d*Z_dimension_space_size
         end
     end
     return DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dcs))

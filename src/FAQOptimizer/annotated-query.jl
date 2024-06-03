@@ -22,7 +22,7 @@ function Base.copy(aq::AnnotatedQuery)
                           deepcopy(aq.output_order),
                           deepcopy(aq.output_format),
                           deepcopy(aq.reduce_idxs),
-                          plan_copy(aq.point_expr),
+                          new_point_expr,
                           deepcopy(aq.idx_lowest_root),
                           deepcopy(aq.idx_op),
                           id_to_node,
@@ -39,6 +39,14 @@ function AnnotatedQuery(q::PlanNode, ST)
     end
     insert_statistics!(ST, q)
     q = canonicalize(q)
+    ids = []
+    for n in PostOrderDFS(q)
+        if n.kind in (Input,)
+           println(n.node_id)
+           push!(ids, n.node_id)
+        end
+    end
+    println("Unique: $(length(unique(ids))) \n Full: $(length(ids))")
     output_name = q.name
     has_mat_expr = q.expr.kind === Materialize
     expr, output_formats, output_index_order = (nothing, nothing, nothing)
@@ -64,7 +72,6 @@ function AnnotatedQuery(q::PlanNode, ST)
         end),
     ])))(expr)
     insert_statistics!(ST, point_expr)
-
     id_to_node = Dict()
     for node in PreOrderDFS(point_expr)
         id_to_node[node.node_id] = node
@@ -99,9 +106,12 @@ function AnnotatedQuery(q::PlanNode, ST)
                 idx_op[Index(new_idx)] = agg_op
                 idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
+                println("IDX: $new_idx")
+                println("INITIAL ASSIGNMENT: $(id_to_node[idx_lowest_root[Index(new_idx)]])")
             end
         end
     end
+
     parent_idxs = Dict(i=>[] for i in reduce_idxs)
     for idx1 in reduce_idxs
         idx1_op = idx_op[idx1]
@@ -123,6 +133,12 @@ function AnnotatedQuery(q::PlanNode, ST)
             end
         end
     end
+    println("OVERALL POINT EXPR: $point_expr")
+    for idx in reduce_idxs
+        println("IDX: ", idx)
+        println(id_to_node[idx_lowest_root[idx]])
+    end
+
     return AnnotatedQuery(ST,
                             output_name,
                             output_index_order,
@@ -200,7 +216,7 @@ end
 # Returns the cost of reducing out an index
 function cost_of_reduce(reduce_idx, aq, cache=Dict())
     query, _, _ = get_reduce_query(reduce_idx, aq)
-    cache_key = sort([n.node_id for n in PostOrderDFS(query.expr)])
+    cache_key = plan_hash(query.expr)
     if !haskey(cache, cache_key)
         comp_stats = query.expr.arg.stats
         mat_stats = query.expr.stats
@@ -262,8 +278,11 @@ function reduce_idx!(idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
+
     insert_statistics!(aq.ST, new_point_expr)
     @assert idx.name ∉ get_index_set(new_point_expr.stats)
+    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
+    @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)
     aq.reduce_idxs = new_reduce_idxs
     aq.point_expr = new_point_expr
     aq.idx_lowest_root = new_idx_lowest_root

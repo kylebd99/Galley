@@ -1,6 +1,6 @@
 
 
-
+using Profile
 function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
     input_aq = AnnotatedQuery(input_query, ST)
     PLAN_AND_COST = Tuple{Vector{PlanNode}, Vector{PlanNode}, AnnotatedQuery, Float64}
@@ -15,10 +15,7 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
             aq = pc[3]
             prev_cost = pc[4]
             for idx in get_reducible_idxs(aq)
-                if !haskey(cost_cache, (vars, idx))
-                    cost_cache[(vars, idx)] = cost_of_reduce(idx, aq)
-                end
-                cost, reduced_vars = cost_cache[(vars, idx)]
+                cost, reduced_vars = cost_of_reduce(idx, aq, cost_cache)
                 cost += prev_cost
                 new_vars = union(vars, [i.name for i in reduced_vars])
                 cheapest_cost = min(get(new_optimal_orders, new_vars, (nothing, nothing, nothing, Inf))[4],
@@ -45,7 +42,7 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
 end
 
 function pruned_query_to_plan(input_query::PlanNode, ST)
-    greedy_order, greedy_queries, greedy_aq, greedy_cost = branch_and_bound(plan_copy(input_query), ST, 1, Inf)
+    greedy_order, greedy_queries, greedy_aq, greedy_cost = branch_and_bound(plan_copy(input_query), ST, 3, Inf)
     exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, greedy_cost)
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)

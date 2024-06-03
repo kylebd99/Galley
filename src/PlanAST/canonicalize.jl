@@ -49,16 +49,14 @@ end
 
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
     for expr in PostOrderDFS(plan)
-        if @capture expr Query(~a, ~expr)
-            bindings[a] = expr.stats
-        elseif @capture expr Query(~a, ~expr, ~loop_order...)
-            bindings[a] = expr.stats
-        elseif @capture expr MapJoin(~f, ~args...)
-            expr.stats = merge_tensor_stats(f.val, ST[arg.stats for arg in args]...)
-        elseif @capture expr Aggregate(~f, ~idxs..., ~arg)
-            expr.stats = reduce_tensor_stats(f.val, Set{IndexExpr}([idx.name for idx in idxs]), arg.stats)
-        elseif @capture expr Materialize(~formats..., ~idxs..., ~arg)
-            expr.stats = arg.stats
+        if expr.kind === Query
+            bindings[expr.name] = expr.expr.stats
+        elseif expr.kind === MapJoin
+            expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
+        elseif expr.kind === Aggregate
+            expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
+        elseif expr.kind === Materialize
+            expr.stats = expr.expr.stats
             def = get_def(expr.stats)
             def.level_formats = [f.val for f in expr.formats]
             def.index_order = [idx.name for idx in expr.idx_order]
@@ -66,9 +64,9 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
             if haskey(bindings, expr)
                 expr.stats = get(bindings, expr, nothing)
             end
-        elseif @capture expr Input(~tns, ~idxs...)
+        elseif expr.kind === Input
             if isnothing(expr.stats) || replace
-                expr.stats = ST(tns.val, IndexExpr[idx.val for idx in idxs])
+                expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])
             end
         elseif expr.kind === Value
             if expr.val isa Number
@@ -81,7 +79,7 @@ end
 # This function labels every node with an id. These ids respect a topological ordering where
 # children have id's that are larger than parents.
 function insert_node_ids!(plan::PlanNode)
-    cur_id = 0
+    cur_id = 1
     for expr in PreOrderDFS(plan)
         expr.node_id = cur_id
         cur_id += 1
@@ -111,6 +109,7 @@ function remove_extraneous_mapjoins(plan::PlanNode)
         (@rule MapJoin(~f,  ~x..., ~v, ~y...) => v where (v.kind == Value && isannihilator(f.val, v.val)))]))))(plan)
 
 end
+
 function canonicalize(plan::PlanNode)
     plan = unique_indices(Dict(), plan)
     plan = merge_mapjoins(plan)
@@ -118,6 +117,9 @@ function canonicalize(plan::PlanNode)
     plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan)
+    # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting
+    # later on.
+    plan = plan_copy(plan)
     insert_node_ids!(plan)
-    return plan
+    return  plan
 end

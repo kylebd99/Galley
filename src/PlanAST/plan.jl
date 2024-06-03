@@ -39,7 +39,7 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
         args = vcat(args...)
         if (kind === Input && length(args) >= 1)
             if args[1] isa Tensor || args[1] isa DuckDBTensor
-                PlanNode(kind, args, nothing, nothing)
+                PlanNode(kind, args, abs(rand(Int)), nothing)
             elseif args[1].kind === Value
                 PlanNode(kind, args, nothing, nothing)
             elseif args[1].kind === Materialize
@@ -118,6 +118,7 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
         return Base.getfield(node, sym)
     elseif node.kind === Index && sym === :name node.val
     elseif node.kind === Alias && sym === :name node.val
+    elseif node.kind === Input && sym === :id node.val
     elseif node.kind === Input && sym === :tns node.children[1]
     elseif node.kind === Input && sym === :idxs begin length(node.children) > 1 ? node.children[2:end] : [] end
     elseif node.kind === MapJoin && sym === :op node.children[1]
@@ -144,6 +145,7 @@ function Base.setproperty!(node::PlanNode, sym::Symbol, v)
         return Base.setfield!(node, sym, v)
     elseif node.kind === Index && sym === :name node.val = v
     elseif node.kind === Alias && sym === :name node.val = v
+    elseif node.kind === Input && sym === :id node.val = v
     elseif node.kind === Input && sym === :tns node.children[1] = v
     elseif node.kind === Input && sym === :idxs begin node.children = [node.children[1], v...] end
     elseif node.kind === MapJoin && sym === :op node.children[1] = v
@@ -295,15 +297,30 @@ end
 function plan_copy(n::PlanNode)
     if n.kind === Input
         p = Input(n.tns, deepcopy(n.idxs)...)
-        p.stats = deepcopy(n.stats)
+        p.stats = isnothing(n.stats) ? n.stats : deepcopy(n.stats)
         p.node_id = n.node_id
         return p
     else
-        stats = deepcopy(n.stats)
+        stats = isnothing(n.stats) ? n.stats : deepcopy(n.stats)
         children = []
         for i in eachindex(n.children)
             push!(children, plan_copy(n.children[i]))
         end
         return PlanNode(n.kind, children, n.val, stats, n.node_id)
     end
+end
+
+# This function returns a hash code for a plan tree. The goal is for this to be used for
+# checking syntactic equivalence, so we exclude node_id & stats.
+function plan_hash(n::PlanNode)
+    h = UInt64(0)
+    for node in PostOrderDFS(n)
+        if node.kind == Value && node.val isa Tensor
+            return h
+        else
+            h = hash(node.kind, h)
+            h = hash(node.val, h)
+        end
+    end
+    return h
 end

@@ -182,6 +182,7 @@ function fix_cardinality!(stat::DCStats, card)
     for dc in stat.dcs
         if length(dc.X) == 0 && dc.Y == get_index_set(stat)
             push!(new_dcs, DC(Set{IndexExpr}(), get_index_set(stat), min(card, dc.d)))
+            had_dc = true
         else
             push!(new_dcs, dc)
         end

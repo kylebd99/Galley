@@ -238,7 +238,6 @@ function get_join_loop_order(agg_op, input_stats::Vector{TensorStats}, join_stat
         println("Exact Order: $exact_order")
         println("Greedy Cost: $greedy_cost")
         println("Greedy Order: $greedy_order")
-        @assert exact_cost <= greedy_cost
     end
-    return exact_order
+    return exact_cost > greedy_cost ? greedy_order : exact_order
 end

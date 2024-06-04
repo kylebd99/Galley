@@ -24,7 +24,7 @@ function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{Index
             continue
         end
         # Tensors are stored in column major, so we reverse the index order here
-        fully_compat_with_loop_prefix(index_order, prefix) && push!(ref_set, i)
+        !fully_compat_with_loop_prefix(index_order, prefix) && push!(ref_set, i)
     end
     return ref_set
 end
@@ -221,7 +221,7 @@ function get_join_loop_order(agg_op, input_stats::Vector{TensorStats}, join_stat
     greedy_order, greedy_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
     exact_order, exact_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
 
-    if true
+    if exact_cost > greedy_cost * 1.1
         println("Exact Cost: $exact_cost")
         println("Exact Order: $exact_order")
         println("Greedy Cost: $greedy_cost")

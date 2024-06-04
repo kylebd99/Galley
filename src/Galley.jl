@@ -63,6 +63,7 @@ function galley(input_query::PlanNode;
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     verbose=0)
     overall_start = time()
+    input_query = plan_copy(input_query)
     verbose >= 2 && println("Input Query : ", input_query)
     opt_start = time()
     faq_opt_start = time()

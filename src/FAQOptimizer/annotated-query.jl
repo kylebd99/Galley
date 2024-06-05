@@ -214,7 +214,7 @@ end
 # Returns the cost of reducing out an index
 function cost_of_reduce(reduce_idx, aq, cache=Dict())
     query, _, _ = get_reduce_query(reduce_idx, aq)
-    cache_key = plan_hash(query.expr)
+    cache_key = hash(query.expr)
     if !haskey(cache, cache_key)
         comp_stats = query.expr.arg.stats
         mat_stats = query.expr.stats

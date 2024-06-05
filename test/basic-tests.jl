@@ -1,5 +1,3 @@
-
-
 @testset verbose = true "matrix operations" begin
     verbose = 0
     @testset "2x2 matrices, element-wise mult" begin
@@ -137,7 +135,6 @@
         c = Input(c_data, :k, :l)
         d = Aggregate(+, :j, MapJoin(*, a, b))
         e = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :l, Aggregate(+, :k, MapJoin(*, d, c))))
-        verbose= 0
         result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * c_matrix
@@ -223,8 +220,7 @@
         copyto!(b_data, b_matrix)
         b = Input(b_data, :j, :k)
         d = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(+, a, b))))
-        println(d)
-        result = galley(d, verbose=3)
+        result = galley(d, verbose=verbose)
         correct_result = sum(a_matrix)*100 + sum(b_matrix)*100
         @test result.value == correct_result
     end

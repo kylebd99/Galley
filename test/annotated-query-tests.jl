@@ -8,34 +8,34 @@ using Finch
     A = Tensor(Dense(Sparse(Element(0.0))), fsprand(5, 5, .2))
 
     @testset "get_reduce_query" begin
-        chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j), Input(A, :j, :k)))))
+        chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
         query = reduce_idx!(Index(:i), aq)
-        expected_expr = Aggregate(+, :i, Input(A, :i, :j))
+        expected_expr = Aggregate(+, :i, Input(A, :i, :j, "a1"))
         @test query.expr == expected_expr
 
         aq = AnnotatedQuery(chain_expr, NaiveStats)
         query = reduce_idx!(Index(:j), aq)
-        expected_expr = Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j), Input(A, :j, :k)))
+        expected_expr = Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))
         @test query.expr == expected_expr
 
         aq = AnnotatedQuery(chain_expr, NaiveStats)
         query = reduce_idx!(Index(:k), aq)
-        expected_expr = Aggregate(+, :k, Input(A, :j, :k))
+        expected_expr = Aggregate(+, :k, Input(A, :j, :k, "a2"))
         @test query.expr == expected_expr
 
         # Check that we don't push aggregates past operations which don't distribute over them.
-        chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j), Input(A, :j, :k)))))
+        chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
         query = reduce_idx!(Index(:i), aq)
-        expected_expr = Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j), Input(A, :j, :k)))
+        expected_expr = Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))
         @test query.expr == expected_expr
 
         # Check that we respect aggregates' position in the exression
-        chain_expr = Query(:out, Materialize(Aggregate(+, :j, :k, MapJoin(max, Aggregate(+, :i, Input(A, :i, :j)), Input(A, :j, :k)))))
+        chain_expr = Query(:out, Materialize(Aggregate(+, :j, :k, MapJoin(max, Aggregate(+, :i, Input(A, :i, :j, "a1")), Input(A, :j, :k, "a2")))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
         query = reduce_idx!(Index(:i), aq)
-        expected_expr = Aggregate(+, :i, Input(A, :i, :j))
+        expected_expr = Aggregate(+, :i, Input(A, :i, :j, "a1"))
         @test query.expr == expected_expr
 
     end

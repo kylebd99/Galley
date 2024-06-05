@@ -39,9 +39,21 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
         args = vcat(args...)
         if (kind === Input && length(args) >= 1)
             if args[1] isa Tensor || args[1] isa DuckDBTensor
-                PlanNode(kind, args, abs(rand(Int)), nothing)
+                if args[end] isa String
+                    return PlanNode(kind, args[1:end-1], args[end], nothing)
+                else
+                    PlanNode(kind, args, string(hash(args)), nothing)
+                end
             elseif args[1].kind === Value
-                PlanNode(kind, args, nothing, nothing)
+                if args[1].val isa Tensor || args[1].val isa DuckDBTensor
+                    if args[end] isa String
+                        return PlanNode(kind, args[1:end-1], args[end], nothing)
+                    else
+                        PlanNode(kind, args, string(hash(args)), nothing)
+                    end
+                else
+                    return PlanNode(kind, args, nothing, nothing)
+                end
             elseif args[1].kind === Materialize
                 mat_expr = args[1]
                 new_idxs = [Index(x) for x  in args[2:end]]
@@ -171,7 +183,7 @@ function relabel_input(input::PlanNode, indices...)
     if input.kind != Input
         throw(ErrorException("Can't relabel a node other than input!"))
     end
-    relabeled_input = Input(input.tns, indices...)
+    relabeled_input = Input(input.tns, indices..., input.id)
     relabeled_input.stats = reindex_stats(input.stats, collect(indices))
     return relabeled_input
 end
@@ -185,22 +197,42 @@ function Base.:(==)(a::PlanNode, b::PlanNode)
         end
     elseif a.kind === Alias
         return b.kind === Alias && a.name == b.name
+    elseif a.kind == Input
+        return b.kind === Input && a.id == b.id && a.idxs == b.idxs
     elseif a.kind === Index
         return b.kind === Index && a.name == b.name
     elseif a.kind == Aggregate
         return b.kind === Aggregate && a.arg == b.arg && Set(a.idxs) == Set(b.idxs)
     elseif istree(a)
-        return a.kind === b.kind && a.children == b.children
+        return a.kind === b.kind && all(a.children .== b.children)
     else
         error("unimplemented")
     end
 end
 
+Base.hash(a::PlanNode) = hash(a, UInt(0))
+
 function Base.hash(a::PlanNode, h::UInt)
-    if a.kind === Value || a.kind === Alias || a.kind === Index
+    if a.kind === Value
+        if a.val isa Tensor
+            return hash(typeof(a.val))
+        else
+            return hash(a.kind, hash(a.val, h))
+        end
+    elseif a.kind === Alias || a.kind === Index
         return hash(a.kind, hash(a.val, h))
+    elseif a.kind == Input
+        h = hash(a.kind, hash(a.id, h))
+        for id in a.idxs
+            h = hash(id, h)
+        end
+        return h
     elseif istree(a)
-        return hash(a.kind, hash(a.children, h))
+        h = hash(a.kind, h)
+        for child in a.children
+            h = hash(child, h)
+        end
+        return h
     else
         error("unimplemented")
     end
@@ -296,7 +328,7 @@ end
 # The goal of this is to emulate deepcopy except for the actual data
 function plan_copy(n::PlanNode)
     if n.kind === Input
-        p = Input(n.tns, deepcopy(n.idxs)...)
+        p = Input(n.tns, deepcopy(n.idxs)..., n.id)
         p.stats = isnothing(n.stats) ? n.stats : deepcopy(n.stats)
         p.node_id = n.node_id
         return p
@@ -308,19 +340,4 @@ function plan_copy(n::PlanNode)
         end
         return PlanNode(n.kind, children, n.val, stats, n.node_id)
     end
-end
-
-# This function returns a hash code for a plan tree. The goal is for this to be used for
-# checking syntactic equivalence, so we exclude node_id & stats.
-function plan_hash(n::PlanNode)
-    h = UInt64(0)
-    for node in PostOrderDFS(n)
-        if node.kind == Value && node.val isa Tensor
-            return h
-        else
-            h = hash(node.kind, h)
-            h = hash(node.val, h)
-        end
-    end
-    return h
 end

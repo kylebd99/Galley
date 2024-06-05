@@ -61,6 +61,8 @@ function galley(input_query::PlanNode;
                     faq_optimizer::FAQ_OPTIMIZERS=pruned,
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
+                    update_cards=true,
+                    max_kernel_size=5,
                     verbose=0)
     overall_start = time()
     input_query = plan_copy(input_query)
@@ -72,7 +74,6 @@ function galley(input_query::PlanNode;
     faq_opt_time = time() - faq_opt_start
     verbose >= 1 && println("FAQ Opt Time: $faq_opt_time")
 
-    # TODO: Add the step which splits up overly complex kernels back in
     if verbose >= 1
         println("--------------- Logical Plan ---------------")
         println(logical_plan)
@@ -114,7 +115,7 @@ function galley(input_query::PlanNode;
     alias_result = Dict()
     for l_query in logical_plan.queries
         split_start = time()
-        split_queries = split_query(ST, l_query, alias_stats)
+        split_queries = split_query(ST, l_query, max_kernel_size, alias_stats)
         total_split_time  += time() - split_start
         for s_query in split_queries
             phys_opt_start = time()
@@ -133,7 +134,7 @@ function galley(input_query::PlanNode;
                 exec_start = time()
                 execute_query(alias_result, p_query, verbose)
                 total_exec_time += time() - exec_start
-                if alias_result[p_query.name] isa Tensor
+                if alias_result[p_query.name] isa Tensor && update_cards
                     count_start = time()
                     fix_cardinality!(alias_stats[p_query.name], countstored(alias_result[p_query.name]))
                     total_count_time += time() - count_start

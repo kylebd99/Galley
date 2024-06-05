@@ -18,11 +18,12 @@ struct ExperimentParams
     faq_optimizer::FAQ_OPTIMIZERS
     stats_type::Type
     use_duckdb::Bool
+    update_cards::Bool
     timeout::Float64
     description::String
 
-    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, timeout=60*5, description="")
-        return new(workload, warm_start, faq_optimizer, stats_type, use_duckdb, timeout, description)
+    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, update_cards=true, timeout=60*5, description="")
+        return new(workload, warm_start, faq_optimizer, stats_type, use_duckdb, update_cards, timeout, description)
     end
 end
 
@@ -32,6 +33,7 @@ function param_to_results_filename(param::ExperimentParams)
     filename *= string(param.warm_start) * "_"
     filename *= string(param.faq_optimizer) * "_"
     filename *= string(param.stats_type) *  "_"
-    filename *= string(param.use_duckdb) * ".csv"
+    filename *= string(param.use_duckdb) *  "_"
+    filename *= string(param.update_cards) * ".csv"
     return filename
 end

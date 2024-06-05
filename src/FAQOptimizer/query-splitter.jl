@@ -1,5 +1,3 @@
-MAX_INDEX_OCCURENCES = 5
-
 function count_index_occurences(nodes)
     vars = Set()
     occurences = 0
@@ -17,11 +15,11 @@ function count_index_occurences(nodes)
     return occurences - length(vars)
 end
 
-function get_connected_subsets(nodes)
+function get_connected_subsets(nodes, max_kernel_size)
     ss = []
     for k in 2:4
         for s in subsets(nodes, k)
-            if count_index_occurences(s) > MAX_INDEX_OCCURENCES
+            if count_index_occurences(s) > max_kernel_size
                 continue
             end
             is_cross_prod = false
@@ -44,7 +42,7 @@ end
 #   Query(name, Materialzie(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
 # It outputs a set of queries where the final one binds `name` and each
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
-function split_query(ST, q::PlanNode, alias_stats)
+function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
     insert_node_ids!(q)
     aq = AnnotatedQuery(q, ST)
     pe = aq.point_expr
@@ -56,7 +54,7 @@ function split_query(ST, q::PlanNode, alias_stats)
     remaining_idxs = aq.reduce_idxs
     cost_cache = Dict()
     cur_occurences = count_index_occurences([pe])
-    while cur_occurences > MAX_INDEX_OCCURENCES
+    while cur_occurences > max_kernel_size
         nodes_to_remove = nothing
         new_query = nothing
         new_agg_idxs = nothing
@@ -82,7 +80,7 @@ function split_query(ST, q::PlanNode, alias_stats)
                 min_cost = n_cost
             end
             if node.kind == MapJoin && isassociative(node.op.val)
-                for s in get_connected_subsets(node.args)
+                for s in get_connected_subsets(node.args, max_kernel_size)
                     cache_key = sort([n.node_id for n in s])
                     if !haskey(cost_cache, cache_key)
                         s_stat = merge_tensor_stats(node.op.val, [n.stats for n in s]...)

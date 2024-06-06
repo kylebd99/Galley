@@ -15,7 +15,7 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
             aq = pc[3]
             prev_cost = pc[4]
             for idx in get_reducible_idxs(aq)
-                cost, reduced_vars = cost_of_reduce(idx, aq, Dict())
+                cost, reduced_vars = cost_of_reduce(idx, aq, cost_cache)
                 cost += prev_cost
                 new_vars = union(vars, [i.name for i in reduced_vars])
                 cheapest_cost = min(get(new_optimal_orders, new_vars, (nothing, nothing, nothing, Inf))[4],

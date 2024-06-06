@@ -58,3 +58,16 @@ function pruned_query_to_plan(input_query::PlanNode, ST)
     last_query.expr.stats = last_query.expr.expr.stats
     return Plan(exact_queries..., Outputs(last_query.name))
 end
+
+
+function exact_query_to_plan(input_query::PlanNode, ST)
+    exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, Inf)
+    remaining_q = get_remaining_query(exact_aq)
+    if !isnothing(remaining_q)
+        push!(exact_queries, remaining_q)
+    end
+    last_query = exact_queries[end]
+    last_query.expr = Materialize(exact_aq.output_format..., exact_aq.output_order..., last_query.expr)
+    last_query.expr.stats = last_query.expr.expr.stats
+    return Plan(exact_queries..., Outputs(last_query.name))
+end

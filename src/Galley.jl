@@ -26,7 +26,7 @@ export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Qu
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
 export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
-export naive, hypertree_width, greedy, pruned
+export naive, hypertree_width, greedy, pruned, exact
 export expr_to_kernel, execute_tensor_kernel
 export load_to_duckdb, DuckDBTensor, fill_table
 
@@ -37,7 +37,7 @@ TensorId = String
 # A subset of the allowed level formats provided by the Finch API
 @enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_bytemap = 4 t_undef = 5
 # The set of optimizers implemented by Galley
-@enum FAQ_OPTIMIZERS greedy naive pruned
+@enum FAQ_OPTIMIZERS greedy naive pruned exact
 
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
@@ -62,6 +62,7 @@ function galley(input_query::PlanNode;
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,
+                    simple_cse=true,
                     max_kernel_size=5,
                     verbose=0)
     overall_start = time()
@@ -112,6 +113,8 @@ function galley(input_query::PlanNode;
     total_exec_time = 0
     total_count_time = 0
     alias_stats = Dict{PlanNode, TensorStats}()
+    alias_hash = Dict{PlanNode, UInt}()
+    plan_hash_result = Dict()
     alias_result = Dict()
     for l_query in logical_plan.queries
         split_start = time()
@@ -132,7 +135,12 @@ function galley(input_query::PlanNode;
                 verbose > 2 && println(p_query)
                 verbose > 2 && validate_physical_query(p_query)
                 exec_start = time()
-                execute_query(alias_result, p_query, verbose)
+                p_query_hash = cannonical_hash(p_query.expr, alias_hash)
+                if simple_cse && haskey(plan_hash_result, p_query_hash)
+                    alias_result[p_query.name] = plan_hash_result[p_query_hash]
+                else
+                    execute_query(alias_result, p_query, verbose)
+                end
                 total_exec_time += time() - exec_start
                 if alias_result[p_query.name] isa Tensor && update_cards
                     count_start = time()
@@ -142,6 +150,8 @@ function galley(input_query::PlanNode;
                 phys_opt_start = time()
                 condense_stats!(alias_stats[p_query.name]; cheap=false)
                 total_phys_opt_time += time() - phys_opt_start
+                alias_hash[p_query.name] = p_query_hash
+                plan_hash_result[p_query_hash] = alias_result[p_query.name]
             end
         end
     end

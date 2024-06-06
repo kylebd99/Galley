@@ -123,3 +123,22 @@ function canonicalize(plan::PlanNode)
     insert_node_ids!(plan)
     return  plan
 end
+
+gen_alias_name(hash) = Symbol("A_$hash")
+gen_idx_name(count::Int) = Symbol("i_$count")
+
+function cannonical_hash(plan::PlanNode, alias_hash)
+    plan = plan_copy(plan)
+    idx_translate_dict = Dict()
+    for n in PostOrderDFS(plan)
+        if n.kind === Index
+            if !haskey(idx_translate_dict, n.name)
+                idx_translate_dict[n.name] = gen_idx_name(length(idx_translate_dict))
+            end
+            n.name = idx_translate_dict[n.name]
+        elseif n.kind === Alias
+            n.name = gen_alias_name(alias_hash[n])
+        end
+    end
+    return hash(plan)
+end

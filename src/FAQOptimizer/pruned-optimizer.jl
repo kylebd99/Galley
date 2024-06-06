@@ -1,6 +1,3 @@
-
-
-using Profile
 function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
     input_aq = AnnotatedQuery(input_query, ST)
     PLAN_AND_COST = Tuple{Vector{PlanNode}, Vector{PlanNode}, AnnotatedQuery, Float64}
@@ -10,7 +7,7 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
     # and proposed reduction index.
     cost_cache = Dict()
     for _ in 1:length(input_aq.reduce_idxs)
-        new_optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}()
+        best_idx_ext = Dict()
         for (vars, pc) in prev_new_optimal_orders
             aq = pc[3]
             prev_cost = pc[4]
@@ -18,18 +15,25 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
                 cost, reduced_vars = cost_of_reduce(idx, aq, cost_cache)
                 cost += prev_cost
                 new_vars = union(vars, [i.name for i in reduced_vars])
-                cheapest_cost = min(get(new_optimal_orders, new_vars, (nothing, nothing, nothing, Inf))[4],
+                cheapest_cost = min(get(best_idx_ext, new_vars, (nothing, nothing, nothing, nothing, Inf))[5],
                                     get(optimal_orders, new_vars, (nothing, nothing, nothing, Inf))[4],
                                     max_cost)
-                if cost <= cheapest_cost + 100 # We add 100 to avoid FP issues
-                    new_order = PlanNode[pc[1]..., idx]
-                    new_aq = copy(aq)
-                    query = reduce_idx!(idx, new_aq)
-                    new_queries = PlanNode[pc[2]..., query]
-                    new_optimal_orders[new_vars] = (new_order, new_queries, new_aq, cost)
+                if cost <= cheapest_cost + 1 # We add 1 to avoid FP issues
+                    best_idx_ext[new_vars] = (aq, idx, pc[1], pc[2], cost)
                 end
             end
         end
+
+        new_optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}()
+        for (new_vars, idx_ext_info) in best_idx_ext
+            aq, idx, old_order, old_queries, cost = idx_ext_info
+            new_aq = copy(aq)
+            query = reduce_idx!(idx, new_aq)
+            new_queries = PlanNode[old_queries..., query]
+            new_order = PlanNode[old_order..., idx]
+            new_optimal_orders[new_vars] = (new_order, new_queries, new_aq, cost)
+        end
+
         merge!(optimal_orders, new_optimal_orders)
         # At each step, we only keep the k cheapest plans for each # of reduced idxs
         prev_new_optimal_orders = Dict()
@@ -43,7 +47,7 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
 end
 
 function pruned_query_to_plan(input_query::PlanNode, ST)
-    greedy_order, greedy_queries, greedy_aq, greedy_cost = branch_and_bound(plan_copy(input_query), ST, 3, Inf)
+    greedy_order, greedy_queries, greedy_aq, greedy_cost = branch_and_bound(plan_copy(input_query), ST, 1, Inf)
     exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, greedy_cost)
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)

@@ -3,3 +3,4 @@
 /Experiments/Results/*
 /DatasetExport
 workflows/CI.yml
+*.out

@@ -4,3 +4,4 @@
 /DatasetExport
 workflows/CI.yml
 *.out
+.vscode/*

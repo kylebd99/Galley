@@ -75,20 +75,35 @@ function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, inde
     return tensor_access
 end
 
+function get_dim_type(dim_size)
+    if dim_size <= typemax(UInt16)
+        return UInt16
+    elseif dim_size <= typemax(UInt32)
+        return UInt32
+    elseif dim_size <= typemax(UInt64)
+        return UInt64
+    elseif dim_size <= typemax(UInt128)
+        return UInt128
+    end
+end
+
+
+
 function initialize_tensor(formats, dims, default_value)
     if length(dims) == 0
         return Finch.Scalar(default_value)
     end
     B = Element(default_value)
     for i in range(1, length(dims))
+        DT = get_dim_type(dims[i])
         if formats[i] == t_sparse_list
-            B = SparseList(B, dims[i])
+            B = SparseList(B, DT(dims[i]))
         elseif formats[i] == t_dense
-            B = Dense(B, dims[i])
+            B = Dense(B, DT(dims[i]))
         elseif formats[i] == t_bytemap
-            B = SparseByteMap(B, dims[i])
+            B = SparseByteMap(B, DT(dims[i]))
         elseif formats[i] == t_hash
-            B = Sparse(B, dims[i])
+            B = Sparse(B, DT(dims[i]))
         else
             println("Error: Attempted to initialize invalid level format type.")
         end

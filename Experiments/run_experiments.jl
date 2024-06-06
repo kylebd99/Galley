@@ -22,14 +22,14 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "CompileTime", "Result", "Failed")]
         num_attempted, num_completed, num_correct, num_with_values, exp_finished = (0, 0, 0, 0, false)
         put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, exp_finished))
-#        worker_pid = load_worker()
+        worker_pid = load_worker()
         cur_query = 1
         while !exp_finished
-#            if worker_pid == -1
-#                worker_pid = load_worker()
-#            end
-#            f = @spawnat worker_pid attempt_experiment(experiment, cur_query, results_channel, status_channel)
-            f = attempt_experiment(experiment, cur_query, results_channel, status_channel)
+            if worker_pid == -1
+                worker_pid = load_worker()
+            end
+            f = @spawnat worker_pid attempt_experiment(experiment, cur_query, results_channel, status_channel)
+#            f = attempt_experiment(experiment, cur_query, results_channel, status_channel)
             load_start = time()
             finished = false
             last_result = time()

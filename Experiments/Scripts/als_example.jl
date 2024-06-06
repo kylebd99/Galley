@@ -30,7 +30,7 @@ end
 
 q = Materialize(Aggregate(+, :i, :j, MapJoin(*, MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))),
                                                 MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))))))
-
+insert_statistics!(DCStats, q)
 result = galley(deepcopy(Query(:out, q)), ST=DCStats, verbose=3)
 result_galley = galley(deepcopy(Query(:out, q)), ST=DCStats, verbose=0)
 println("Galley Exec: $(result_galley.execute_time)")

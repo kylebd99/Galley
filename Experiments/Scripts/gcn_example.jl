@@ -9,6 +9,62 @@ W = Tensor(Dense(Dense(Element(0))), rand(Int, k, k) .% 10)
 h_0 = Tensor(Dense(Dense(Element(0))), rand(Int, k, n) .% 10)
 nodes_of_interest = Tensor(SparseList(Element(0)), fsprand(Bool, n, .001))
 
+i_1 = Tensor(Dense(Dense(Element(0))))
+h_2_no_max = Tensor(Dense(Dense(Element(0))))
+h_2 = Tensor(Dense(Dense(Element(0))))
+i_2 = Tensor(Dense(Dense(Element(0))))
+h_3_no_max = Tensor(Dense(Dense(Element(0))))
+h_3 = Tensor(Dense(Dense(Element(0))))
+t_2 = @elapsed @finch begin
+    i_1 .= 0
+    for n1=_
+        for k2 =_
+            for k1 =_
+                i_1[k2, n1] += h_0[k1, n1] * W[k1, k2]
+            end
+        end
+    end
+
+    h_2_no_max .= 0
+    for n2 = _
+        for n1 = _
+            for k2 = _
+                h_2_no_max[k2, n2] += i_1[k2, n1] * A[n1, n2]
+            end
+        end
+    end
+    h_2 .= 0
+    for n2=_
+        for k2 = _
+            h_2[k2, n2] = max(h_2_no_max[k2, n2], 0)
+        end
+    end
+
+    i_2 .= 0
+    for n2=_
+        for k3 =_
+            for k2 =_
+                i_2[k3, n2] += h_2[k2, n2] * W[k2, k3]
+            end
+        end
+    end
+
+    h_3_no_max .= 0
+    for n3 = _
+        for n2 = _
+            for k3 = _
+                h_3_no_max[k3, n3] += i_2[k3, n2] * A[n2, n3]
+            end
+        end
+    end
+
+    h_3 .= 0
+    for n3=_
+        for k3 = _
+            h_3[k3, n3] = max(h_3_no_max[k3,n3], 0)
+        end
+    end
+end
 
 i_1 = Tensor(Dense(Dense(Element(0))))
 h_2_no_max = Tensor(Dense(Dense(Element(0))))

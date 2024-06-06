@@ -1,7 +1,7 @@
 include("../Experiments.jl")
 using Finch
 using Galley
-using Galley: t_dense
+using Galley: t_dense, insert_statistics!
 
 vertex_vectors, edge_matrices = load_subgraph_dataset(dblp, DCStats, nothing)
 A = Tensor(Dense(SparseList(Element(false))), edge_matrices[0].tns.val)
@@ -21,7 +21,7 @@ f_time = @elapsed @finch begin
     q2 .= false
     for n2=_
         for n1=_
-            q2[n2] <<choose(false)>>= ((q[n1] & A[n1, n2]) & !p[n2])
+            q2[n2] <<choose(false)>>= ((q[gallop(n1)] & A[gallop(n1), n2]) & !p[n2])
         end
     end
 
@@ -33,7 +33,7 @@ f_time = @elapsed @finch begin
     q3 .= false
     for n2=_
         for n1=_
-            q3[n2] <<choose(false)>>= ((q2[n1] & A[n1, n2]) & !p2[n2])
+            q3[n2] <<choose(false)>>= ((q2[gallop(n1)] & A[gallop(n1), n2]) & !p2[n2])
         end
     end
 
@@ -46,7 +46,7 @@ f_time = @elapsed @finch begin
     q4 .= false
     for n2=_
         for n1=_
-            q4[n2] <<choose(false)>>= ((q3[n1] & A[n1, n2]) & !p3[n2])
+            q4[n2] <<choose(false)>>= ((q3[gallop(n1)] & A[gallop(n1), n2]) & !p3[n2])
         end
     end
 
@@ -60,7 +60,7 @@ f_time = @elapsed @finch begin
     q2 .= false
     for n2=_
         for n1=_
-            q2[n2] <<choose(false)>>= ((q[n1] & A[n1, n2]) & !p[n2])
+            q2[n2] <<choose(false)>>= ((q[gallop(n1)] & A[gallop(n1), n2]) & !p[n2])
         end
     end
 
@@ -72,7 +72,7 @@ f_time = @elapsed @finch begin
     q3 .= false
     for n2=_
         for n1=_
-            q3[n2] <<choose(false)>>= ((q2[n1] & A[n1, n2]) & !p2[n2])
+            q3[n2] <<choose(false)>>= ((q2[gallop(n1)] & A[gallop(n1), n2]) & !p2[n2])
         end
     end
 
@@ -85,7 +85,7 @@ f_time = @elapsed @finch begin
     q4 .= false
     for n2=_
         for n1=_
-            q4[n2] <<choose(false)>>= ((q3[n1] & A[n1, n2]) & !p3[n2])
+            q4[n2] <<choose(false)>>= ((q3[gallop(n1)] & A[gallop(n1), n2]) & !p3[n2])
         end
     end
 
@@ -122,9 +122,16 @@ q4 = Materialize(t_dense, :n4,
 g_p4 = Materialize(t_dense, :n4, MapJoin(|,
                                     Input(q4, :n4),
                                     Input(p3, :n4)))
-
-result = galley(deepcopy(Query(:out, g_p4)), ST=DCStats, verbose=3)
+insert_statistics!(DCStats, g_p4)
+result_galley = galley(deepcopy(Query(:out, g_p4)), ST=DCStats, verbose=3)
 result_galley = galley(deepcopy(Query(:out, g_p4)), ST=DCStats, verbose=0)
+println("Galley Exec: $(result_galley.execute_time)")
+println("Galley Opt: $(result_galley.opt_time)")
+println("Finch Exec: $(f_time)")
+println("F = G: $(all(p4 .== result_galley.value))")
+
+result_galley = galley(deepcopy(Query(:out, g_p4)), simple_cse=true, ST=DCStats, verbose=3)
+result_galley = galley(deepcopy(Query(:out, g_p4)), simple_cse=true, ST=DCStats, verbose=0)
 println("Galley Exec: $(result_galley.execute_time)")
 println("Galley Opt: $(result_galley.opt_time)")
 println("Finch Exec: $(f_time)")

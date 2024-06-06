@@ -204,7 +204,7 @@ function Base.:(==)(a::PlanNode, b::PlanNode)
     elseif a.kind == Aggregate
         return b.kind === Aggregate && a.arg == b.arg && Set(a.idxs) == Set(b.idxs)
     elseif istree(a)
-        return a.kind === b.kind && all(a.children .== b.children)
+        return a.kind === b.kind && a.children == b.children
     else
         error("unimplemented")
     end

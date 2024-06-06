@@ -76,14 +76,12 @@ function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, inde
 end
 
 function get_dim_type(dim_size)
-    if dim_size <= typemax(UInt16)
-        return UInt16
-    elseif dim_size <= typemax(UInt32)
-        return UInt32
-    elseif dim_size <= typemax(UInt64)
-        return UInt64
-    elseif dim_size <= typemax(UInt128)
-        return UInt128
+    if dim_size*4 <= typemax(Int32)
+        return Int32
+    elseif dim_size*4 <= typemax(Int64)
+        return Int64
+    elseif dim_size*4 <= typemax(Int128)
+        return Int128
     end
 end
 

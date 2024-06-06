@@ -159,8 +159,8 @@ function get_join_loop_order_bounded(agg_op,
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf
-                if haskey(new_plans, plan_class)
-                    alt_cost = new_plans[plan_class][2]
+                if haskey(new_plans, new_plan_class)
+                    alt_cost = new_plans[new_plan_class][2]
                 end
 
                 if new_cost <= alt_cost

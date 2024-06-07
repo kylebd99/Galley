@@ -76,6 +76,7 @@ function galley(input_query::PlanNode;
     if check_dnf
         dnf_plan, dnf_cost = high_level_optimize(faq_optimizer, input_query, ST, true)
         logical_plan = dnf_cost < cnf_cost ? dnf_plan : logical_plan
+        verbose >= 1 && println("Used DNF: $(dnf_cost < cnf_cost)")
     end
     faq_opt_time = time() - faq_opt_start
     verbose >= 1 && println("FAQ Opt Time: $faq_opt_time")

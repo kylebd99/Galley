@@ -167,17 +167,32 @@ end
 function merge_tensor_stats_union(op, all_stats::Vararg{DCStats})
     new_def = merge_tensor_def_union(op, [get_def(stats) for stats in all_stats]...)
 
-    # We start by extending all arguments' dcs to the new dimensions
-    new_dcs = Dict()
+    dc_keys = Set()
+    stats_dcs = []
+    # We start by extending all arguments' dcs to the new dimensions and infer dcs as needed
     for stats in all_stats
-        # We need to infer dcs before unioning to make sure that we properly add
+        condense_stats!(stats, timeout=100)
+        dcs = Dict()
         new_idxs = collect(setdiff(get_index_set(stats), get_index_set(new_def)))
+        Z = Set(new_idxs)
         for dc in stats.dcs
-            Z = Set(new_idxs)
+            dcs[(X=dc.X, Y=dc.Y)] = dc.d
+            push!(dc_keys, (X=dc.X, Y=dc.Y))
+
             Z_dimension_space_size = get_dim_space_size(new_def, Z)
-            dc_key = (X=dc.X, Y=∪(dc.Y, Z))
-            current_dc = get(new_dcs, dc_key, 0)
-            new_dcs[dc_key] = current_dc + dc.d*Z_dimension_space_size
+            ext_dc_key = (X=dc.X, Y=∪(dc.Y, Z))
+            dcs[ext_dc_key] = dc.d*Z_dimension_space_size
+            push!(dc_keys, ext_dc_key)
+        end
+        push!(stats_dcs, dcs)
+    end
+
+    # We only keep DCs which can be inferred from all inputs. Otherwise, we might miss
+    # important information which simply wasn't inferred
+    new_dcs = Dict()
+    for key in dc_keys
+        if all([haskey(dcs, key) for dcs in stats_dcs])
+            new_dcs[key] = sum([get(dcs, key, 0) for dcs in stats_dcs])
         end
     end
     return DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dcs))

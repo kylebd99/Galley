@@ -81,17 +81,19 @@ function merge_tensor_stats(op, all_stats::Vararg{ST}) where ST <: TensorStats
     join_like_args = []
     union_like_args = []
     for stats in all_stats
+        if length(get_index_set(stats)) == 0
+            continue
+        end
         if isannihilator(op, get_default_value(stats))
             push!(join_like_args, stats)
         else
             push!(union_like_args, stats)
         end
     end
-
     if length(union_like_args) == 0
-        return merge_tensor_stats_join(op, all_stats...)
+        return merge_tensor_stats_join(op, join_like_args...)
     elseif length(join_like_args) == 0
-        return merge_tensor_stats_union(op, all_stats...)
+        return merge_tensor_stats_union(op, union_like_args...)
     else
         union_stats = merge_tensor_stats_union(op, union_like_args...)
         return merge_tensor_stats_join(op, union_stats, join_like_args...)

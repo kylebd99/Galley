@@ -78,10 +78,23 @@ end
 # This function determines whether a binary operation is union-like or join-like and creates
 # new statistics objects accordingly.
 function merge_tensor_stats(op, all_stats::Vararg{ST}) where ST <: TensorStats
-    if all([isannihilator(op, get_default_value(stats)) for stats in all_stats])
+    join_like_args = []
+    union_like_args = []
+    for stats in all_stats
+        if isannihilator(op, get_default_value(stats))
+            push!(join_like_args, stats)
+        else
+            push!(union_like_args, stats)
+        end
+    end
+
+    if length(union_like_args) == 0
         return merge_tensor_stats_join(op, all_stats...)
-    else
+    elseif length(join_like_args) == 0
         return merge_tensor_stats_union(op, all_stats...)
+    else
+        join_stats = merge_tensor_stats_join(op, join_like_args...)
+        return merge_tensor_stats_union(op, join_stats, union_like_args...)
     end
 end
 

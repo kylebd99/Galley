@@ -5,10 +5,12 @@ include("../Experiments.jl")
 #vertex_vectors, edge_matrices = load_subgraph_dataset(yeast, DCStats, nothing)
 #X = Tensor(Dense(SparseList(Element(0))), edge_matrices[0].tns.val)
 #n = size(X)[1]
-n = 100000
-X = Tensor(Dense(SparseList(Element(0))), fsprand(Bool, n, n, 20))
-u = Tensor(Dense(Element(0)), rand(Int, n) .% 100)
-v = Tensor(Dense(Element(0)), rand(Int, n) .% 100)
+n = 10000
+k = 10
+X = Tensor(Dense(SparseList(SparseList(Element(0)))), fsprand(Bool, n, n, n, 20 * (1.0/n^2)))
+w = Tensor(Dense(Dense(Element(0))), rand(Int, n, k) .% 100)
+u = Tensor(Dense(Dense(Element(0))), rand(Int, n, k) .% 100)
+v = Tensor(Dense(Dense(Element(0))), rand(Int, n, k) .% 100)
 l = Scalar(0)
 
 f_time = @elapsed @finch begin
@@ -30,7 +32,7 @@ end
 
 q = Materialize(Aggregate(+, :i, :j, MapJoin(*, MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))),
                                                 MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))))))
-insert_statistics!(DCStats, q)
+
 result = galley(deepcopy(Query(:out, q)), ST=DCStats, verbose=3)
 result_galley = galley(deepcopy(Query(:out, q)), ST=DCStats, verbose=0)
 println("Galley Exec: $(result_galley.execute_time)")

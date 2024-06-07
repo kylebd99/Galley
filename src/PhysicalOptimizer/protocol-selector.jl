@@ -5,7 +5,7 @@ function select_leader_protocol(format::LevelFormat)
     elseif format == t_dense
         return t_default
     elseif format == t_bytemap
-        return t_default
+        return t_walk
     elseif format == t_hash
         return t_walk
     end
@@ -33,7 +33,7 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
         relevant_inputs = [i for i in input_stats if var ∈ get_index_set(i)]
         costs = []
         for input in relevant_inputs
-            if get_index_format(input, var) == t_dense || get_index_format(input, var) == t_bytemap
+            if get_index_format(input, var) == t_dense
                 push!(costs, get_dim_size(input, var))
                 continue
             end

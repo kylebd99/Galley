@@ -61,14 +61,21 @@ function run_experiments(experiment_params::Vector{ExperimentParams})
         while isready(results_channel)
             push!(results, take!(results_channel))
         end
+        results_filename = "Experiments/Results/" * param_to_results_filename(experiment)
+        writedlm(results_filename, results, ',')
+
+        total_runtime = sum([parse(Float64,x[4]) for x in results[2:end]])
+        total_opt_time = sum([parse(Float64,x[5]) for x in results[2:end]])
         println("Attempted Queries: ", num_attempted)
         println("Completed Queries: ", num_completed)
         println("Queries With Ground Truth: ", num_with_values)
         println("Correct Queries: ", num_correct)
-        println("Total Runtime: ", sum([parse(Float64,x[4]) for x in results[2:end]]))
-        println("Total Opt. Time: ", sum([parse(Float64,x[5]) for x in results[2:end]]))
+        println("Total Runtime: ", total_runtime)
+        println("Total Opt. Time: ", total_opt_time)
+        metadata = [("Attempted", "Completed", "HasGroundTruth", "Correct", "TotalRuntime", "TotalOptTime"),
+                    (string(num_attempted), string(num_completed), string(num_with_values), string(num_correct), string(total_runtime), string(total_opt_time))]
 
-        filename = "Experiments/Results/" * param_to_results_filename(experiment)
-        writedlm(filename, results, ',')
+        metadata_filename = "Experiments/Results/" * param_to_results_filename(experiment, ext=".meta")
+        writedlm(metadata_filename, metadata, ',')
     end
 end

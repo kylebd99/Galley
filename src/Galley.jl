@@ -71,7 +71,12 @@ function galley(input_query::PlanNode;
     opt_start = time()
     faq_opt_start = time()
     output_order = input_query.expr.idx_order
-    logical_plan = high_level_optimize(faq_optimizer, input_query, ST)
+    check_dnf = !allequal([n.op.val for n in PostOrderDFS(input_query) if n.kind === MapJoin])
+    logical_plan, cnf_cost = high_level_optimize(faq_optimizer, input_query, ST, false)
+    if check_dnf
+        dnf_plan, dnf_cost = high_level_optimize(faq_optimizer, input_query, ST, true)
+        logical_plan = dnf_cost < cnf_cost ? dnf_plan : logical_plan
+    end
     faq_opt_time = time() - faq_opt_start
     verbose >= 1 && println("FAQ Opt Time: $faq_opt_time")
 

@@ -1,5 +1,5 @@
-function greedy_query_to_plan(input_query::PlanNode, ST)
-    aq = AnnotatedQuery(input_query, ST)
+function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf)
+    aq = AnnotatedQuery(input_query, ST, use_dnf)
     queries = []
     cost_cache = Dict()
     reducible_idxs = get_reducible_idxs(aq)

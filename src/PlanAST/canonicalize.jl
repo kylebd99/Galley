@@ -92,14 +92,21 @@ function lift_aggregates(plan::PlanNode)
 end
 
 
-function distribute_mapjoins(plan::PlanNode)
-    Rewrite(Fixpoint(Postwalk(Chain([
-        (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg), ~c...) => Aggregate(g, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
-        (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg)) => Aggregate(g, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
-        (@rule MapJoin(~f, Aggregate(~g, ~idxs..., ~arg), ~b...) => Aggregate(g, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val)),
-        (@rule MapJoin(~f, ~x..., MapJoin(~g, ~args...)) => MapJoin(g, [MapJoin(f, x..., arg) for arg in args]...) where isdistributive(f.val, g.val)),
-        (@rule MapJoin(~f, MapJoin(~g, ~args...), ~x...) => MapJoin(g, [MapJoin(f, arg, x...) for arg in args]...) where isdistributive(f.val, g.val)),
-        (@rule MapJoin(~f,  ~x..., MapJoin(~g, ~args...), ~y...) => MapJoin(g, [MapJoin(f, x..., arg, y...) for arg in args]...) where isdistributive(f.val, g.val))]))))(plan)
+function distribute_mapjoins(plan::PlanNode, use_dnf)
+    if use_dnf
+        Rewrite(Fixpoint(Postwalk(Chain([
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg), ~c...) => Aggregate(g, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg)) => Aggregate(g, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, Aggregate(~g, ~idxs..., ~arg), ~b...) => Aggregate(g, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, ~x..., MapJoin(~g, ~args...)) => MapJoin(g, [MapJoin(f, x..., arg) for arg in args]...) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, MapJoin(~g, ~args...), ~x...) => MapJoin(g, [MapJoin(f, arg, x...) for arg in args]...) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f,  ~x..., MapJoin(~g, ~args...), ~y...) => MapJoin(g, [MapJoin(f, x..., arg, y...) for arg in args]...) where isdistributive(f.val, g.val))]))))(plan)
+    else
+        Rewrite(Fixpoint(Postwalk(Chain([
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg), ~c...) => Aggregate(g, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg)) => Aggregate(g, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, Aggregate(~g, ~idxs..., ~arg), ~b...) => Aggregate(g, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val))]))))(plan)
+    end
 end
 
 function remove_extraneous_mapjoins(plan::PlanNode)
@@ -110,13 +117,13 @@ function remove_extraneous_mapjoins(plan::PlanNode)
 
 end
 
-function canonicalize(plan::PlanNode)
+function canonicalize(plan::PlanNode, use_dnf)
     plan = unique_indices(Dict(), plan)
     plan = merge_mapjoins(plan)
-    plan = distribute_mapjoins(plan)
+    plan = distribute_mapjoins(plan, use_dnf)
     plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
-    plan = distribute_mapjoins(plan)
+    plan = distribute_mapjoins(plan, use_dnf)
     # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting
     # later on.
     plan = plan_copy(plan)

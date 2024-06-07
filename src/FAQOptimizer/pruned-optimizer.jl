@@ -1,5 +1,5 @@
-function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
-    input_aq = AnnotatedQuery(input_query, ST)
+function branch_and_bound(input_query::PlanNode, ST, k, max_cost, use_dnf)
+    input_aq = AnnotatedQuery(input_query, ST, use_dnf)
     PLAN_AND_COST = Tuple{Vector{PlanNode}, Vector{PlanNode}, AnnotatedQuery, Float64}
     optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}(Set{IndexExpr}()=>(PlanNode[], PlanNode[], input_aq, 0))
     prev_new_optimal_orders = optimal_orders
@@ -46,9 +46,9 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost)
     return optimal_orders[Set([i.name for i in input_aq.reduce_idxs])]
 end
 
-function pruned_query_to_plan(input_query::PlanNode, ST)
-    greedy_order, greedy_queries, greedy_aq, greedy_cost = branch_and_bound(plan_copy(input_query), ST, 1, Inf)
-    exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, greedy_cost)
+function pruned_query_to_plan(input_query::PlanNode, ST, use_dnf)
+    greedy_order, greedy_queries, greedy_aq, greedy_cost = branch_and_bound(plan_copy(input_query), ST, 1, Inf, use_dnf)
+    exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, greedy_cost, use_dnf)
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)
         push!(exact_queries, remaining_q)
@@ -56,12 +56,12 @@ function pruned_query_to_plan(input_query::PlanNode, ST)
     last_query = exact_queries[end]
     last_query.expr = Materialize(exact_aq.output_format..., exact_aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
-    return Plan(exact_queries..., Outputs(last_query.name))
+    return Plan(exact_queries..., Outputs(last_query.name)), exact_cost
 end
 
 
-function exact_query_to_plan(input_query::PlanNode, ST)
-    exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, Inf)
+function exact_query_to_plan(input_query::PlanNode, ST, use_dnf)
+    exact_order, exact_queries, exact_aq, exact_cost = branch_and_bound(plan_copy(input_query), ST, Inf, Inf, use_dnf)
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)
         push!(exact_queries, remaining_q)
@@ -69,5 +69,5 @@ function exact_query_to_plan(input_query::PlanNode, ST)
     last_query = exact_queries[end]
     last_query.expr = Materialize(exact_aq.output_format..., exact_aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
-    return Plan(exact_queries..., Outputs(last_query.name))
+    return Plan(exact_queries..., Outputs(last_query.name)), exact_cost
 end

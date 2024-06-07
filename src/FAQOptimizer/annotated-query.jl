@@ -33,12 +33,12 @@ end
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
 #      - or of the form Query(name, agg_map_expr)
-function AnnotatedQuery(q::PlanNode, ST)
+function AnnotatedQuery(q::PlanNode, ST, use_dnf)
     if !(@capture q Query(~name, ~expr))
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr)) or Query(name, agg_map_expr)"))
     end
     insert_statistics!(ST, q)
-    q = canonicalize(q)
+    q = canonicalize(q, use_dnf)
     output_name = q.name
     has_mat_expr = q.expr.kind === Materialize
     expr, output_formats, output_index_order = (nothing, nothing, nothing)

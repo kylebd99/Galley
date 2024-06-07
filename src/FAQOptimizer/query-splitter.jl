@@ -44,7 +44,7 @@ end
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
 function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
     insert_node_ids!(q)
-    aq = AnnotatedQuery(q, ST)
+    aq = AnnotatedQuery(q, ST, false)
     pe = aq.point_expr
     insert_statistics!(ST, pe, bindings=alias_stats)
     has_agg = length(aq.reduce_idxs) > 0

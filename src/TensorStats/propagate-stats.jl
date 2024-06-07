@@ -93,8 +93,8 @@ function merge_tensor_stats(op, all_stats::Vararg{ST}) where ST <: TensorStats
     elseif length(join_like_args) == 0
         return merge_tensor_stats_union(op, all_stats...)
     else
-        join_stats = merge_tensor_stats_join(op, join_like_args...)
-        return merge_tensor_stats_union(op, join_stats, union_like_args...)
+        union_stats = merge_tensor_stats_union(op, union_like_args...)
+        return merge_tensor_stats_join(op, union_stats, join_like_args...)
     end
 end
 
@@ -171,18 +171,19 @@ function merge_tensor_stats_union(op, all_stats::Vararg{DCStats})
     stats_dcs = []
     # We start by extending all arguments' dcs to the new dimensions and infer dcs as needed
     for stats in all_stats
-        condense_stats!(stats, timeout=100)
+        condense_stats!(stats, timeout=10000)
         dcs = Dict()
-        new_idxs = collect(setdiff(get_index_set(stats), get_index_set(new_def)))
-        Z = Set(new_idxs)
+        new_idxs = collect(setdiff(get_index_set(new_def), get_index_set(stats)))
         for dc in stats.dcs
             dcs[(X=dc.X, Y=dc.Y)] = dc.d
             push!(dc_keys, (X=dc.X, Y=dc.Y))
-
-            Z_dimension_space_size = get_dim_space_size(new_def, Z)
-            ext_dc_key = (X=dc.X, Y=∪(dc.Y, Z))
-            dcs[ext_dc_key] = dc.d*Z_dimension_space_size
-            push!(dc_keys, ext_dc_key)
+            for Z in subsets(new_idxs)
+                Z = Set(Z)
+                Z_dimension_space_size = get_dim_space_size(new_def, Z)
+                ext_dc_key = (X=dc.X, Y=∪(dc.Y, Z))
+                dcs[ext_dc_key] = dc.d*Z_dimension_space_size
+                push!(dc_keys, ext_dc_key)
+            end
         end
         push!(stats_dcs, dcs)
     end

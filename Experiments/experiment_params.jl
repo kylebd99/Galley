@@ -29,7 +29,7 @@ struct ExperimentParams
     end
 end
 
-function param_to_results_filename(param::ExperimentParams)
+function param_to_results_filename(param::ExperimentParams; ext=".csv")
     filename = ""
     filename *= string(param.workload) * "_"
     filename *= string(param.warm_start) * "_"
@@ -38,6 +38,6 @@ function param_to_results_filename(param::ExperimentParams)
     filename *= string(param.use_duckdb) *  "_"
     filename *= string(param.update_cards) * "_"
     filename *= string(param.simple_cse) * "_"
-    filename *= string(param.max_kernel_size) * ".csv"
+    filename *= string(param.max_kernel_size) * ext
     return filename
 end

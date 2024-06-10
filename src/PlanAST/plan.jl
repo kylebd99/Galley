@@ -326,14 +326,14 @@ end
 
 
 # The goal of this is to emulate deepcopy except for the actual data
-function plan_copy(n::PlanNode)
+function plan_copy(n::PlanNode; copy_stats = true)
     if n.kind === Input
         p = Input(n.tns, deepcopy(n.idxs)..., n.id)
-        p.stats = isnothing(n.stats) ? n.stats : deepcopy(n.stats)
+        p.stats = (copy_stats && isnothing(n.stats)) ? n.stats : deepcopy(n.stats)
         p.node_id = n.node_id
         return p
     else
-        stats = isnothing(n.stats) ? n.stats : deepcopy(n.stats)
+        stats = (copy_stats && isnothing(n.stats)) ? n.stats : deepcopy(n.stats)
         children = []
         for i in eachindex(n.children)
             push!(children, plan_copy(n.children[i]))

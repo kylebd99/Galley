@@ -135,7 +135,7 @@ gen_alias_name(hash) = Symbol("A_$hash")
 gen_idx_name(count::Int) = Symbol("i_$count")
 
 function cannonical_hash(plan::PlanNode, alias_hash)
-    plan = plan_copy(plan)
+    plan = plan_copy(plan; copy_stats=false)
     idx_translate_dict = Dict()
     for n in PostOrderDFS(plan)
         if n.kind === Index

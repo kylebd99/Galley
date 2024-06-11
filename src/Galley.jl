@@ -58,7 +58,7 @@ include("ExecutionEngine/ExecutionEngine.jl")
 #           - Isolate reformat_stats
 #           - Fuse mapjoins & permutations
 function galley(input_query::PlanNode;
-                    faq_optimizer::FAQ_OPTIMIZERS=pruned,
+                    faq_optimizer::FAQ_OPTIMIZERS=greedy,
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,

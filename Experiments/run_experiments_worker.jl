@@ -52,7 +52,6 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
                 warm_start_time = 0
                 if experiment.warm_start
                     println("Warm Start Query Path: ", query.query_path)
-                    warm_start_time = @elapsed galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, update_cards=experiment.update_cards, simple_cse=experiment.simple_cse, max_kernel_size=experiment.max_kernel_size, verbose=0)
                     warm_start_time = @elapsed galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, update_cards=experiment.update_cards, simple_cse=experiment.simple_cse, max_kernel_size=experiment.max_kernel_size, verbose=3)
                     println("Warm Start Time: $warm_start_time")
                 end

@@ -51,13 +51,12 @@ function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
     agg_op = has_agg ? aq.idx_op[first(aq.reduce_idxs)] : nothing
     node_id_counter = maximum([n.node_id for n in PostOrderDFS(pe)]) + 1
     queries = []
-    remaining_idxs = aq.reduce_idxs
     cost_cache = Dict()
     cur_occurences = count_index_occurences([pe])
     while cur_occurences > max_kernel_size
         nodes_to_remove = nothing
         new_query = nothing
-        new_agg_idxs = nothing
+        new_agg_idxs = Set()
         min_cost = Inf
         for node in PostOrderDFS(pe)
             if node.kind in (Value, Input, Alias, Index) || count_index_occurences([node]) == 0
@@ -71,7 +70,7 @@ function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
                                         estimate_nnz(n_mat_stats))
             end
             n_reduce_idxs, n_mat_stats, n_cost = cost_cache[cache_key]
-            if n_cost < min_cost && count_index_occurences([node]) < cur_occurences
+            if n_cost < min_cost && count_index_occurences([node]) < max_kernel_size
                 nodes_to_remove = [node.node_id]
                 new_expr = (has_agg && !isempty(n_reduce_idxs)) ? Aggregate(agg_op, n_reduce_idxs..., node) : node
                 new_expr.stats = n_mat_stats
@@ -103,10 +102,16 @@ function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
                         new_expr.stats = s_mat_stats
                         new_query = Query(Alias(gensym(:A)), new_expr)
                         new_agg_idxs = s_reduce_idxs
+                        # We want to prefer larger kernels here.
                         min_cost = s_cost - length(s) * 1000
                     end
                 end
             end
+        end
+        # If there is no valid way to reduce index occurrences, we just break and handle
+        # the remainder.
+        if isnothing(new_query)
+            break
         end
         push!(queries, new_query)
         setdiff!(aq.reduce_idxs, new_agg_idxs)
@@ -118,7 +123,7 @@ function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
         replace_and_remove_nodes!(pe, nodes_to_remove[1], alias, nodes_to_remove[2:end])
         cur_occurences = count_index_occurences([pe])
     end
-    remainder_expr = has_agg ? Aggregate(agg_op, remaining_idxs..., pe) : pe
+    remainder_expr = has_agg ? Aggregate(agg_op, aq.reduce_idxs..., pe) : pe
     if !isnothing(aq.output_order)
         remainder_expr = Materialize(aq.output_format..., aq.output_order..., remainder_expr)
     end

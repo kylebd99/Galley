@@ -423,7 +423,52 @@ function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::
     return dc[] # `[]` used to retrieve the actual value of the Finch.Scalar type
 end
 
+function _matrix_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
+    X = Tensor(Dense(Element(0)))
+    Y = Tensor(Dense(Element(0)))
+    d_i = Scalar(0)
+    d_j = Scalar(0)
+    d_i_j = Scalar(0)
+    d_j_i = Scalar(0)
+    d_ij = Scalar(0)
+    @finch begin
+        X .= 0
+        Y .= 0
+        for i =_
+            for j =_
+                X[i] += s[j, i]
+                Y[j] += s[j, i]
+            end
+        end
+        d_i .= 0
+        d_i_j .= 0
+        d_ij .= 0
+        for i=_
+            d_i[] += X[i] > 0
+            d_i_j[] <<max>>= X[i]
+            d_ij[] += X[i]
+        end
+        d_j .= 0
+        d_j_i .= 0
+        for j=_
+            d_j[] += Y[j] > 0
+            d_j_i[] <<max>>= Y[j]
+        end
+    end
+    i = indices[2]
+    j = indices[1]
+    return Set{DC}([DC(Set(), Set([i]), d_i[]),
+                    DC(Set(), Set([j]), d_j[]),
+                    DC(Set([i]), Set([j]), d_i_j[]),
+                    DC(Set([j]), Set([i]), d_j_i[]),
+                    DC(Set(), Set([i,j]), d_i[]),
+                    ])
+end
+
 function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
+    if length(indices) == 2
+        return _matrix_structure_to_dcs(indices, s)
+    end
     dcs = Set{DC}()
     # Calculate DCs for all combinations of X and Y
     for X in subsets(indices)

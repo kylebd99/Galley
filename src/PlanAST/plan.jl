@@ -341,3 +341,24 @@ function plan_copy(n::PlanNode; copy_stats = true)
         return PlanNode(n.kind, children, n.val, stats, n.node_id)
     end
 end
+
+function get_inputs(q::PlanNode)
+    input_nodes = []
+    for n in PostOrderDFS(q)
+        if n.kind === Input
+            push!(input_nodes, n)
+        end
+    end
+    return input_nodes
+end
+
+
+function get_aliases(q::PlanNode)
+    alias_nodes = []
+    for n in PostOrderDFS(q)
+        if n.kind === Alias
+            push!(alias_nodes, n)
+        end
+    end
+    return alias_nodes
+end

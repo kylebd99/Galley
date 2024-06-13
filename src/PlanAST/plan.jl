@@ -352,6 +352,19 @@ function get_inputs(q::PlanNode)
     return input_nodes
 end
 
+function is_disjunctive(n::PlanNode)
+    for node in PostOrderDFS(n)
+        if node.kind === MapJoin
+            map_op = node.op.val
+            all_conjuncts = all([isannihilator(map_op, get_default_value(arg.stats)) for arg in node.args])
+            if !all_conjuncts
+                return true
+            end
+        end
+    end
+    return false
+end
+
 
 function get_aliases(q::PlanNode)
     alias_nodes = []

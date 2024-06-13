@@ -133,7 +133,7 @@ function galley(input_query::PlanNode;
             for p_query in physical_queries
                 phys_opt_start = time()
                 input_stats = get_input_stats(alias_stats, p_query.expr)
-                modify_protocols!(collect(values(input_stats)))
+                modify_protocols!(collect(values(input_stats)), p_query.expr)
                 total_phys_opt_time += time() - phys_opt_start
                 alias_stats[p_query.name] = p_query.expr.stats
 

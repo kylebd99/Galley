@@ -11,6 +11,7 @@ using RewriteTools
 using RewriteTools.Rewriters
 using SyntaxInterface
 using AbstractTrees
+using Statistics
 using Finch
 using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
@@ -46,7 +47,6 @@ include("TensorStats/TensorStats.jl")
 include("FAQOptimizer/FAQOptimizer.jl")
 include("PhysicalOptimizer/PhysicalOptimizer.jl")
 include("ExecutionEngine/ExecutionEngine.jl")
-
 
 # InputQuery: Query(name, Materialize(formats..., idxs..., agg_map_expr))
 # Aggregate(op, idxs.., expr)

@@ -211,6 +211,43 @@ function get_reduce_query(reduce_idx, aq)
     return query, node_to_replace, nodes_to_remove
 end
 
+function get_forced_transpose_cost(n)
+    inputs = get_inputs(n)
+    aliases = get_aliases(n)
+    if length(inputs) == 0
+        return 0
+    end
+    vertices = union([get_index_set(input.stats) for input in inputs]..., [get_index_set(alias.stats) for alias in aliases]...)
+    vertex_graph = Dict(v => [] for v in vertices)
+    for input in inputs
+        idx_order = get_index_order(input.stats)
+        for i in eachindex(idx_order)
+            i+1 > length(idx_order) && continue
+            for j in (i+1):length(idx_order)
+                push!(vertex_graph[idx_order[i]], idx_order[j])
+            end
+        end
+    end
+    # Aliases don't have a defined order, so we include both directions for each edge.
+    for alias in aliases
+        for i in get_index_set(alias.stats)
+            for j in get_index_set(alias.stats)
+                if i != j
+                    push!(vertex_graph[i], j)
+                end
+            end
+        end
+    end
+
+    sinks = [v for v in vertices if length(vertex_graph[v]) == 0]
+    if length(sinks) > 1
+        return maximum([estimate_nnz(input.stats) for input in inputs if length(input.idxs) > 1]; init=0) * AllocateCost
+    else
+        return 0
+    end
+end
+
+
 # Returns the cost of reducing out an index
 function cost_of_reduce(reduce_idx, aq, cache=Dict())
     query, _, _ = get_reduce_query(reduce_idx, aq)
@@ -219,7 +256,8 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict())
         comp_stats = query.expr.arg.stats
         mat_stats = query.expr.stats
         cost = estimate_nnz(comp_stats) * ComputeCost + estimate_nnz(mat_stats) * AllocateCost
-        cache[cache_key] = cost
+        forced_transpose_cost = get_forced_transpose_cost(query.expr)
+        cache[cache_key] = cost + forced_transpose_cost
     end
     return cache[cache_key], query.expr.idxs
 end

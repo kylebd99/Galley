@@ -3,7 +3,7 @@
 function sort_mapjoin_args(args)
     immediate_args = [arg for arg in args if arg.kind == Input || arg.kind == Alias]
     remainder = [arg for arg in args if !(arg.kind == Input || arg.kind == Alias)]
-    perm = sortperm([(length(get_index_order(arg.stats)), get_index_formats(arg.stats)..., get_index_protocols(arg.stats)) for arg in immediate_args])
+    perm = sortperm([(length(get_index_order(arg.stats)), get_index_formats(arg.stats)..., get_index_protocols(arg.stats)...) for arg in immediate_args])
     return [immediate_args[perm]..., remainder...]
 end
 

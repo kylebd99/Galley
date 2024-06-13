@@ -76,7 +76,7 @@ function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
                 new_expr.stats = n_mat_stats
                 new_query = Query(Alias(gensym(:A)), new_expr)
                 new_agg_idxs = n_reduce_idxs
-                min_cost = n_cost
+                min_cost = n_cost + get_forced_transpose_cost(node)
             end
             if node.kind == MapJoin && isassociative(node.op.val)
                 for s in get_connected_subsets(node.args, max_kernel_size)
@@ -90,7 +90,7 @@ function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
                             end
                         end
                         s_mat_stats =  has_agg ? s_stat : reduce_tensor_stats(agg_op.val, s_reduce_idxs, s_stat)
-                        s_cost = estimate_nnz(s_mat_stats) * AllocateCost
+                        s_cost = estimate_nnz(s_mat_stats) * AllocateCost + get_forced_transpose_cost(MapJoin(node.op.val, s...))
                         cost_cache[cache_key] = (s_reduce_idxs, s_mat_stats, s_cost)
                     end
                     s_reduce_idxs, s_mat_stats, s_cost = cost_cache[cache_key]

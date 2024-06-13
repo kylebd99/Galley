@@ -255,15 +255,6 @@ function _duckdb_compute_query(dbconn, q::PlanNode, verbose)
     return opt_time, execute_time
 end
 
-function get_inputs(q::PlanNode)
-    input_nodes = []
-    for n in PostOrderDFS(q)
-        if n.kind === Input
-            push!(input_nodes, n)
-        end
-    end
-    return input_nodes
-end
 
 # First, insert all of the factors as tables e_1, etc, then recursively compute the bags.
 # Lastly, return the root bag's table in some format.

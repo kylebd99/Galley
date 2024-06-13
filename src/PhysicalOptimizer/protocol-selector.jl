@@ -13,7 +13,7 @@ end
 
 function select_follower_protocol(format::LevelFormat)
     if format == t_sparse_list
-        return t_default
+        return t_follow
     elseif format == t_dense
         return t_follow
     elseif format == t_bytemap
@@ -54,32 +54,11 @@ function modify_protocols!(input_stats::Vector{ST}) where ST
         min_cost = minimum(costs)
         needs_leader = true
         formats = [get_index_format(input, var) for input in relevant_inputs]
-        num_sparse_lists = sum([f == t_sparse_list for f in formats])
-        use_gallop = false
-        if num_sparse_lists > 1
-            gallop_cost = minimum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * RandomReadCost
-            walk_cost = maximum([costs[i] for i in eachindex(relevant_inputs) if formats[i] == t_sparse_list]) * SeqReadCost
-            use_gallop = gallop_cost < walk_cost
-            # It seems as though Gallop is generally the correct choice, and it is
-            # asymptotically better than walk. So, we just always set it to be conservative.
-            use_gallop = true
-            needs_leader = false
-        end
         for i in eachindex(relevant_inputs)
             input = relevant_inputs[i]
             input_def = get_def(input)
             var_index = findall(x->x==var, get_index_order(input))
             is_leader = costs[i] == min_cost
-            if formats[i] == t_sparse_list
-                if use_gallop
-                    input_def.index_protocols[var_index] .= t_gallop
-                else
-                    input_def.index_protocols[var_index] .= t_walk
-                end
-                needs_leader = false
-                continue
-            end
-
             if is_leader && needs_leader
                 input_def.index_protocols[var_index] .= select_leader_protocol(formats[i])
                 needs_leader = false

@@ -15,6 +15,6 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, use
         return pruned_query_to_plan(q, ST,use_dnf)
     elseif faq_optimizer == naive
         insert_node_ids!(q)
-        return Plan(q, q.name)
+        return Plan(q, q.name), Inf
     end
 end

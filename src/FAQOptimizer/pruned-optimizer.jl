@@ -28,7 +28,7 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost, use_dnf, alias
             aq, idx, old_order, old_queries, cost = idx_ext_info
             new_aq = copy(aq)
             query = reduce_idx!(idx, new_aq)
-            alias_hashes[query.name] = cannonical_hash(query.expr, alias_hashes)
+            alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
             new_queries = PlanNode[old_queries..., query]
             new_order = PlanNode[old_order..., idx]
             new_optimal_orders[new_vars] = (new_order, new_queries, new_aq, cost)

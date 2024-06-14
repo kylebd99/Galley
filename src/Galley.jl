@@ -155,13 +155,15 @@ function galley(input_queries::Vector{PlanNode};
 
                 verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
                 verbose > 2 && println(p_query)
-                verbose > 2 && validate_physical_query(p_query)
+                verbose > 4 && validate_physical_query(p_query)
                 exec_start = time()
                 p_query_hash = cannonical_hash(p_query.expr, alias_hash)
+                alias_hash[p_query.name] = p_query_hash
                 if simple_cse && haskey(plan_hash_result, p_query_hash)
                     alias_result[p_query.name] = plan_hash_result[p_query_hash]
                 else
                     execute_query(alias_result, p_query, verbose)
+                    plan_hash_result[p_query_hash] = alias_result[p_query.name]
                 end
                 total_exec_time += time() - exec_start
                 if alias_result[p_query.name] isa Tensor && update_cards
@@ -172,8 +174,8 @@ function galley(input_queries::Vector{PlanNode};
                 phys_opt_start = time()
                 condense_stats!(alias_stats[p_query.name]; cheap=false)
                 total_phys_opt_time += time() - phys_opt_start
-                alias_hash[p_query.name] = p_query_hash
-                plan_hash_result[p_query_hash] = alias_result[p_query.name]
+                exec_start = time()
+                total_exec_time += time() - exec_start
             end
         end
     end

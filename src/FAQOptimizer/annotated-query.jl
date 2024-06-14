@@ -247,11 +247,10 @@ function get_forced_transpose_cost(n)
     end
 end
 
-
 # Returns the cost of reducing out an index
-function cost_of_reduce(reduce_idx, aq, cache=Dict())
+function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
     query, _, _ = get_reduce_query(reduce_idx, aq)
-    cache_key = hash(query.expr)
+    cache_key = cannonical_hash(query.expr, alias_hash)
     if !haskey(cache, cache_key)
         comp_stats = query.expr.arg.stats
         mat_stats = query.expr.stats

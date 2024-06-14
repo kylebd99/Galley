@@ -1,4 +1,4 @@
-function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf)
+function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf, alias_hash)
     aq = AnnotatedQuery(input_query, ST, use_dnf)
     queries = []
     cost_cache = Dict()
@@ -8,13 +8,14 @@ function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf)
         cheapest_idx = nothing
         cheapest_cost = Inf
         for idx in reducible_idxs
-            cost, _ = cost_of_reduce(idx, aq, cost_cache)
+            cost, _ = cost_of_reduce(idx, aq, cost_cache, alias_hash)
             if cost < cheapest_cost
                 cheapest_idx = idx
                 cheapest_cost = cost
             end
         end
         query = reduce_idx!(cheapest_idx, aq)
+        alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
         push!(queries, query)
         reducible_idxs = get_reducible_idxs(aq)
         total_cost += cheapest_cost
@@ -24,7 +25,12 @@ function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf)
         push!(queries, remaining_q)
     end
     last_query = queries[end]
+    # The final query should produce the result, so we ensure that it has the result's name
+    last_query.name = input_query.name
     last_query.expr = Materialize(aq.output_format..., aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
-    return Plan(queries..., Outputs(queries[end].name)), total_cost
+    get_def(last_query.expr.stats).index_order = [idx.name for idx in aq.output_order]
+    get_def(last_query.expr.stats).level_formats = [f.val for f in aq.output_format]
+    alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
+    return queries, total_cost
 end

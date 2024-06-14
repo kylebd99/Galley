@@ -1,10 +1,7 @@
-function get_input_stats(alias_stats::Dict{PlanNode, TensorStats}, expr::PlanNode)
+function get_input_stats(expr::PlanNode)
     input_stats = Dict()
     for n in PostOrderDFS(expr)
-        if n.kind == Alias
-            n.stats = deepcopy(alias_stats[n])
-            input_stats[n.node_id] = n.stats
-        elseif n.kind == Input
+        if n.kind == Alias ||  n.kind == Input
             input_stats[n.node_id] = n.stats
         end
     end
@@ -60,12 +57,13 @@ end
 # where formats can't be t_undef.
 # `alias_stats` is a dictionary which holds stats objects for the results of any previous
 # queries. This is needed to get the stats for `Alias` inputs.
-function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorStats}, query::PlanNode; verbose = 0)
+function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dict{PlanNode, TensorStats},; verbose = 0)
     if !(@capture query Query(~name, Materialize(~args...))) &&
             !(@capture query Query(~name, Aggregate(~args...))) &&
             !(@capture query Query(~name, MapJoin(~args...)))
         throw(ErrorException("Physical optimizer only takes in properly formatted single queries."))
     end
+    insert_statistics!(ST, query, bindings=alias_stats)
     insert_node_ids!(query)
     id_to_node = Dict()
     for node in PreOrderDFS(query)
@@ -91,7 +89,7 @@ function logical_query_to_physical_queries(alias_stats::Dict{PlanNode, TensorSta
     end
 
     # Determine the optimal loop order for the query
-    input_stats = get_input_stats(alias_stats, expr)
+    input_stats = get_input_stats(expr)
     agg_op = isnothing(agg_op) ? initwrite(get_default_value(expr.stats)) : agg_op
 
     output_stats = reduce_tensor_stats(agg_op, reduce_idxs, expr.stats)

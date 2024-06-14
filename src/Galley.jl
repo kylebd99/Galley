@@ -57,7 +57,7 @@ include("ExecutionEngine/ExecutionEngine.jl")
 #           - One query at a time to galley
 #           - Isolate reformat_stats
 #           - Fuse mapjoins & permutations
-function galley(input_query::PlanNode;
+function galley(input_queries::Vector{PlanNode};
                     faq_optimizer::FAQ_OPTIMIZERS=greedy,
                     ST=DCStats,
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
@@ -66,34 +66,53 @@ function galley(input_query::PlanNode;
                     max_kernel_size=5,
                     verbose=0)
     overall_start = time()
-    input_query = plan_copy(input_query)
-    verbose >= 2 && println("Input Query : ", input_query)
+    input_queries = map(plan_copy, input_queries)
+    if verbose >= 2
+        println("Input Queries : ")
+        for input_query in input_queries
+            println(input_query)
+        end
+    end
     opt_start = time()
     faq_opt_start = time()
-    output_order = input_query.expr.idx_order
-    check_dnf = !allequal([n.op.val for n in PostOrderDFS(input_query) if n.kind === MapJoin])
-    logical_plan, cnf_cost = high_level_optimize(faq_optimizer, input_query, ST, false)
-    if check_dnf
-        dnf_plan, dnf_cost = high_level_optimize(faq_optimizer, input_query, ST, true)
-        logical_plan = dnf_cost < cnf_cost ? dnf_plan : logical_plan
-        verbose >= 1 && println("Used DNF: $(dnf_cost < cnf_cost)")
+    logical_queries = []
+    alias_stats = Dict{PlanNode, TensorStats}()
+    alias_hash = Dict{PlanNode, UInt}()
+    output_aliases = [input_query.name for input_query in input_queries]
+    output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_queries)
+    for input_query in input_queries
+        check_dnf = !allequal([n.op.val for n in PostOrderDFS(input_query) if n.kind === MapJoin])
+        logical_plan, cnf_cost = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, false)
+        if check_dnf
+            dnf_plan, dnf_cost = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash,true)
+            logical_plan = dnf_cost < cnf_cost ? dnf_plan : logical_plan
+            verbose >= 1 && println("Used DNF: $(dnf_cost < cnf_cost)")
+        end
+        for query in logical_plan
+            alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
+            alias_stats[query.name] = query.expr.stats
+        end
+        append!(logical_queries, logical_plan)
     end
     faq_opt_time = time() - faq_opt_start
     verbose >= 1 && println("FAQ Opt Time: $faq_opt_time")
 
     if verbose >= 1
         println("--------------- Logical Plan ---------------")
-        println(logical_plan)
+        for query in logical_queries
+            println(query)
+        end
         println("--------------------------------------------")
     end
     if !isnothing(dbconn)
         verbose
         opt_end = time()
-        output_order = input_query.expr.idx_order
+        output_name = only(output_names)
+        output_order = output_orders[output_name]
         duckdb_opt_time = (opt_end-opt_start)
         duckdb_exec_time = 0
         duckdb_insert_time = 0
-        for query in logical_plan.queries
+        for query in logical_queries
             verbose >= 1 && println("-------------- Computing Alias $(query.name) -------------")
             query_timings = duckdb_execute_query(dbconn, query, verbose)
             verbose >= 1 && println("$query_timings")
@@ -101,8 +120,8 @@ function galley(input_query::PlanNode;
             duckdb_exec_time += query_timings.execute_time
             duckdb_insert_time += query_timings.insert_time
         end
-        result = _duckdb_query_to_tns(dbconn, logical_plan.queries[end], output_order)
-        for query in logical_plan.queries
+        result = _duckdb_query_to_tns(dbconn, logical_queries[end], output_order)
+        for query in logical_queries
             _duckdb_drop_alias(dbconn, query.name)
         end
         verbose >= 1 && println("Time to Optimize: ",  duckdb_opt_time)
@@ -118,22 +137,19 @@ function galley(input_query::PlanNode;
     total_phys_opt_time = 0
     total_exec_time = 0
     total_count_time = 0
-    alias_stats = Dict{PlanNode, TensorStats}()
-    alias_hash = Dict{PlanNode, UInt}()
     plan_hash_result = Dict()
     alias_result = Dict()
-    for l_query in logical_plan.queries
+    for l_query in logical_queries
         split_start = time()
-        split_queries = split_query(ST, l_query, max_kernel_size, alias_stats)
+        split_queries = split_query(l_query, ST, max_kernel_size, alias_stats)
         total_split_time  += time() - split_start
         for s_query in split_queries
             phys_opt_start = time()
-            physical_queries = logical_query_to_physical_queries(alias_stats, s_query)
+            physical_queries = logical_query_to_physical_queries(s_query, ST, alias_stats)
             total_phys_opt_time += time() - phys_opt_start
             for p_query in physical_queries
                 phys_opt_start = time()
-                input_stats = get_input_stats(alias_stats, p_query.expr)
-                modify_protocols!(collect(values(input_stats)), p_query.expr)
+                modify_protocols!(p_query.expr)
                 total_phys_opt_time += time() - phys_opt_start
                 alias_stats[p_query.name] = p_query.expr.stats
 
@@ -169,7 +185,7 @@ function galley(input_query::PlanNode;
     verbose >= 1 && println("Time to Execute: ", total_exec_time)
     verbose >= 1 && println("Time to count: ", total_count_time)
     verbose >= 1 && println("Overall Time: ", total_overall_time)
-    return (value=alias_result[logical_plan.queries[end].name],
+    return (value=[alias_result[alias] for alias in output_aliases],
             opt_time=(faq_opt_time + total_split_time + total_phys_opt_time),
             execute_time= total_exec_time,
             overall_time=total_overall_time)

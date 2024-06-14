@@ -33,7 +33,7 @@ function PlanNode(kind::PlanNodeKind, children::Vector, val::Any, stats::Any)
 end
 
 function PlanNode(kind::PlanNodeKind, args::Vector)
-    if (kind === Value || kind === Index || kind === Alias) && length(args) == 1
+    if (kind === Value || kind === Index) && length(args) == 1
         return PlanNode(kind, PlanNode[], args[1], nothing)
     else
         args = vcat(args...)
@@ -74,10 +74,17 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
             else
                 error("a reused plan expression must be wrapped in a materialize!")
             end
+        elseif kind === Query && length(args) >= 2
+            if args[1] isa Symbol
+                args[1] = Alias(args[1])
+            end
+            return PlanNode(kind, args, nothing, nothing)
+        elseif (kind === Alias && length(args) >= 1)
+            idxs = length(args) > 1 ? args[2:end] : []
+            return PlanNode(kind, idxs, args[1], nothing)
         elseif (kind === MapJoin && length(args) >= 2) ||
             (kind === Aggregate && length(args) >= 2) ||
             (kind === Materialize && length(args) >= 1 && length(args) % 2 == 1) ||
-            (kind === Query && length(args) >= 2) ||
             (kind === Outputs) ||
             (kind === Plan)
             return PlanNode(kind, args, nothing, nothing)
@@ -130,6 +137,7 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
         return Base.getfield(node, sym)
     elseif node.kind === Index && sym === :name node.val
     elseif node.kind === Alias && sym === :name node.val
+    elseif node.kind === Alias && sym === :idxs node.children
     elseif node.kind === Input && sym === :id node.val
     elseif node.kind === Input && sym === :tns node.children[1]
     elseif node.kind === Input && sym === :idxs begin length(node.children) > 1 ? node.children[2:end] : [] end
@@ -247,17 +255,25 @@ function planToString(n::PlanNode, depth::Int64)
             return output
         end
         idxs = get_index_order(n.stats)
-        protocols = get_index_protocols(n.stats)
-        prefix = ","
-        if !isnothing(get_index_protocols(n.stats))
-            for i in eachindex(idxs)
-                output *= "$prefix$(idxs[i])::$(protocols[i])"
-            end
-        elseif !isnothing(get_index_set(n.stats))
-            for idx in get_index_set(n.stats)
+        if length(n.idxs) > 0
+            prefix = ","
+            for idx in n.idxs
                 output *= prefix * string(idx)
             end
+        elseif !isnothing(idxs)
+            protocols = get_index_protocols(n.stats)
+            prefix = ","
+            if !isnothing(get_index_protocols(n.stats))
+                for i in eachindex(idxs)
+                    output *= "$prefix$(idxs[i])::$(protocols[i])"
+                end
+            elseif !isnothing(get_index_set(n.stats))
+                for idx in get_index_set(n.stats)
+                    output *= prefix * string(idx)
+                end
+            end
         end
+
         output *= ")"
         return output
     elseif n.kind == Index
@@ -365,6 +381,29 @@ function is_disjunctive(n::PlanNode)
     return false
 end
 
+function get_conjunctive_and_disjunctive_inputs(n::PlanNode, disjunct_branch=false)
+    if n.kind === Materialize
+        return get_conjunctive_and_disjunctive_inputs(n.expr)
+    elseif n.kind === Aggregate
+        return get_conjunctive_and_disjunctive_inputs(n.arg)
+    elseif n.kind === MapJoin
+        map_op = n.op.val
+        conjuncts = []
+        disjuncts = []
+        for arg in n.args
+            arg_results = if isannihilator(map_op, get_default_value(arg.stats))
+                get_conjunctive_and_disjunctive_inputs(arg, disjunct_branch)
+            else
+                get_conjunctive_and_disjunctive_inputs(arg, true)
+            end
+            append!(conjuncts, arg_results.conjuncts)
+            append!(disjuncts, arg_results.disjuncts)
+        end
+        return (conjuncts=conjuncts, disjuncts=disjuncts)
+    elseif n.kind === Input || n.kind === Alias
+        return disjunct_branch ? (conjuncts=[], disjuncts=[n]) : (conjuncts=[n], disjuncts=[])
+    end
+end
 
 function get_aliases(q::PlanNode)
     alias_nodes = []

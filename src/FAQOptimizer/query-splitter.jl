@@ -42,7 +42,7 @@ end
 #   Query(name, Materialzie(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
 # It outputs a set of queries where the final one binds `name` and each
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
-function split_query(ST, q::PlanNode, max_kernel_size, alias_stats)
+function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
     insert_node_ids!(q)
     aq = AnnotatedQuery(q, ST, false)
     pe = aq.point_expr

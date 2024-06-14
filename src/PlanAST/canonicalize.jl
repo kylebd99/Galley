@@ -64,6 +64,15 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
             if haskey(bindings, expr)
                 expr.stats = get(bindings, expr, nothing)
             end
+
+            if !isnothing(expr.stats)
+                idxs = [idx.name for idx in expr.idxs]
+                stats_order = get_index_order(expr.stats)
+                @assert length(idxs) == 0 || !isnothing(stats_order)
+                if !isempty(idxs) && stats_order != idxs
+                    expr.stats = reindex_stats(expr.stats, idxs)
+                end
+            end
         elseif expr.kind === Input
             if isnothing(expr.stats) || replace
                 expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])

@@ -423,6 +423,17 @@ function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::
     return dc[] # `[]` used to retrieve the actual value of the Finch.Scalar type
 end
 
+
+function _vector_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
+    d_i = Scalar(0)
+    @finch begin
+        for i=_
+            d_i[] += s[i]
+        end
+    end
+    return Set{DC}([DC(Set(), Set(only(indices)), d_i[])])
+end
+
 function _matrix_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
     X = Tensor(Dense(Element(0)))
     Y = Tensor(Dense(Element(0)))
@@ -466,7 +477,9 @@ function _matrix_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
 end
 
 function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
-    if length(indices) == 2
+    if length(indices) == 1
+        return _vector_structure_to_dcs(indices, s)
+    elseif length(indices) == 2
         return _matrix_structure_to_dcs(indices, s)
     end
     dcs = Set{DC}()

@@ -22,7 +22,7 @@ Base.copy(def::TensorDef) = TensorDef(copy(def.index_set),
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
         return t_sparse_list
-    elseif typeof(lvl) <: SparseLevel
+    elseif typeof(lvl) <: SparseDictLevel
         return t_hash
     elseif typeof(lvl) <: DenseLevel
         return t_dense
@@ -474,10 +474,10 @@ function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
     for X in subsets(indices)
         X = Set(X)
         Y = Set(setdiff(indices, X))
+        isempty(Y) && continue # Anything to the empty set has degree 1
         d = _calc_dc_from_structure(X, Y, indices, s)
         push!(dcs, DC(X,Y,d))
 
-        isempty(Y) && continue # Don't need to calculate the projection size of an empty set
         d = _calc_dc_from_structure(Set{IndexExpr}(), Y, indices, s)
         push!(dcs, DC(Set{IndexExpr}(), Y, d))
     end

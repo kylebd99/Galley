@@ -19,7 +19,7 @@ function select_follower_protocol(format::LevelFormat)
     elseif format == t_bytemap
         return t_follow
     elseif format == t_hash
-        return t_default
+        return t_follow
     end
 end
 

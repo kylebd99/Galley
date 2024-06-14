@@ -20,7 +20,7 @@ function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     reorder_def.index_order = fixed_order
     reorder_def.level_formats = formats
     reorder_query.expr.stats = reorder_stats
-    if formats == select_output_format(agg_expr.stats, reverse(fixed_order), fixed_order)
+    if true || formats == select_output_format(agg_expr.stats, reverse(fixed_order), fixed_order)
         final_alias_expr = Alias(reorder_query.name.name)
         final_alias_expr.stats = deepcopy(reorder_stats)
         expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
@@ -109,7 +109,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     expr = Aggregate(agg_op, reduce_idxs..., expr)
     expr.stats = output_stats
 
-    needs_intermediate = length(output_order) > 0 && (any([f == t_hash for f in first_formats]) || (!isnothing(output_formats) && first_formats != output_formats))
+    needs_intermediate = length(output_order) > 0 && ((!isnothing(output_formats) && first_formats != output_formats))
     if needs_intermediate
         intermediate_query = Query(Alias(gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
         reorder_stats = deepcopy(expr.stats)

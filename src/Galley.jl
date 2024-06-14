@@ -13,7 +13,7 @@ using SyntaxInterface
 using AbstractTrees
 using Statistics
 using Finch
-using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
+using Finch: Element, SparseListLevel, SparseDict, Dense, SparseCOO, fsparse_impl
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
                         access_instance,  assign_instance, loop_instance, declare_instance,
                         block_instance, define_instance, call_instance, freeze_instance,

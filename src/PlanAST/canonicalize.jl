@@ -56,7 +56,7 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
         elseif expr.kind === Aggregate
             expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
         elseif expr.kind === Materialize
-            expr.stats = expr.expr.stats
+            expr.stats = deepcopy(expr.expr.stats)
             def = get_def(expr.stats)
             def.level_formats = [f.val for f in expr.formats]
             def.index_order = [idx.name for idx in expr.idx_order]

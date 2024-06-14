@@ -101,7 +101,7 @@ function initialize_tensor(formats, dims, default_value)
         elseif formats[i] == t_bytemap
             B = SparseByteMap(B, DT(dims[i]))
         elseif formats[i] == t_hash
-            B = Sparse(B, DT(dims[i]))
+            B = SparseDict(B, DT(dims[i]))
         else
             println("Error: Attempted to initialize invalid level format type.")
         end

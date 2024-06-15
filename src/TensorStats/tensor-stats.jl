@@ -24,6 +24,8 @@ function level_to_enum(lvl)
         return t_sparse_list
     elseif typeof(lvl) <: SparseDictLevel
         return t_hash
+    elseif typeof(lvl) <: SparseByteMap
+        return t_bytemap
     elseif typeof(lvl) <: DenseLevel
         return t_dense
     else
@@ -431,7 +433,7 @@ function _vector_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
             d_i[] += s[i]
         end
     end
-    return Set{DC}([DC(Set(), Set(only(indices)), d_i[])])
+    return Set{DC}([DC(Set(), Set(indices), d_i[])])
 end
 
 function _matrix_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
@@ -499,7 +501,7 @@ end
 
 function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
     def = TensorDef(tensor, indices)
-    sparsity_structure = pattern!(deepcopy(tensor))
+    sparsity_structure = get_sparsity_structure(tensor)
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)
 end

@@ -125,22 +125,20 @@ end
 # values and 1 at all other entries.
 function get_sparsity_structure(tensor::Tensor)
     default_value = Finch.default(tensor)
-    function non_zero_func(x)
-        return x == default_value ? 0.0 : 1.0
-    end
     index_sym_dict = Dict()
     indices = [IndexExpr("t_" * string(i)) for i in 1:length(size(tensor))]
     tensor_instance = initialize_access(:A, tensor, indices, [t_default for _ in indices], index_sym_dict, read=true)
-    tensor_instance = call_instance(literal_instance(non_zero_func), tensor_instance)
-    output_tensor = initialize_tensor([t_sparse_list for _ in indices ], [dim for dim in size(tensor)], 0.0)
+    tensor_instance = call_instance(literal_instance(!=), tensor_instance, literal_instance(default_value))
+    formats = [t_sparse_list for _ in indices ]
+    output_tensor = initialize_tensor(formats, [dim for dim in size(tensor)], false)
     output_instance = initialize_access(:output_tensor, output_tensor, indices, [t_default for _ in indices], index_sym_dict, read = false)
-    full_prgm = assign_instance(output_instance, literal_instance(initwrite(0.0)), tensor_instance)
+    full_prgm = assign_instance(output_instance, literal_instance(initwrite(false)), tensor_instance)
 
     for index in indices
         full_prgm = loop_instance(index_instance(index_sym_dict[index]), Dimensionless(), full_prgm)
     end
 
-    initializer = declare_instance(variable_instance(:output_tensor), literal_instance(0.0))
+    initializer = declare_instance(variable_instance(:output_tensor), literal_instance(false))
     full_prgm = block_instance(initializer, full_prgm)
     Finch.execute(full_prgm)
     return output_tensor

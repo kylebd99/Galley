@@ -347,7 +347,7 @@ end
 
 # Given a node in the tree, return all indices which can be reduced after computing that subtree.
 function get_reducible_idxs(aq, n)
-    reduce_idxs = Set()
+    reduce_idxs = Set{IndexExpr}()
     for idx in aq.reduce_idxs
         idx_root = aq.idx_lowest_root[idx]
         if intree(idx_root, n)

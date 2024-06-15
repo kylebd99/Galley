@@ -39,7 +39,7 @@ end
 
 # This function takes in queries of the form:
 #   Query(name, Aggregate(agg_op, idxs..., map_expr))
-#   Query(name, Materialzie(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
+#   Query(name, Materialize(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
 # It outputs a set of queries where the final one binds `name` and each
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
 function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
@@ -48,6 +48,8 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
     pe = aq.point_expr
     insert_statistics!(ST, pe, bindings=alias_stats)
     has_agg = length(aq.reduce_idxs) > 0
+    println(has_agg)
+    println(aq.idx_op)
     agg_op = has_agg ? aq.idx_op[first(aq.reduce_idxs)] : nothing
     node_id_counter = maximum([n.node_id for n in PostOrderDFS(pe)]) + 1
     queries = []
@@ -64,8 +66,9 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
             end
             cache_key = [node.node_id]
             if !haskey(cost_cache, cache_key)
-                n_mat_stats =  has_agg ? node.stats : reduce_tensor_stats(agg_op.val, n_reduce_idxs, node.stats)
-                cost_cache[cache_key] = (get_reducible_idxs(aq, node),
+                n_reduce_idxs = get_reducible_idxs(aq, node)
+                n_mat_stats = has_agg ? reduce_tensor_stats(agg_op, n_reduce_idxs, node.stats) : node.stats
+                cost_cache[cache_key] = (n_reduce_idxs,
                                         n_mat_stats,
                                         estimate_nnz(n_mat_stats))
             end
@@ -89,7 +92,7 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
                                 push!(s_reduce_idxs, idx)
                             end
                         end
-                        s_mat_stats =  has_agg ? s_stat : reduce_tensor_stats(agg_op.val, s_reduce_idxs, s_stat)
+                        s_mat_stats = has_agg ? reduce_tensor_stats(agg_op, s_reduce_idxs, s_stat) : s_stat
                         s_cost = estimate_nnz(s_mat_stats) * AllocateCost + get_forced_transpose_cost(MapJoin(node.op.val, s...))
                         cost_cache[cache_key] = (s_reduce_idxs, s_mat_stats, s_cost)
                     end

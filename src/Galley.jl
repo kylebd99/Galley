@@ -107,7 +107,7 @@ function galley(input_queries::Vector{PlanNode};
     if !isnothing(dbconn)
         verbose
         opt_end = time()
-        output_name = only(output_names)
+        output_name = only(output_aliases)
         output_order = output_orders[output_name]
         duckdb_opt_time = (opt_end-opt_start)
         duckdb_exec_time = 0

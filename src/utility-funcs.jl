@@ -207,3 +207,24 @@ function one_off_reduce(op,
     Finch.execute(full_prgm, mode=:fast)
     return output_tensor
 end
+
+
+
+function count_non_default(A::Tensor)
+    d = Finch.default(A)
+    n = length(size(A))
+    indexes = [Symbol("i_$i") for i in 1:n]
+    count = Scalar(0)
+    index_sym_dict = Dict()
+    count_access = initialize_access(:count, count, [], [], index_sym_dict, read=false)
+    A_access = initialize_access(:A, A, indexes, [t_default for _ in indexes], index_sym_dict)
+    prgm = call_instance(literal_instance(!=), A_access, literal_instance(d))
+    prgm = assign_instance(count_access, literal_instance(+), prgm)
+    loop_index_instances = [index_instance(index_sym_dict[idx]) for idx in reverse(indexes)]
+    for idx in reverse(loop_index_instances)
+        prgm = loop_instance(idx, Dimensionless(), prgm)
+    end
+    prgm = block_instance(declare_instance(tag_instance(variable_instance(:count), count), literal_instance(0)), prgm)
+    Finch.execute(prgm, mode=:fast)
+    return count[]
+end

@@ -87,7 +87,7 @@ end
 
 
 
-function initialize_tensor(formats, dims, default_value)
+function initialize_tensor(formats, dims, default_value; copy_data = nothing)
     if length(dims) == 0
         return Finch.Scalar(default_value)
     end
@@ -106,7 +106,11 @@ function initialize_tensor(formats, dims, default_value)
             println("Error: Attempted to initialize invalid level format type.")
         end
     end
-    return Tensor(B)
+    if isnothing(copy_data)
+        return Tensor(B)
+    else
+        return Tensor(B, copy_data)
+    end
 end
 
 
@@ -207,8 +211,6 @@ function one_off_reduce(op,
     Finch.execute(full_prgm, mode=:fast)
     return output_tensor
 end
-
-
 
 function count_non_default(A::Tensor)
     d = Finch.default(A)

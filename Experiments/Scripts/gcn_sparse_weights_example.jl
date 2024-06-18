@@ -1,19 +1,13 @@
 using Finch
-using Finch: @finch_program_instance, Element, SparseListLevel, Dense, SparseHashLevel, SparseCOO, fsparse_impl
-using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
-                        access_instance,  assign_instance, loop_instance, declare_instance,
-                        block_instance, define_instance, call_instance, freeze_instance,
-                        thaw_instance,
-                        Updater, Reader, Dimensionless
 using Galley
-using Galley: t_dense, t_hash
+using Galley: t_dense, t_hash, insert_statistics!
 using SparseArrays
 
-n = 10000
-k = 100
-A = Tensor(Dense(SparseList(Element(0))), fsprand(Int, n, n, .1) .% 2)
-W = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, k, .01)  .% 10)
-h_0 = Tensor(Dense(Dense(Element(0))), rand(Int, k, n) .% 10)
+n = 100000
+k = 1000
+A = Tensor(Dense(SparseList(Element(0))), fsprand(Int, n, n, 500000) .% 2)
+W = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, k, 10000)  .% 10)
+h_0 = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, n, 1000000) .% 10)
 # nodes_of_interest = Tensor(SparseList(Element(0)), fsprand(Int, n, .001).% 2)
 
 @noinline function finch_gnn(A, W, h_0)
@@ -90,39 +84,6 @@ end
 t_2 = @timed finch_gnn(A, W, h_0)
 t_2 = @timed finch_gnn(A, W, h_0)
 
-
-@noinline function finch_instance_gnn(A, W, h_0)
-    i_1 = Tensor(Dense(Dense(Element(0), k), n))
-    i_1_write_access = access_instance(tag_instance(variable_instance(:i_1), i_1), literal_instance(Updater()), index_instance(:k2), index_instance(:n1))
-    w_access = access_instance(tag_instance(variable_instance(:W), W), literal_instance(Reader()), index_instance(:k1), index_instance(:k2))
-    h_0_access = access_instance(tag_instance(variable_instance(:h_0), h_0), literal_instance(Reader()), index_instance(:k1), index_instance(:n1))
-
-    prgm1 = block_instance(declare_instance(tag_instance(variable_instance(:i_1), i_1), literal_instance(0)),
-                        loop_instance(index_instance(:n1), Dimensionless(),
-                        loop_instance(index_instance(:k2), Dimensionless(),
-                        loop_instance(index_instance(:k1), Dimensionless(),
-                        assign_instance(i_1_write_access, literal_instance(+), call_instance(literal_instance(*), w_access, h_0_access))
-                            ))))
-    Finch.execute(prgm1)
-
-    h_2_no_max = Tensor(Dense(Dense(Element(0), k), n))
-    h_2_no_max_access = access_instance(tag_instance(variable_instance(:h_2_no_max), h_2_no_max), literal_instance(Updater()), index_instance(:k2), index_instance(:n2))
-    i_1_read_access = access_instance(tag_instance(variable_instance(:i_1), i_1), literal_instance(Reader()), index_instance(:k2), call_instance(literal_instance(follow), index_instance(:n1)))
-    A_access = access_instance(tag_instance(variable_instance(:A), A), literal_instance(Reader()), call_instance(literal_instance(walk), index_instance(:n1)), index_instance(:n2))
-
-    prgm2 = block_instance(declare_instance(tag_instance(variable_instance(:h_2_no_max), h_2_no_max), literal_instance(0)),
-                        loop_instance(index_instance(:n2), Dimensionless(),
-                        loop_instance(index_instance(:n1), Dimensionless(),
-                        loop_instance(index_instance(:k2), Dimensionless(),
-                        assign_instance(h_2_no_max_access, literal_instance(+), call_instance(literal_instance(*), A_access, i_1_read_access))
-                            )))
-    )
-    Finch.execute(prgm2)
-end
-
-f_instance = @timed finch_instance_gnn(A, W, h_0)
-f_instance = @timed finch_instance_gnn(A, W, h_0)
-
 h_2_galley = Materialize(t_dense, t_dense, :k2, :n2,
                 MapJoin(max, 0,
                     Aggregate(+, :n1, :k1,
@@ -136,19 +97,15 @@ h_3_galley = MapJoin(max, 0,
                                 Input(W, :k2, :k3))))
 
 two_hop_gnn_query = Query(:h_4, Materialize(t_dense, t_dense, :k3, :n3, h_3_galley))
+insert_statistics!(DCStats, two_hop_gnn_query)
 
-h_3_galley = galley(two_hop_gnn_query, ST=DCStats, verbose=3)
-h_3_galley = galley(two_hop_gnn_query, ST=DCStats, verbose=0)
-println("Finch == Galley: ", t_2.value == h_3_galley.value)
+h_3_galley = galley([two_hop_gnn_query], ST=DCStats, verbose=3)
+h_3_galley = galley([two_hop_gnn_query], ST=DCStats, verbose=0)
+println("Finch == Galley: ", t_2.value == h_3_galley.value[1])
 println("Galley Opt & Execute: ", h_3_galley.opt_time, "   ", h_3_galley.execute_time)
 println("Finch Execute: ", t_2.time)
-println("Finch Instance: ", f_instance.time)
 
-
-#println(sum(h_3))
-#println(sum(h_3_galley.value))
-#=
-using DuckDB
+#= using DuckDB
 dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
 h_3_duckdb = galley(deepcopy(two_hop_gnn_query), dbconn=dbconn, ST=DCStats, verbose=0)
 println("DuckDB == Galley:", h_3_duckdb.value == h_3_galley.value)

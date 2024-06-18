@@ -368,7 +368,7 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
     if length(indices) == 0
         return 1
     end
-    current_weights = Dict{Vector{IndexExpr}, Float64}(Vector{IndexExpr}()=>1)
+    current_weights = Dict{Vector{IndexExpr}, UInt64}(Vector{IndexExpr}()=>1)
     frontier = Set{Vector{IndexExpr}}([Vector{IndexExpr}()])
     finished = false
     while !finished
@@ -501,7 +501,7 @@ end
 
 function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
     def = TensorDef(tensor, indices)
-    sparsity_structure = get_sparsity_structure(tensor)
+    sparsity_structure = (typeof(get_default_value(def)) == Bool) ? tensor : get_sparsity_structure(tensor)
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)
 end

@@ -50,7 +50,7 @@ end
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
     for expr in PostOrderDFS(plan)
         if expr.kind === Query
-            bindings[expr.name] = expr.expr.stats
+            bindings[expr.name] = deepcopy(expr.expr.stats)
         elseif expr.kind === MapJoin
             expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
         elseif expr.kind === Aggregate

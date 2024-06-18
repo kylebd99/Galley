@@ -212,7 +212,7 @@ function one_off_reduce(op,
     return output_tensor
 end
 
-function count_non_default(A::Tensor)
+function count_non_default(A)
     d = Finch.default(A)
     n = length(size(A))
     indexes = [Symbol("i_$i") for i in 1:n]

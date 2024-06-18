@@ -402,6 +402,8 @@ function get_conjunctive_and_disjunctive_inputs(n::PlanNode, disjunct_branch=fal
         return (conjuncts=conjuncts, disjuncts=disjuncts)
     elseif n.kind === Input || n.kind === Alias
         return disjunct_branch ? (conjuncts=[], disjuncts=[n]) : (conjuncts=[n], disjuncts=[])
+    elseif n.kind === Value
+        return (conjuncts = [], disjuncts = [])
     end
 end
 

@@ -30,8 +30,16 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         if iscommutative(rhs.op.val)
             rhs.args = sort_mapjoin_args(rhs.args)
         end
-        return call_instance(literal_instance(rhs.op.val),
-                                [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in rhs.args]...)
+        if is_binary(rhs.op.val)
+            instance = translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs.args[1])
+            for arg in rhs.args[2:end]
+                instance = call_instance(literal_instance(rhs.op.val), translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg), instance)
+            end
+            return instance
+        else
+            return call_instance(literal_instance(rhs.op.val),
+                                    [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in rhs.args]...)
+        end
     else
         throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin: $rhs"))
     end
@@ -90,8 +98,18 @@ function execute_query(alias_dict, q::PlanNode, verbose)
         verbose >= 2 && println("Output Size: 1")
         alias_dict[name] = output_tensor[]
     else
-        verbose >= 2 && println("Output Size: ", countstored(output_tensor))
+        verbose >= 2 && println("CountStored: ", countstored(output_tensor))
+        verbose >= 2 && println("Output Size: ", count_non_default(output_tensor))
+        # There are cases where default entries will be stored explicitly, so we avoid that
+        # by re-copying the data.
+        touch_up_start = time()
+        if countstored(output_tensor) > (1.2 * count_non_default(output_tensor)) && !all([f == t_dense for f in output_formats])
+            output_tensor = initialize_tensor(output_formats,
+                                        output_dimensions,
+                                        output_default,
+                                        copy_data = output_tensor)
+        end
+        verbose >= 2 && println("Touch Up Time: ", time()-touch_up_start)
         alias_dict[name] = output_tensor
     end
-
 end

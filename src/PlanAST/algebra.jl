@@ -27,6 +27,7 @@ function isdistributive(f, g)
     return distributes
 end
 
+
 function cansplitpush(f, g)
     if typeof(f) == PlanNode && typeof(g) == PlanNode
         throw(error("Can't check splitpush of plan nodes!"))
@@ -75,4 +76,8 @@ function isidempotent(f)
         throw(error("Can't check idempotency of plan nodes!"))
     end
     return Finch.isidempotent(Finch.DefaultAlgebra(), f)
+end
+
+function is_binary(f)
+    return (f == |) || (f == &)
 end

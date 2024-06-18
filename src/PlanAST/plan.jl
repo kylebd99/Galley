@@ -345,14 +345,14 @@ end
 function plan_copy(n::PlanNode; copy_stats = true)
     if n.kind === Input
         p = Input(n.tns, [idx.name for idx in n.idxs]..., n.id)
-        p.stats = (copy_stats && isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
+        p.stats = (copy_stats && !isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
         p.node_id = n.node_id
         return p
     else
-        stats = (copy_stats && isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
+        stats = (copy_stats && !isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
         children = []
         for i in eachindex(n.children)
-            push!(children, plan_copy(n.children[i]))
+            push!(children, plan_copy(n.children[i], copy_stats=copy_stats))
         end
         return PlanNode(n.kind, children, n.val, stats, n.node_id)
     end

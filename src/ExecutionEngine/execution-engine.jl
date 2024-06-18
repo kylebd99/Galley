@@ -98,13 +98,18 @@ function execute_query(alias_dict, q::PlanNode, verbose)
         verbose >= 2 && println("Output Size: 1")
         alias_dict[name] = output_tensor[]
     else
-        verbose >= 2 && println("CountStored: ", countstored(output_tensor))
-        verbose >= 2 && println("Output Size: ", count_non_default(output_tensor))
         # There are cases where default entries will be stored explicitly, so we avoid that
-        # by re-copying the data.
+        # by re-copying the data. We also check to see if the format should be changed
+        # based on the true cardinality.
         touch_up_start = time()
-        if countstored(output_tensor) > (1.2 * count_non_default(output_tensor)) && !all([f == t_dense for f in output_formats])
-            output_tensor = initialize_tensor(output_formats,
+        non_default = count_non_default(output_tensor)
+        stored = count_stored(output_tensor)
+        verbose >= 2 && println("Stored Entries: ", stored)
+        verbose >= 2 && println("Non Default Entries: ", non_default)
+        if stored > (1.2 * non_default) && !all([f == t_dense for f in output_formats])
+            fix_cardinality!(mat_expr.stats, non_default)
+            best_formats = select_output_format(mat_expr.stats, reverse(get_index_order(mat_expr.stats)), get_index_order(mat_expr.stats))
+            output_tensor = initialize_tensor(best_formats,
                                         output_dimensions,
                                         output_default,
                                         copy_data = output_tensor)

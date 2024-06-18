@@ -230,3 +230,7 @@ function count_non_default(A)
     Finch.execute(prgm, mode=:fast)
     return count[]
 end
+
+function count_stored(A)
+    return sum(pattern!(A))
+end

@@ -17,7 +17,7 @@ using Finch: Element, SparseListLevel, SparseDict, Dense, SparseCOO, fsparse_imp
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
                         access_instance,  assign_instance, loop_instance, declare_instance,
                         block_instance, define_instance, call_instance, freeze_instance,
-                        thaw_instance,
+                        thaw_instance, sieve_instance
                         Updater, Reader, Dimensionless
 using DuckDB
 using PrettyPrinting

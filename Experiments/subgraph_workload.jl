@@ -194,7 +194,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         push!(factors, edge_factor)
     end
     query = Query(:out, Materialize(Aggregate(+, [query_id_to_idx(i) for i in keys(query_vertices)]..., MapJoin(*, factors...))))
-    return query
+    return [query]
 end
 
 
@@ -261,6 +261,7 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
     query_directories[hprd_lite] = ["/hprd-lite"]
     query_directories[wordnet] = ["/wordnet"]
     query_directories[youtube] = ["/youtube"]
+    query_directories[youtube_lite] = ["/youtube-lite"]
     query_directories[patents] = ["/patents"]
     query_directories[eu2005] = ["/eu2005"]
     query_directories[dblp] = ["/dblp"]
@@ -276,6 +277,8 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
         graph_dataset = hprd
     elseif dataset == dblp_lite
         graph_dataset = dblp
+    elseif dataset == youtube_lite
+        graph_dataset = youtube
     end
 
     vertex_vectors, edge_matrices = load_subgraph_dataset(graph_dataset, stats_type, dbconn)

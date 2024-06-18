@@ -24,7 +24,10 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
     println("Starting Worker Experiment")
     dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
     queries = load_workload(experiment.workload, experiment.stats_type, dbconn)
-    num_attempted, num_completed, num_correct, num_with_values, _ = take!(status_channel)
+    num_attempted, num_completed, num_correct, num_with_values, _  = (0, 0, 0, 0, false)
+    if isready(status_channel)
+        num_attempted, num_completed, num_correct, num_with_values, _ = take!(status_channel)
+    end
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, false))
     for query in queries[starting_query:end]
         println("Query Path: ", query.query_path)
@@ -41,7 +44,7 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
                 else
                     put!(results_channel, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), "0.0", string(result.value), string(false)))
                     if !isnothing(query.expected_result)
-                        if result.value == query.expected_result
+                        if result.value[1] == query.expected_result
                             num_correct += 1
                         end
                         num_with_values += 1
@@ -62,7 +65,7 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
                 else
                     put!(results_channel, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(warm_start_time - result.execute_time - result.opt_time), string(result.value), string(false)))
                     if !isnothing(query.expected_result)
-                        if all(result.value .== query.expected_result)
+                        if all(result.value[1] .== query.expected_result)
                             num_correct += 1
                         else
                             println("Query Incorrect: $(query.query_path) Expected: $(query.expected_result) Returned: $(result.value)")

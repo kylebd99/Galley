@@ -10,5 +10,5 @@ using Galley: t_sparse_list, t_dense
 include("plan-tests.jl")
 include("annotated-query-tests.jl")
 include("basic-tests.jl")
-#include("stats-tests.jl")
+include("stats-tests.jl")
 #include("decomposition-tests.jl")

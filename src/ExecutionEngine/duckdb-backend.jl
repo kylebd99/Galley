@@ -305,3 +305,33 @@ end
 function _duckdb_drop_alias(dbconn, alias)
     DuckDB.execute(dbconn, "DROP TABLE $(alias_to_table_name(alias))")
 end
+
+
+function duckdb_execute_logical_plan(logical_queries, dbconn, output_name, output_order, faq_time, verbose)
+    output_name = only(output_aliases)
+    output_order = output_orders[output_name]
+    duckdb_opt_time = faq_time
+    duckdb_exec_time = 0
+    duckdb_insert_time = 0
+    for query in logical_queries
+        verbose >= 1 && println("-------------- Computing Alias $(query.name) -------------")
+        query_timings = duckdb_execute_query(dbconn, query, verbose)
+        verbose >= 1 && println("$query_timings")
+        duckdb_opt_time += query_timings.opt_time
+        duckdb_exec_time += query_timings.execute_time
+        duckdb_insert_time += query_timings.insert_time
+    end
+    result = _duckdb_query_to_tns(dbconn, logical_queries[end], output_order)
+    for query in logical_queries
+        _duckdb_drop_alias(dbconn, query.name)
+    end
+    verbose >= 1 && println("Time to Optimize: ",  duckdb_opt_time)
+    verbose >= 1 && println("Time to Insert: ", duckdb_insert_time)
+    verbose >= 1 && println("Time to Execute: ", duckdb_exec_time)
+    return (value=[result],
+                opt_time=duckdb_opt_time,
+                insert_time = duckdb_insert_time,
+                execute_time=duckdb_exec_time,
+                overall_time = duckdb_opt_time + duckdb_insert_time + duckdb_exec_time)
+
+end

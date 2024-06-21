@@ -72,7 +72,7 @@ function galley(input_queries::Vector{PlanNode};
     overall_start = time()
     # To avoid input corruption, we start by copying the input queries (except for the data)
     input_queries = map(plan_copy, input_queries)
-    if verbose >= 2
+    if verbose >= 1
         println("Input Queries : ")
         for input_query in input_queries
             println(input_query)
@@ -88,15 +88,7 @@ function galley(input_queries::Vector{PlanNode};
     output_aliases = [input_query.name for input_query in input_queries]
     output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_queries)
     for input_query in input_queries
-        # If there's the possibility of distributivity, we attempt that pushdown and see
-        # whether it benefits the computation.
-        check_dnf = !allequal([n.op.val for n in PostOrderDFS(input_query) if n.kind === MapJoin])
-        logical_plan, cnf_cost = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, false)
-        if check_dnf
-            dnf_plan, dnf_cost = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash,true)
-            logical_plan = dnf_cost < cnf_cost ? dnf_plan : logical_plan
-            verbose >= 1 && println("Used DNF: $(dnf_cost < cnf_cost)")
-        end
+        logical_plan = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, verbose)
         for query in logical_plan
             alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
             alias_stats[query.name] = query.expr.stats
@@ -104,16 +96,16 @@ function galley(input_queries::Vector{PlanNode};
         append!(logical_queries, logical_plan)
     end
     faq_opt_time = time() - faq_opt_start
-    verbose >= 1 && println("FAQ Opt Time: $faq_opt_time")
-
-    if verbose >= 1
+    if verbose >= 2
+        println("FAQ Opt Time: $faq_opt_time")
         println("--------------- Logical Plan ---------------")
         for query in logical_queries
             println(query)
         end
         println("--------------------------------------------")
     end
-    # At this point, we hand it off to DuckDB if we've been given a valid DBConn handle.
+
+    # If we've been given a valid DBConn handle, we hand it off to DuckDB.
     if !isnothing(dbconn)
         return duckdb_execute_logical_plan(logical_queries,
                                             dbconn,
@@ -122,6 +114,7 @@ function galley(input_queries::Vector{PlanNode};
                                             time() - opt_start,
                                             verbose)
     end
+
     # We now compute the logical queries in order by performing the following steps:
     #   1. Query Splitting: We reduce queries to a size which is manageably compilable by Finch
     #   2. Physical Optimization: We make three decision about execution strategy for each query
@@ -144,7 +137,7 @@ function galley(input_queries::Vector{PlanNode};
             for p_query in physical_queries
                 verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
                 verbose > 2 && println(p_query)
-                verbose > 4 && validate_physical_query(p_query)
+                verbose > 3 && validate_physical_query(p_query)
                 exec_start = time()
                 p_query_hash = cannonical_hash(p_query.expr, alias_hash)
                 alias_hash[p_query.name] = p_query_hash
@@ -175,7 +168,7 @@ function galley(input_queries::Vector{PlanNode};
     verbose >= 1 && println("Time to count: ", total_count_time)
     verbose >= 1 && println("Overall Time: ", total_overall_time)
     return (value=[alias_result[alias] for alias in output_aliases],
-            opt_time=(faq_opt_time + total_split_time + total_phys_opt_time),
+            opt_time=(faq_opt_time + total_split_time + total_phys_opt_time + total_count_time),
             execute_time= total_exec_time,
             overall_time=total_overall_time)
 end

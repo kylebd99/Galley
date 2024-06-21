@@ -142,6 +142,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     end
     for query in queries
         insert_node_ids!(query)
+        modify_protocols!(query.expr)
         alias_stats[query.name] = query.expr.stats
     end
     return queries

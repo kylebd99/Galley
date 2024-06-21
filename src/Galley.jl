@@ -48,15 +48,19 @@ include("FAQOptimizer/FAQOptimizer.jl")
 include("PhysicalOptimizer/PhysicalOptimizer.jl")
 include("ExecutionEngine/ExecutionEngine.jl")
 
-# InputQuery: Query(name, Materialize(formats..., idxs..., agg_map_expr))
-# Aggregate(op, idxs.., expr)
-# MapJoin(op, exprs...)
 # TODO:
 #   - Convert a Finch HL query to a galley query
 #   - On Finch Side:
 #           - One query at a time to galley
 #           - Isolate reformat_stats
 #           - Fuse mapjoins & permutations
+
+# Galley takes in a series of high level queries which define required outputs.
+# Each query has the form:
+#       Query(name, Materialize(formats..., indices..., expr))
+# The inner expr can be any combination of MapJoin(op, args...) and Aggregate(op, idxs..., arg)
+# with the leaves being Input(tns, idxs...), Alias(name, idxs...), or Value(v) where name refers
+# to the results of a previous query.
 function galley(input_queries::Vector{PlanNode};
                     faq_optimizer::FAQ_OPTIMIZERS=greedy,
                     ST=DCStats,
@@ -66,6 +70,7 @@ function galley(input_queries::Vector{PlanNode};
                     max_kernel_size=5,
                     verbose=0)
     overall_start = time()
+    # To avoid input corruption, we start by copying the input queries (except for the data)
     input_queries = map(plan_copy, input_queries)
     if verbose >= 2
         println("Input Queries : ")
@@ -73,14 +78,18 @@ function galley(input_queries::Vector{PlanNode};
             println(input_query)
         end
     end
-    opt_start = time()
-    faq_opt_start = time()
+
+    # First, we perform high level optimization where each query is translated to one or
+    # more queries with a simpler structure: Query(name, Aggregate(op, idxs, point_expr))
+    # where point_expr is made up of just MapJoin, Input, and Alias nodes.
+    opt_start, faq_opt_start = time(), time()
     logical_queries = []
-    alias_stats = Dict{PlanNode, TensorStats}()
-    alias_hash = Dict{PlanNode, UInt}()
+    alias_stats, alias_hash = Dict{PlanNode, TensorStats}(),  Dict{PlanNode, UInt}()
     output_aliases = [input_query.name for input_query in input_queries]
     output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_queries)
     for input_query in input_queries
+        # If there's the possibility of distributivity, we attempt that pushdown and see
+        # whether it benefits the computation.
         check_dnf = !allequal([n.op.val for n in PostOrderDFS(input_query) if n.kind === MapJoin])
         logical_plan, cnf_cost = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, false)
         if check_dnf
@@ -104,42 +113,26 @@ function galley(input_queries::Vector{PlanNode};
         end
         println("--------------------------------------------")
     end
+    # At this point, we hand it off to DuckDB if we've been given a valid DBConn handle.
     if !isnothing(dbconn)
-        verbose
-        opt_end = time()
-        output_name = only(output_aliases)
-        output_order = output_orders[output_name]
-        duckdb_opt_time = (opt_end-opt_start)
-        duckdb_exec_time = 0
-        duckdb_insert_time = 0
-        for query in logical_queries
-            verbose >= 1 && println("-------------- Computing Alias $(query.name) -------------")
-            query_timings = duckdb_execute_query(dbconn, query, verbose)
-            verbose >= 1 && println("$query_timings")
-            duckdb_opt_time += query_timings.opt_time
-            duckdb_exec_time += query_timings.execute_time
-            duckdb_insert_time += query_timings.insert_time
-        end
-        result = _duckdb_query_to_tns(dbconn, logical_queries[end], output_order)
-        for query in logical_queries
-            _duckdb_drop_alias(dbconn, query.name)
-        end
-        verbose >= 1 && println("Time to Optimize: ",  duckdb_opt_time)
-        verbose >= 1 && println("Time to Insert: ", duckdb_insert_time)
-        verbose >= 1 && println("Time to Execute: ", duckdb_exec_time)
-        return (value=[result],
-                    opt_time=duckdb_opt_time,
-                    insert_time = duckdb_insert_time,
-                    execute_time=duckdb_exec_time,
-                    overall_time = duckdb_opt_time + duckdb_insert_time + duckdb_exec_time)
+        return duckdb_execute_logical_plan(logical_queries,
+                                            dbconn,
+                                            only(output_aliases),
+                                            output_orders[only(output_aliases)],
+                                            time() - opt_start,
+                                            verbose)
     end
-    opt_end = time()
-    total_split_time = 0
-    total_phys_opt_time = 0
-    total_exec_time = 0
-    total_count_time = 0
-    plan_hash_result = Dict()
-    alias_result = Dict()
+    # We now compute the logical queries in order by performing the following steps:
+    #   1. Query Splitting: We reduce queries to a size which is manageably compilable by Finch
+    #   2. Physical Optimization: We make three decision about execution strategy for each query
+    #           a. Loop Order
+    #           b. Output Format
+    #           c. Access Protocols
+    #   3. Execution: No more decisions are made, we simply build the kernel and hand it to
+    #      Finch.
+    #   4. Touch Up: We check the actual output cardinality and fix our stats accordingly.
+    total_split_time, total_phys_opt_time, total_exec_time, total_count_time = 0,0,0,0
+    plan_hash_result, alias_result = Dict(), Dict()
     for l_query in logical_queries
         split_start = time()
         split_queries = split_query(l_query, ST, max_kernel_size, alias_stats)
@@ -151,11 +144,6 @@ function galley(input_queries::Vector{PlanNode};
             for p_query in physical_queries
                 verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
                 verbose > 2 && println(p_query)
-                phys_opt_start = time()
-                modify_protocols!(p_query.expr)
-                total_phys_opt_time += time() - phys_opt_start
-                alias_stats[p_query.name] = p_query.expr.stats
-
                 verbose > 4 && validate_physical_query(p_query)
                 exec_start = time()
                 p_query_hash = cannonical_hash(p_query.expr, alias_hash)

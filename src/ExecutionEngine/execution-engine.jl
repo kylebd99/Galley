@@ -104,15 +104,18 @@ function execute_query(alias_dict, q::PlanNode, verbose)
         touch_up_start = time()
         non_default = count_non_default(output_tensor)
         stored = count_stored(output_tensor)
+        estimated_size = estimate_nnz(mat_expr.stats)
         verbose >= 2 && println("Stored Entries: ", stored)
         verbose >= 2 && println("Non Default Entries: ", non_default)
-        if stored > (1.2 * non_default) && !all([f == t_dense for f in output_formats])
+        if (stored > (1.2 * non_default)) || (non_default > 5 * estimated_size) ||(non_default < estimated_size / 5)
             fix_cardinality!(mat_expr.stats, non_default)
             best_formats = select_output_format(mat_expr.stats, reverse(get_index_order(mat_expr.stats)), get_index_order(mat_expr.stats))
-            output_tensor = initialize_tensor(best_formats,
-                                        output_dimensions,
-                                        output_default,
-                                        copy_data = output_tensor)
+            if !all([f == t_dense for f in best_formats])
+                output_tensor = initialize_tensor(best_formats,
+                                            output_dimensions,
+                                            output_default,
+                                            copy_data = output_tensor)
+            end
         end
         verbose >= 2 && println("Touch Up Time: ", time()-touch_up_start)
         alias_dict[name] = output_tensor

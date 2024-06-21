@@ -13,12 +13,12 @@ function select_output_format(output_stats::TensorStats,
         approx_sparsity = estimate_nnz(output_stats; indices=prefix) / get_dim_space_size(output_stats, Set(prefix))
 
         if approx_sparsity > .9
-            if get_dim_space_size(output_stats, Set(prefix)) > 10^9
+            if get_dim_space_size(output_stats, Set(prefix)) > 10^10
                 throw(OutOfMemoryError())
             end
             push!(formats, t_dense)
-        elseif approx_sparsity > .01
-            if get_dim_space_size(output_stats, Set(prefix)) > 10^9
+        elseif approx_sparsity > .001
+            if get_dim_space_size(output_stats, Set(prefix)) > 10^10
                 throw(OutOfMemoryError())
             end
             push!(formats, t_bytemap)

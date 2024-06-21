@@ -160,7 +160,7 @@ end
 struct DegreeConstraint
     X::Set{IndexExpr}
     Y::Set{IndexExpr}
-    d::Float64
+    d::UInt128
 end
 DC = DegreeConstraint
 
@@ -252,7 +252,7 @@ end
 # When we're only attempting to infer for nnz estimation, we only need to consider
 # left dcs which have X = {}.
 function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
-    all_dcs = Dict{DCKey, Float64}()
+    all_dcs = Dict{DCKey, UInt128}()
     for dc in dcs
         all_dcs[(X = sort!(collect(dc.X)), Y = sort!(collect(dc.Y)))] = dc.d
     end
@@ -264,7 +264,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
         if strength <= 0
             max_dc_size = maximum([length(x.Y) for x in keys(prev_new_dcs)], init=0)
         end
-        new_dcs = Dict{DCKey, Float64}()
+        new_dcs = Dict{DCKey, UInt128}()
 
         for (l, ld) in all_dcs
             strength <= 1 && length(l.X) > 0 && continue
@@ -368,7 +368,7 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
     if length(indices) == 0
         return 1
     end
-    current_weights = Dict{Vector{IndexExpr}, UInt64}(Vector{IndexExpr}()=>1)
+    current_weights = Dict{Vector{IndexExpr}, UInt128}(Vector{IndexExpr}()=>1)
     frontier = Set{Vector{IndexExpr}}([Vector{IndexExpr}()])
     finished = false
     while !finished
@@ -499,9 +499,23 @@ function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
     return dcs
 end
 
+function dense_dcs(def, indices::Vector{IndexExpr})
+    dcs = Set()
+    for X in subsets(indices)
+        Y = setdiff(indices, X)
+        for Z in subsets(Y)
+            push!(dcs, DC(Set(X), Set(Z), get_dim_space_size(def, Set(Z))))
+        end
+    end
+    return dcs
+end
+
 function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
     def = TensorDef(tensor, indices)
-    sparsity_structure = (typeof(get_default_value(def)) == Bool) ? tensor : get_sparsity_structure(tensor)
+    if all([f==t_dense for f in get_index_formats(def)])
+        return DCStats(def, dense_dcs(def, indices))
+    end
+    sparsity_structure = pattern!(tensor)
     dcs = _structure_to_dcs(indices, sparsity_structure)
     return DCStats(def, dcs)
 end

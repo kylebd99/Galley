@@ -17,14 +17,14 @@ using Finch: Element, SparseListLevel, SparseDict, Dense, SparseCOO, fsparse_imp
 using Finch.FinchNotation: index_instance, variable_instance, tag_instance, literal_instance,
                         access_instance,  assign_instance, loop_instance, declare_instance,
                         block_instance, define_instance, call_instance, freeze_instance,
-                        thaw_instance, sieve_instance
+                        thaw_instance,
                         Updater, Reader, Dimensionless
 using DuckDB
 using PrettyPrinting
 
 export galley
 export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan, IndexExpr
-export Scalar, OutTensor, RenameIndices, declare_binary_operator, ∑, ∏
+export Scalar, OutTensor, RenameIndices, declare_binary_operator, Σ
 export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, hypertree_width, greedy, pruned, exact
@@ -127,10 +127,11 @@ function galley(input_queries::Vector{PlanNode};
         verbose >= 1 && println("Time to Optimize: ",  duckdb_opt_time)
         verbose >= 1 && println("Time to Insert: ", duckdb_insert_time)
         verbose >= 1 && println("Time to Execute: ", duckdb_exec_time)
-        return (value=result,
+        return (value=[result],
                     opt_time=duckdb_opt_time,
                     insert_time = duckdb_insert_time,
-                    execute_time=duckdb_exec_time)
+                    execute_time=duckdb_exec_time,
+                    overall_time = duckdb_opt_time + duckdb_insert_time + duckdb_exec_time)
     end
     opt_end = time()
     total_split_time = 0
@@ -148,13 +149,13 @@ function galley(input_queries::Vector{PlanNode};
             physical_queries = logical_query_to_physical_queries(s_query, ST, alias_stats)
             total_phys_opt_time += time() - phys_opt_start
             for p_query in physical_queries
+                verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
+                verbose > 2 && println(p_query)
                 phys_opt_start = time()
                 modify_protocols!(p_query.expr)
                 total_phys_opt_time += time() - phys_opt_start
                 alias_stats[p_query.name] = p_query.expr.stats
 
-                verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
-                verbose > 2 && println(p_query)
                 verbose > 4 && validate_physical_query(p_query)
                 exec_start = time()
                 p_query_hash = cannonical_hash(p_query.expr, alias_hash)
@@ -189,6 +190,27 @@ function galley(input_queries::Vector{PlanNode};
             opt_time=(faq_opt_time + total_split_time + total_phys_opt_time),
             execute_time= total_exec_time,
             overall_time=total_overall_time)
+end
+
+function galley(input_query::PlanNode;
+                    faq_optimizer::FAQ_OPTIMIZERS=greedy,
+                    ST=DCStats,
+                    dbconn::Union{DuckDB.DB, Nothing}=nothing,
+                    update_cards=true,
+                    simple_cse=true,
+                    max_kernel_size=5,
+                    verbose=0)
+    result = galley([input_query];faq_optimizer=faq_optimizer,
+                                ST=ST,
+                                dbconn=dbconn,
+                                update_cards=update_cards,
+                                simple_cse=simple_cse,
+                                max_kernel_size=max_kernel_size,
+                                verbose=verbose)
+    return (value=result.value[1],
+            opt_time=result.opt_time,
+            execute_time=result.execute_time,
+            overall_time=result.overall_time)
 end
 
 end

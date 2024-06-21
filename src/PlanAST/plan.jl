@@ -196,6 +196,15 @@ function relabel_input(input::PlanNode, indices...)
     return relabeled_input
 end
 
+function Base.getindex(A::PlanNode, indices...)
+    @assert all([idx isa Symbol for idx in indices])
+    if A.kind == Alias
+        return Alias(A.name, indices...)
+    else
+        return Input(A, indices...)
+    end
+end
+
 function Base.:(==)(a::PlanNode, b::PlanNode)
     if a.kind === Value
         if a.val isa Tensor
@@ -415,4 +424,11 @@ function get_aliases(q::PlanNode)
         end
     end
     return alias_nodes
+end
+
+
+function Σ(args...)
+    @assert length(args) >= 2
+    indices = args[1:end-1]
+    return Aggregate(+, indices..., args[end])
 end

@@ -6,7 +6,7 @@
 
 function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams};
                                         x_type::GROUP=dataset, y_type::VALUE=overall_time,
-                                        grouping::GROUP=faq_optimizer,
+                                        grouping::GROUP=faq_optimizer, y_lims=[10^-5, 10^3],
                                         x_label=nothing, y_label=nothing, filename=nothing)
     # for now let's just use the dataset as the x-values and the cycle size as the groups
     x_values = []
@@ -52,7 +52,7 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
     # See this: https://discourse.julialang.org/t/deactivate-plot-display-to-avoid-need-for-x-server/19359/15
     ENV["GKSwstype"]="100"
     gbplot = groupedboxplot(x_values, y_values, group = groups, yscale =:log10,
-                            ylims=[10^-5, 10^3], yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
+                            ylims=y_lims, yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
                             legend = :outertopleft, size = (1000, 600))
     x_label !== nothing && xlabel!(gbplot, x_label)
     y_label !== nothing && ylabel!(gbplot, y_label)

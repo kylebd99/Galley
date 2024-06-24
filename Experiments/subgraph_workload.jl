@@ -1,6 +1,3 @@
-
-
-
 # In this function, we convert the property graph model to tensors. We do this by
 # treating each node label as a 0/1 vector V_i indicating that a node has that label, and
 # each edge label as a 0/1 matrix E_ij indicating whether there is an edge from i to j
@@ -56,12 +53,12 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
         values = [1 for _ in node_ids]
         vertex_vector = Tensor(SparseList(Element(0), n))
         copyto!(vertex_vector,  sparsevec(node_ids, values, n))
-        vertex_vectors[label] =  Input(vertex_vector, :i)
+        vertex_vectors[label] =  Input(vertex_vector, :i, "v_$label")
         vertex_vectors[label].stats = stats_type(vertex_vectors[label].tns.val, [:i])
         if !isnothing(dbconn)
             stats = vertex_vectors[label].stats
             fill_table(dbconn, vertex_vector, [Index(:i)], vertex_label_to_table(label))
-            vertex_vectors[label] = Input(DuckDBTensor(vertex_label_to_table(label), ["i"]), :i)
+            vertex_vectors[label] = Input(DuckDBTensor(vertex_label_to_table(label), ["i"]), :i, "v_$label")
             vertex_vectors[label].stats = stats
         end
     end
@@ -79,12 +76,12 @@ function load_dataset(path, stats_type, dbconn; subgraph_matching_data=false)
         values = [1 for _ in i_ids]
         edge_matrix = Tensor(Dense(SparseList(Element(0), n), n))
         copyto!(edge_matrix, sparse(i_ids, j_ids, values, n, n))
-        edge_matrices[label] = Input(edge_matrix, :i, :j)
+        edge_matrices[label] = Input(edge_matrix, :i, :j, "e_$label")
         edge_matrices[label].stats = stats_type(edge_matrices[label].tns.val, [:i, :j])
         if !isnothing(dbconn)
             stats = edge_matrices[label].stats
             fill_table(dbconn, edge_matrix, [Index(:i), Index(:j)], edge_label_to_table(label))
-            edge_matrices[label] = Input(DuckDBTensor(edge_label_to_table(label), ["i", "j"]), :i, :j)
+            edge_matrices[label] = Input(DuckDBTensor(edge_label_to_table(label), ["i", "j"]), :i, :, "e_$label")
             edge_matrices[label].stats  = stats
         end
     end
@@ -197,7 +194,7 @@ function load_query(path, vertex_vectors, edge_matrices; subgraph_matching_data=
         push!(factors, edge_factor)
     end
     query = Query(:out, Materialize(Aggregate(+, [query_id_to_idx(i) for i in keys(query_vertices)]..., MapJoin(*, factors...))))
-    return query
+    return [query]
 end
 
 
@@ -264,9 +261,11 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
     query_directories[hprd_lite] = ["/hprd-lite"]
     query_directories[wordnet] = ["/wordnet"]
     query_directories[youtube] = ["/youtube"]
+    query_directories[youtube_lite] = ["/youtube-lite"]
     query_directories[patents] = ["/patents"]
     query_directories[eu2005] = ["/eu2005"]
     query_directories[dblp] = ["/dblp"]
+    query_directories[dblp_lite] = ["/dblp-lite"]
 
     query_paths = [readdir("Experiments/Data/Subgraph_Queries" * dir, join=true) for dir in query_directories[dataset]]
     query_paths = [(query_paths...)...]
@@ -276,6 +275,10 @@ function load_subgraph_workload(dataset::WORKLOAD, stats_type::Type, dbconn)
         graph_dataset = yeast
     elseif dataset == hprd_lite
         graph_dataset = hprd
+    elseif dataset == dblp_lite
+        graph_dataset = dblp
+    elseif dataset == youtube_lite
+        graph_dataset = youtube
     end
 
     vertex_vectors, edge_matrices = load_subgraph_dataset(graph_dataset, stats_type, dbconn)

@@ -3,7 +3,7 @@
 function sort_mapjoin_args(args)
     immediate_args = [arg for arg in args if arg.kind == Input || arg.kind == Alias]
     remainder = [arg for arg in args if !(arg.kind == Input || arg.kind == Alias)]
-    perm = sortperm([(length(get_index_order(arg.stats)), get_index_formats(arg.stats)..., get_index_protocols(arg.stats)) for arg in immediate_args])
+    perm = sortperm([(length(get_index_order(arg.stats)), get_index_formats(arg.stats)..., get_index_protocols(arg.stats)...) for arg in immediate_args])
     return [immediate_args[perm]..., remainder...]
 end
 
@@ -16,20 +16,32 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         tensor_counter[1] += 1
         return initialize_access(t_name, tns, idxs, protocols, index_sym_dict, read=true)
 
-    elseif @capture rhs Input(~tns, ~idxs...)
+    elseif rhs.kind === Input
         idxs = get_index_order(rhs.stats)
         protocols = [get_index_protocol(rhs.stats, idx) for idx in idxs]
         t_name = get_tensor_symbol(tensor_counter[1])
         tensor_counter[1] += 1
-        return initialize_access(t_name, tns.val, idxs, protocols, index_sym_dict, read=true)
-
-    elseif @capture rhs MapJoin(~op, ~args...)
-        args = sort_mapjoin_args(args)
-        return call_instance(literal_instance(op.val),
-                                [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in args]...)
-
+        return initialize_access(t_name, rhs.tns.val, idxs, protocols, index_sym_dict, read=true)
+    elseif rhs.kind == Value
+        if rhs.val isa Number
+            return literal_instance(rhs.val)
+        end
+    elseif rhs.kind === MapJoin
+        if iscommutative(rhs.op.val)
+            rhs.args = sort_mapjoin_args(rhs.args)
+        end
+        if is_binary(rhs.op.val)
+            instance = translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs.args[1])
+            for arg in rhs.args[2:end]
+                instance = call_instance(literal_instance(rhs.op.val), translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg), instance)
+            end
+            return instance
+        else
+            return call_instance(literal_instance(rhs.op.val),
+                                    [translate_rhs(alias_dict, tensor_counter, index_sym_dict, arg) for arg in rhs.args]...)
+        end
     else
-        throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin"))
+        throw(ErrorException("RHS expression cannot contain anything except Alias, Input, and MapJoin: $rhs"))
     end
 end
 
@@ -73,16 +85,39 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     prgm_instance = block_instance(dec_instance, prgm_instance)
 
     start_time = time()
-    Finch.execute(prgm_instance, (mode=Finch.FastFinch(),))
-    verbose >= 1 && println("----------- Computing: $(q.name) -----------")
     verbose >= 4 && display(prgm_instance)
+    verbose >= 5 &&  println(Finch.execute_code(:ex, typeof(prgm_instance), mode=:fast)
+                                                                |> Finch.pretty
+                                                                |>  Finch.unresolve
+                                                                |>  Finch.dataflow
+                                                                |>  Finch.unquote_literals)
+    verbose >= 2 && println("Expected Output Size: $(estimate_nnz(agg_expr.stats))")
+    Finch.execute(prgm_instance, mode=:fast)
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         verbose >= 2 && println("Output Size: 1")
         alias_dict[name] = output_tensor[]
     else
-        verbose >= 2 && println("Output Size: ", countstored(output_tensor))
+        # There are cases where default entries will be stored explicitly, so we avoid that
+        # by re-copying the data. We also check to see if the format should be changed
+        # based on the true cardinality.
+        touch_up_start = time()
+        non_default = count_non_default(output_tensor)
+        stored = count_stored(output_tensor)
+        estimated_size = estimate_nnz(mat_expr.stats)
+        verbose >= 2 && println("Stored Entries: ", stored)
+        verbose >= 2 && println("Non Default Entries: ", non_default)
+        if (stored > (1.2 * non_default)) || (non_default > 5 * estimated_size) ||(non_default < estimated_size / 5)
+            fix_cardinality!(mat_expr.stats, non_default)
+            best_formats = select_output_format(mat_expr.stats, reverse(get_index_order(mat_expr.stats)), get_index_order(mat_expr.stats))
+            if !all([f == t_dense for f in best_formats])
+                output_tensor = initialize_tensor(best_formats,
+                                            output_dimensions,
+                                            output_default,
+                                            copy_data = output_tensor)
+            end
+        end
+        verbose >= 2 && println("Touch Up Time: ", time()-touch_up_start)
         alias_dict[name] = output_tensor
     end
-    verbose >= 2 && println("Expected Output Size: $(estimate_nnz(agg_expr.stats))")
 end

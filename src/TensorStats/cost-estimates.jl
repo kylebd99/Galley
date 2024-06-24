@@ -2,12 +2,12 @@
 # We start by defining some basic cost parameters. These will need to be adjusted somewhat
 # through testing.
 const SeqReadCost = 1
-const SeqWriteCost = 10
+const SeqWriteCost = 5
 const RandomReadCost = 5
-const RandomWriteCost = 25
+const RandomWriteCost = 10
 
 const ComputeCost = 1
-const AllocateCost = 25
+const AllocateCost = 10
 
 # We estimate the prefix cost based on the number of iterations in that prefix.
 function get_loop_lookups(agg_op, vars::Set{IndexExpr}, join_stats::TensorStats)

@@ -1,92 +1,81 @@
-macro timeout(seconds, expr_to_run, expr_when_fails)
-    quote
-        tsk = @task $(esc(expr_to_run))
-        schedule(tsk)
-        num_checks = $(esc(seconds))*10
-        for i in 1:num_checks
-            sleep(.1)
-            if istaskdone(tsk)
-                break
-            end
-        end
-        if !istaskdone(tsk)
-            schedule(tsk, InterruptException(), error=true)
-        end
-        try
-            fetch(tsk)
-        catch e
-            throw(e)
-            println("Error: $e")
-            $(esc(expr_when_fails))
-        end
+function load_worker()
+    println("Spawning Worker")
+    worker_pid = addprocs(1)[1]
+    f = @spawnat worker_pid include("Experiments/run_experiments_worker.jl")
+    fetch(f)
+    return worker_pid
+end
+
+function clear_channel(c)
+    while isready(c)
+        take!(c)
     end
 end
 
+const results_channel = RemoteChannel(()->Channel{Any}(10000), 1)
+const status_channel = RemoteChannel(()->Channel{Any}(10000), 1)
+
 function run_experiments(experiment_params::Vector{ExperimentParams})
     for experiment in experiment_params
+        clear_channel(results_channel)
+        clear_channel(status_channel)
         results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "CompileTime", "Result", "Failed")]
-        dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
-        queries = load_workload(experiment.workload, experiment.stats_type, dbconn)
-        num_attempted = 0
-        num_completed = 0
-        num_correct = 0
-        num_with_values = 0
-        for query in queries
-            println("Query Path: ", query.query_path)#=
-            if occursin("query_dense_4", query.query_path)
-                continue
-            end =#
-            num_attempted +=1
-            try
-                if experiment.use_duckdb
-                    result = @timeout experiment.timeout galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0) "failed"
-                    if result == "failed"
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", string(true)))
-                    else
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), "0.0", string(result.value), string(false)))
-                        if !isnothing(query.expected_result)
-                            if result.value == query.expected_result
-                                num_correct += 1
-                            end
-                            num_with_values += 1
-                        end
-                        num_completed += 1
-                    end
-                else
-                    warm_start_time = 0
-                    if experiment.warm_start
-                        println("Warm Start Query Path: ", query.query_path)
-                        warm_start_time = @elapsed galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, verbose=4)
-                        println("Warm Start Time: $warm_start_time")
-                    end
-                    result = galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, verbose=0)
-                    if result == "failed"
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, "0.0", "0.0", "0.0", "0.0", string(true)))
-                    else
-                        println(result)
-                        push!(results, (string(experiment.workload), query.query_type, query.query_path, string(result.execute_time), string(result.opt_time), string(warm_start_time - result.execute_time - result.opt_time), string(result.value), string(false)))
-                        if !isnothing(query.expected_result)
-                            if all(result.value .== query.expected_result)
-                                num_correct += 1
-                            else
-                                println("Query Incorrect: $(query.query_path) Expected: $(query.expected_result) Returned: $(result.value)")
-                                throw(Base.error("WRONG RESULT"))
-                            end
-                            num_with_values += 1
-                        end
-                        num_completed += 1
-                    end
+        num_attempted, num_completed, num_correct, num_with_values, exp_finished = (0, 0, 0, 0, false)
+        put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, exp_finished))
+        worker_pid = load_worker()
+        cur_query = 1
+        while !exp_finished
+            if worker_pid == -1
+                worker_pid = load_worker()
+            end
+            f = @spawnat worker_pid attempt_experiment(experiment, cur_query, results_channel, status_channel)
+#            f = attempt_experiment(experiment, cur_query, results_channel, status_channel)
+            load_start = time()
+            finished = false
+            last_result = time()
+            while !finished
+                sleep(.01)
+                if isready(results_channel)
+                    push!(results, take!(results_channel))
+                    cur_query += 1
+                    last_result = time()
+                    num_attempted, num_completed, num_correct, num_with_values, exp_finished = fetch(status_channel)
+                    finished = exp_finished
                 end
-            catch e
-                println("Error Occurred: ", e)
-                throw(e)
+                if ((time()-last_result) > experiment.timeout) && (time() - load_start > 100)
+                    println("REMOVING WORKER")
+                    interrupt(worker_pid)
+                    rmprocs(worker_pid)
+                    num_attempted, num_completed, num_correct, num_with_values, exp_finished = take!(status_channel)
+                    if !exp_finished
+                        num_attempted += 1
+                    end
+                    put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, exp_finished))
+                    cur_query += 1
+                    worker_pid = -1
+                    finished = true
+                end
             end
         end
+        num_attempted, num_completed, num_correct, num_with_values, exp_finished = fetch(status_channel)
+        while isready(results_channel)
+            push!(results, take!(results_channel))
+        end
+        results_filename = "Experiments/Results/" * param_to_results_filename(experiment)
+        writedlm(results_filename, results, ',')
+
+        total_runtime = sum([parse(Float64,x[4]) for x in results[2:end]])
+        total_opt_time = sum([parse(Float64,x[5]) for x in results[2:end]])
         println("Attempted Queries: ", num_attempted)
         println("Completed Queries: ", num_completed)
         println("Queries With Ground Truth: ", num_with_values)
         println("Correct Queries: ", num_correct)
-        filename = "Experiments/Results/" * param_to_results_filename(experiment)
-        writedlm(filename, results, ',')
+        println("Total Runtime: ", total_runtime)
+        println("Total Opt. Time: ", total_opt_time)
+        metadata = [("Attempted", "Completed", "HasGroundTruth", "Correct", "TotalRuntime", "TotalOptTime"),
+                    (string(num_attempted), string(num_completed), string(num_with_values), string(num_correct), string(total_runtime), string(total_opt_time))]
+
+        metadata_filename = "Experiments/Results/" * param_to_results_filename(experiment, ext=".meta")
+        writedlm(metadata_filename, metadata, ',')
     end
 end

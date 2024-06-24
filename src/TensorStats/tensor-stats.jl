@@ -1,24 +1,31 @@
-
-
 # This struct holds the high-level definition of a tensor. This information should be
 # agnostic to the statistics used for cardinality estimation. Any information which may be
 # `Nothing` is considered a part of the physical definition which may be undefined for logical
 # intermediates but is required to be defined for the inputs to an executable query.
 @auto_hash_equals mutable struct TensorDef
     index_set::Set{IndexExpr}
-    dim_sizes::Dict{IndexExpr, Int}
+    dim_sizes::Dict{IndexExpr, UInt128}
     default_value::Any
     level_formats::Union{Nothing, Vector{LevelFormat}}
     index_order::Union{Nothing, Vector{IndexExpr}}
     index_protocols::Union{Nothing, Vector{AccessProtocol}}
 end
-TensorDef(default) = TensorDef(Set(), Dict(), default, nothing, nothing, nothing)
+TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
+
+Base.copy(def::TensorDef) = TensorDef(copy(def.index_set),
+                                copy(def.dim_sizes),
+                                copy(def.default_value),
+                                isnothing(def.level_formats) ? nothing : copy(def.level_formats),
+                                isnothing(def.index_order) ? nothing : copy(def.index_order),
+                                isnothing(def.index_protocols) ? nothing : copy(def.index_protocols))
 
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
         return t_sparse_list
-    elseif typeof(lvl) <: SparseLevel
+    elseif typeof(lvl) <: SparseDictLevel
         return t_hash
+    elseif typeof(lvl) <: SparseByteMap
+        return t_bytemap
     elseif typeof(lvl) <: DenseLevel
         return t_dense
     else
@@ -61,6 +68,23 @@ function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
     return TensorDef(new_index_set, new_dim_sizes, def.default_value, def.level_formats, indices, def.index_protocols)
 end
 
+function relabel_index!(def::TensorDef, i::IndexExpr, j::IndexExpr)
+    if i == j || i ∉ def.index_set
+        return
+    end
+    delete!(def.index_set, i)
+    push!(def.index_set, j)
+    def.dim_sizes[j] = def.dim_sizes[i]
+    delete!(def.dim_sizes, i)
+    if !isnothing(def.index_order)
+        for k in eachindex(def.index_order)
+            if def.index_order[k] == i
+                def.index_order[k] = j
+            end
+        end
+    end
+end
+
 get_dim_sizes(def::TensorDef) = def.dim_sizes
 get_dim_size(def::TensorDef, idx::IndexExpr) = def.dim_sizes[idx]
 get_index_set(def::TensorDef) = def.index_set
@@ -72,9 +96,12 @@ get_index_protocol(def::TensorDef, idx::IndexExpr) = def.index_protocols[findfir
 get_index_protocols(def::TensorDef) = def.index_protocols
 
 function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
-    dim_space_size = 1
+    dim_space_size::UInt128 = 1
     for idx in indices
         dim_space_size *= def.dim_sizes[idx]
+    end
+    if dim_space_size > typemax(Int)
+        return Inf
     end
     return dim_space_size
 end
@@ -100,10 +127,13 @@ get_index_protocols(stat::TensorStats) = get_index_protocols(get_def(stat))
 end
 
 get_def(stat::NaiveStats) = stat.def
-estimate_nnz(stat::NaiveStats) = stat.cardinality
-condense_stats!(::NaiveStats; timeout=100000) = nothing
+estimate_nnz(stat::NaiveStats; indices = get_index_set(stat)) = stat.cardinality
+condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
+function fix_cardinality!(stat::NaiveStats, card)
+    stat.cardinality = card
+end
+Base.copy(stat::NaiveStats) = NaiveStats(copy(stat.def), stat.cardinality)
 
-NaiveStats(default) = NaiveStats(TensorDef(default), 1)
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
 function NaiveStats(tensor::Tensor, indices::Vector{IndexExpr})
@@ -113,7 +143,7 @@ function NaiveStats(tensor::Tensor, indices::Vector{IndexExpr})
 end
 
 function NaiveStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
+    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing, nothing)
     return NaiveStats(def, 1)
 end
 
@@ -121,12 +151,16 @@ function reindex_stats(stat::NaiveStats, indices::Vector{IndexExpr})
     return NaiveStats(reindex_def(indices, stat.def), stat.cardinality)
 end
 
+function relabel_index!(stats::NaiveStats, i::IndexExpr, j::IndexExpr)
+    relabel_index!(stats.def, i, j)
+end
+
 #################  DCStats Definition ######################################################
 
 struct DegreeConstraint
     X::Set{IndexExpr}
     Y::Set{IndexExpr}
-    d::Float64
+    d::UInt128
 end
 DC = DegreeConstraint
 
@@ -139,8 +173,27 @@ end
     dcs::Set{DC}
 end
 
-DCStats(default) = DCStats(TensorDef(default), Set())
+Base.copy(stat::DCStats) = DCStats(copy(stat.def), copy(stat.dcs))
+
+DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def
+
+function fix_cardinality!(stat::DCStats, card)
+    had_dc = false
+    new_dcs = Set{DC}()
+    for dc in stat.dcs
+        if length(dc.X) == 0 && dc.Y == get_index_set(stat)
+            push!(new_dcs, DC(Set{IndexExpr}(), get_index_set(stat), min(card, dc.d)))
+            had_dc = true
+        else
+            push!(new_dcs, dc)
+        end
+    end
+    if !had_dc
+        push!(new_dcs, DC(Set{IndexExpr}(), get_index_set(stat), card))
+    end
+    stat.dcs = new_dcs
+end
 
 DCKey = NamedTuple{(:X, :Y), Tuple{Vector{IndexExpr}, Vector{IndexExpr}}}
 
@@ -198,22 +251,25 @@ end
 
 # When we're only attempting to infer for nnz estimation, we only need to consider
 # left dcs which have X = {}.
-function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
-    all_dcs = Dict{DCKey, Float64}()
+function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
+    all_dcs = Dict{DCKey, UInt128}()
     for dc in dcs
         all_dcs[(X = sort!(collect(dc.X)), Y = sort!(collect(dc.Y)))] = dc.d
     end
     prev_new_dcs = all_dcs
     time = 1
     finished = false
-    max_dc_size = maximum([length(x.Y) for x in keys(all_dcs)], init=0)
+    max_dc_size = 0
     while time < timeout && !finished
-        new_dcs = Dict{DCKey, Float64}()
+        if strength <= 0
+            max_dc_size = maximum([length(x.Y) for x in keys(prev_new_dcs)], init=0)
+        end
+        new_dcs = Dict{DCKey, UInt128}()
 
         for (l, ld) in all_dcs
-            cheap && length(l.X) > 0 && continue
+            strength <= 1 && length(l.X) > 0 && continue
             for (r, rd) in prev_new_dcs
-                cheap && length(r.Y) + length(l.Y) < max_dc_size && continue
+                strength <= 0 && length(r.Y) + length(l.Y) < max_dc_size && continue
                 infer_dc(l, ld, r, rd, all_dcs, new_dcs)
                 time +=1
                 time > timeout && break
@@ -222,9 +278,9 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
         end
 
         for (l, ld) in prev_new_dcs
-            cheap && length(l.X) > 0 && continue
+            strength <= 1 && length(l.X) > 0 && continue
             for (r, rd) in all_dcs
-                cheap && length(r.Y) + length(l.Y) < max_dc_size && continue
+                strength <= 0 && length(r.Y) + length(l.Y) < max_dc_size && continue
                 infer_dc(l, ld, r, rd, all_dcs, new_dcs)
                 time +=1
                 time > timeout && break
@@ -232,12 +288,9 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
             time > timeout && break
         end
 
-        if cheap
-            max_dc_size = maximum([length(x.Y) for x in keys(new_dcs)], init=0)
-        end
         prev_new_dcs = Dict()
         for (dc_key, dc) in new_dcs
-            cheap && length(dc_key.Y) < max_dc_size && continue
+            strength <= 0 && length(dc_key.Y) < max_dc_size && continue
             all_dcs[dc_key] = dc
             prev_new_dcs[dc_key] = dc
         end
@@ -245,7 +298,6 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
             finished = true
         end
     end
-    time>timeout && println("Hit Timeout: $(time>timeout)")
     final_dcs = Set{DC}()
     for (dc_key, dc) in all_dcs
         push!(final_dcs, DC(Set(dc_key.X), Set(dc_key.Y), dc))
@@ -253,9 +305,15 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, cheap=false)
     return final_dcs
 end
 
-function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
+function condense_stats!(stat::DCStats; timeout=100000, cheap=false)
     current_indices = get_index_set(stat)
-    inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, cheap=cheap)
+    inferred_dcs = nothing
+    if !cheap
+        inferred_dcs = _infer_dcs(stat.dcs; timeout=timeout, strength=2)
+    else
+        inferred_dcs = _infer_dcs(stat.dcs; timeout=min(timeout, 10000), strength=1)
+        inferred_dcs = _infer_dcs(inferred_dcs; timeout=max(timeout - 10000, 0), strength=0)
+    end
     min_dcs = Dict()
     for dc in inferred_dcs
         valid = true
@@ -267,7 +325,8 @@ function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
         end
         valid == false && continue
         new_Y = dc.Y ∩ current_indices
-        min_dcs[(dc.X, new_Y)] = min(get(min_dcs, (dc.X, new_Y), Inf), dc.d)
+        y_dim_size = get_dim_space_size(stat.def, new_Y)
+        min_dcs[(dc.X, new_Y)] = min(get(min_dcs, (dc.X, new_Y), Inf), dc.d, y_dim_size)
     end
 
     end_dcs = Set{DC}()
@@ -278,7 +337,7 @@ function condense_stats!(stat::DCStats; timeout=Inf, cheap=true)
     return nothing
 end
 
-
+#=
 function estimate_nnz(stat::DCStats)
     indices = get_index_set(stat)
     if length(indices) == 0
@@ -292,7 +351,8 @@ function estimate_nnz(stat::DCStats)
         end
     end
     min_card < Inf && return min_card
-    inferred_dcs = _infer_dcs(dcs; cheap=true)
+    condense_stats!(stat, cheap=true)
+    inferred_dcs = stat.dcs
     for dc in inferred_dcs
         if isempty(dc.X) && dc.Y ⊇ indices
             min_card = min(min_card, dc.d)
@@ -302,13 +362,49 @@ function estimate_nnz(stat::DCStats)
         println("ESTIMATED INF!")
     end
     return min_card
+end =#
+
+function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
+    if length(indices) == 0
+        return 1
+    end
+    current_weights = Dict{Vector{IndexExpr}, UInt128}(Vector{IndexExpr}()=>1)
+    frontier = Set{Vector{IndexExpr}}([Vector{IndexExpr}()])
+    finished = false
+    while !finished
+        new_frontier = Set{Vector{IndexExpr}}()
+        finished = true
+        for x in frontier
+            weight = current_weights[x]
+            for dc in stat.dcs
+                if x ⊇ dc.X
+                    y = sort!(∪(x, dc.Y))
+                    if get(current_weights, y, Inf) >  weight * dc.d
+                        current_weights[y] = weight * dc.d
+                        finished = false
+                        if y ∉ new_frontier
+                            push!(new_frontier, y)
+                        end
+                    end
+                end
+            end
+        end
+        frontier = new_frontier
+    end
+    min_weight = Inf
+    for (x, weight) in current_weights
+        if x ⊇ indices
+            min_weight = min(min_weight, weight)
+        end
+    end
+    return min_weight
 end
 
 DCStats() = DCStats(TensorDef(), Set())
 
 function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::Vector{IndexExpr}, s::Tensor)
-    Z = setdiff(indices, ∪(X,Y)) # Indices that we want to project out before counting
-    XY_ordered = setdiff(indices, Z)
+    Z = [i for i in indices if i ∉ ∪(X,Y)] # Indices that we want to project out before counting
+    XY_ordered = [i for i in indices if i ∉ Z]
     if length(Z) > 0
         XY_tensor = one_off_reduce(max, indices, XY_ordered, s)
     else
@@ -329,32 +425,99 @@ function _calc_dc_from_structure(X::Set{IndexExpr}, Y::Set{IndexExpr}, indices::
     return dc[] # `[]` used to retrieve the actual value of the Finch.Scalar type
 end
 
+
+function _vector_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
+    d_i = Scalar(0)
+    @finch begin
+        for i=_
+            d_i[] += s[i]
+        end
+    end
+    return Set{DC}([DC(Set(), Set(indices), d_i[])])
+end
+
+function _matrix_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
+    X = Tensor(Dense(Element(0)))
+    Y = Tensor(Dense(Element(0)))
+    d_i = Scalar(0)
+    d_j = Scalar(0)
+    d_i_j = Scalar(0)
+    d_j_i = Scalar(0)
+    d_ij = Scalar(0)
+    @finch begin
+        X .= 0
+        Y .= 0
+        for i =_
+            for j =_
+                X[i] += s[j, i]
+                Y[j] += s[j, i]
+            end
+        end
+        d_i .= 0
+        d_i_j .= 0
+        d_ij .= 0
+        for i=_
+            d_i[] += X[i] > 0
+            d_i_j[] <<max>>= X[i]
+            d_ij[] += X[i]
+        end
+        d_j .= 0
+        d_j_i .= 0
+        for j=_
+            d_j[] += Y[j] > 0
+            d_j_i[] <<max>>= Y[j]
+        end
+    end
+    i = indices[2]
+    j = indices[1]
+    return Set{DC}([DC(Set(), Set([i]), d_i[]),
+                    DC(Set(), Set([j]), d_j[]),
+                    DC(Set([i]), Set([j]), d_i_j[]),
+                    DC(Set([j]), Set([i]), d_j_i[]),
+                    DC(Set(), Set([i,j]), d_i[]),
+                    ])
+end
+
 function _structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
+    if length(indices) == 1
+        return _vector_structure_to_dcs(indices, s)
+    elseif length(indices) == 2
+        return _matrix_structure_to_dcs(indices, s)
+    end
     dcs = Set{DC}()
     # Calculate DCs for all combinations of X and Y
     for X in subsets(indices)
         X = Set(X)
         Y = Set(setdiff(indices, X))
+        isempty(Y) && continue # Anything to the empty set has degree 1
         d = _calc_dc_from_structure(X, Y, indices, s)
         push!(dcs, DC(X,Y,d))
 
-        isempty(Y) && continue # Don't need to calculate the projection size of an empty set
         d = _calc_dc_from_structure(Set{IndexExpr}(), Y, indices, s)
         push!(dcs, DC(Set{IndexExpr}(), Y, d))
     end
     return dcs
 end
 
-function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
-    def = TensorDef(tensor, indices)
-    sparsity_structure = get_sparsity_structure(tensor)
-    dcs = _structure_to_dcs(indices, sparsity_structure)
-    return DCStats(def, dcs)
+function dense_dcs(def, indices::Vector{IndexExpr})
+    dcs = Set()
+    for X in subsets(indices)
+        Y = setdiff(indices, X)
+        for Z in subsets(Y)
+            push!(dcs, DC(Set(X), Set(Z), get_dim_space_size(def, Set(Z))))
+        end
+    end
+    return dcs
 end
 
-function DCStats(x::Number)
-    def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing)
-    return DCStats(def, Set([DC(Set(), Set(), 1)]))
+function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
+    def = TensorDef(tensor, indices)
+    if all([f==t_dense for f in get_index_formats(def)])
+        return DCStats(def, dense_dcs(def, indices))
+    end
+    sparsity_structure = pattern!(tensor)
+    dcs = _structure_to_dcs(indices, sparsity_structure)
+    return DCStats(def, dcs)
 end
 
 function reindex_stats(stat::DCStats, indices::Vector{IndexExpr})
@@ -367,4 +530,15 @@ function reindex_stats(stat::DCStats, indices::Vector{IndexExpr})
         push!(new_dcs, DC(new_X, new_Y, dc.d))
     end
     return DCStats(new_def, new_dcs)
+end
+
+function relabel_index!(stats::DCStats, i::IndexExpr, j::IndexExpr)
+    relabel_index!(stats.def, i, j)
+    new_dcs = Set()
+    for dc in stats.dcs
+        new_X = Set(x == i ? j : x for x in dc.X)
+        new_Y = Set(y == i ? j : y  for y in dc.Y)
+        push!(new_dcs, DC(new_X, new_Y, dc.d))
+    end
+    stats.dcs = new_dcs
 end

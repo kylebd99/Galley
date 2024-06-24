@@ -15,7 +15,7 @@ const ID = 4
     Materialize  =  7ID | IS_TREE   #  Materialize(formats::Vector{Formats}, idx_order::Vector{TI}, arg:PlanNode)
     Query        =  8ID | IS_TREE   #  Query(name::Alias, expr::PlanNode)
     Outputs      =  9ID | IS_TREE   #  Outputs(args...::TI)
-    Plan         = 10ID | IS_TREE   #  Alias(x::Union{String, Symbol})
+    Plan         = 10ID | IS_TREE   #  Plan(Queries..., Outputs)
 end
 
 # Here, we define the internal expression type that we use to describe logical query plans.
@@ -33,15 +33,58 @@ function PlanNode(kind::PlanNodeKind, children::Vector, val::Any, stats::Any)
 end
 
 function PlanNode(kind::PlanNodeKind, args::Vector)
-    if (kind === Value || kind === Index || kind === Alias) && length(args) == 1
+    if (kind === Value || kind === Index) && length(args) == 1
         return PlanNode(kind, PlanNode[], args[1], nothing)
     else
         args = vcat(args...)
-        if (kind === Input && length(args) >= 1) ||
-            (kind === MapJoin && length(args) >= 2) ||
+        if (kind === Input && length(args) >= 1)
+            if args[1] isa Tensor || args[1] isa DuckDBTensor
+                if args[end] isa String
+                    return PlanNode(kind, args[1:end-1], args[end], nothing)
+                else
+                    PlanNode(kind, args, string(hash(args)), nothing)
+                end
+            elseif args[1].kind === Value
+                if args[1].val isa Tensor || args[1].val isa DuckDBTensor
+                    if args[end] isa String
+                        return PlanNode(kind, args[1:end-1], args[end], nothing)
+                    else
+                        PlanNode(kind, args, string(hash(args)), nothing)
+                    end
+                else
+                    return PlanNode(kind, args, nothing, nothing)
+                end
+            elseif args[1].kind === Materialize
+                mat_expr = args[1]
+                new_idxs = [Index(x) for x  in args[2:end]]
+                old_idxs = [idx for idx in mat_expr.idx_order]
+                @assert length(new_idxs) == length(old_idxs)
+                internal_expr = plan_copy(mat_expr.expr)
+                # If the somewhere down the expression tree, there exists a reference to
+                # new_idxs[i], then we would like to rename it to avoid conflict.
+                prior_idx_translate = Dict(new_idxs[i].name => gensym(new_idxs[i].name) for i in eachindex(old_idxs) if new_idxs[i] ∉ old_idxs)
+                for (i, j) in prior_idx_translate
+                    relabel_index(internal_expr, i, j)
+                end
+                new_idx_translate = Dict(old_idxs[i].name => new_idxs[i].name for i in eachindex(old_idxs))
+                for (i, j) in new_idx_translate
+                    relabel_index(internal_expr, i, j)
+                end
+                return internal_expr
+            else
+                error("a reused plan expression must be wrapped in a materialize!")
+            end
+        elseif kind === Query && length(args) >= 2
+            if args[1] isa Symbol
+                args[1] = Alias(args[1])
+            end
+            return PlanNode(kind, args, nothing, nothing)
+        elseif (kind === Alias && length(args) >= 1)
+            idxs = length(args) > 1 ? args[2:end] : []
+            return PlanNode(kind, idxs, args[1], nothing)
+        elseif (kind === MapJoin && length(args) >= 2) ||
             (kind === Aggregate && length(args) >= 2) ||
             (kind === Materialize && length(args) >= 1 && length(args) % 2 == 1) ||
-            (kind === Query && length(args) >= 2) ||
             (kind === Outputs) ||
             (kind === Plan)
             return PlanNode(kind, args, nothing, nothing)
@@ -94,6 +137,8 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
         return Base.getfield(node, sym)
     elseif node.kind === Index && sym === :name node.val
     elseif node.kind === Alias && sym === :name node.val
+    elseif node.kind === Alias && sym === :idxs node.children
+    elseif node.kind === Input && sym === :id node.val
     elseif node.kind === Input && sym === :tns node.children[1]
     elseif node.kind === Input && sym === :idxs begin length(node.children) > 1 ? node.children[2:end] : [] end
     elseif node.kind === MapJoin && sym === :op node.children[1]
@@ -120,6 +165,7 @@ function Base.setproperty!(node::PlanNode, sym::Symbol, v)
         return Base.setfield!(node, sym, v)
     elseif node.kind === Index && sym === :name node.val = v
     elseif node.kind === Alias && sym === :name node.val = v
+    elseif node.kind === Input && sym === :id node.val = v
     elseif node.kind === Input && sym === :tns node.children[1] = v
     elseif node.kind === Input && sym === :idxs begin node.children = [node.children[1], v...] end
     elseif node.kind === MapJoin && sym === :op node.children[1] = v
@@ -145,11 +191,19 @@ function relabel_input(input::PlanNode, indices...)
     if input.kind != Input
         throw(ErrorException("Can't relabel a node other than input!"))
     end
-    relabeled_input = Input(input.tns, indices...)
+    relabeled_input = Input(input.tns, indices..., input.id)
     relabeled_input.stats = reindex_stats(input.stats, collect(indices))
     return relabeled_input
 end
 
+function Base.getindex(A::PlanNode, indices...)
+    @assert all([idx isa Symbol for idx in indices])
+    if A.kind == Alias
+        return Alias(A.name, indices...)
+    else
+        return Input(A, indices...)
+    end
+end
 
 function Base.:(==)(a::PlanNode, b::PlanNode)
     if a.kind === Value
@@ -160,6 +214,8 @@ function Base.:(==)(a::PlanNode, b::PlanNode)
         end
     elseif a.kind === Alias
         return b.kind === Alias && a.name == b.name
+    elseif a.kind == Input
+        return b.kind === Input && a.id == b.id && a.idxs == b.idxs
     elseif a.kind === Index
         return b.kind === Index && a.name == b.name
     elseif a.kind == Aggregate
@@ -171,11 +227,29 @@ function Base.:(==)(a::PlanNode, b::PlanNode)
     end
 end
 
+Base.hash(a::PlanNode) = hash(a, UInt(0))
+
 function Base.hash(a::PlanNode, h::UInt)
-    if a.kind === Value || a.kind === Alias || a.kind === Index
+    if a.kind === Value
+        if a.val isa Tensor
+            return hash(typeof(a.val))
+        else
+            return hash(a.kind, hash(a.val, h))
+        end
+    elseif a.kind === Alias || a.kind === Index
         return hash(a.kind, hash(a.val, h))
+    elseif a.kind == Input
+        h = hash(a.kind, hash(a.id, h))
+        for id in a.idxs
+            h = hash(id, h)
+        end
+        return h
     elseif istree(a)
-        return hash(a.kind, hash(a.children, h))
+        h = hash(a.kind, h)
+        for child in a.children
+            h = hash(child, h)
+        end
+        return h
     else
         error("unimplemented")
     end
@@ -184,7 +258,32 @@ end
 function planToString(n::PlanNode, depth::Int64)
     output = ""
     if n.kind == Alias
-        output *= "Alias($(n.name))"
+        output *= "Alias($(n.name)"
+        if isnothing(n.stats)
+            output *= ")"
+            return output
+        end
+        idxs = get_index_order(n.stats)
+        if length(n.idxs) > 0
+            prefix = ","
+            for idx in n.idxs
+                output *= prefix * string(idx)
+            end
+        elseif !isnothing(idxs)
+            protocols = get_index_protocols(n.stats)
+            prefix = ","
+            if !isnothing(get_index_protocols(n.stats))
+                for i in eachindex(idxs)
+                    output *= "$prefix$(idxs[i])::$(protocols[i])"
+                end
+            elseif !isnothing(get_index_set(n.stats))
+                for idx in get_index_set(n.stats)
+                    output *= prefix * string(idx)
+                end
+            end
+        end
+
+        output *= ")"
         return output
     elseif n.kind == Index
         output *= "$(n.name)"
@@ -199,9 +298,9 @@ function planToString(n::PlanNode, depth::Int64)
     elseif n.kind == Input
         output *= "Input("
         prefix = ""
-        idxs = get_index_order(n.stats)
-        protocols = get_index_protocols(n.stats)
-        if !isnothing(get_index_protocols(n.stats))
+        idxs = n.idxs
+        if !isnothing(n.stats) && !isnothing(get_index_protocols(n.stats))
+            protocols = get_index_protocols(n.stats)
             for i in eachindex(idxs)
                 output *= "$prefix$(idxs[i])::$(protocols[i])"
                 prefix =","
@@ -248,4 +347,88 @@ end
 
 function Base.show(io::IO, input::PlanNode)
     print(io, planToString(input, 0))
+end
+
+
+# The goal of this is to emulate deepcopy except for the actual data
+function plan_copy(n::PlanNode; copy_stats = true)
+    if n.kind === Input
+        p = Input(n.tns, [idx.name for idx in n.idxs]..., n.id)
+        p.stats = (copy_stats && !isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
+        p.node_id = n.node_id
+        return p
+    else
+        stats = (copy_stats && !isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
+        children = []
+        for i in eachindex(n.children)
+            push!(children, plan_copy(n.children[i], copy_stats=copy_stats))
+        end
+        return PlanNode(n.kind, children, n.val, stats, n.node_id)
+    end
+end
+
+function get_inputs(q::PlanNode)
+    input_nodes = []
+    for n in PostOrderDFS(q)
+        if n.kind === Input
+            push!(input_nodes, n)
+        end
+    end
+    return input_nodes
+end
+
+function is_disjunctive(n::PlanNode)
+    for node in PostOrderDFS(n)
+        if node.kind === MapJoin
+            map_op = node.op.val
+            all_conjuncts = all([isannihilator(map_op, get_default_value(arg.stats)) for arg in node.args])
+            if !all_conjuncts
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function get_conjunctive_and_disjunctive_inputs(n::PlanNode, disjunct_branch=false)
+    if n.kind === Materialize
+        return get_conjunctive_and_disjunctive_inputs(n.expr)
+    elseif n.kind === Aggregate
+        return get_conjunctive_and_disjunctive_inputs(n.arg)
+    elseif n.kind === MapJoin
+        map_op = n.op.val
+        conjuncts = []
+        disjuncts = []
+        for arg in n.args
+            arg_results = if isannihilator(map_op, get_default_value(arg.stats))
+                get_conjunctive_and_disjunctive_inputs(arg, disjunct_branch)
+            else
+                get_conjunctive_and_disjunctive_inputs(arg, true)
+            end
+            append!(conjuncts, arg_results.conjuncts)
+            append!(disjuncts, arg_results.disjuncts)
+        end
+        return (conjuncts=conjuncts, disjuncts=disjuncts)
+    elseif n.kind === Input || n.kind === Alias
+        return disjunct_branch ? (conjuncts=[], disjuncts=[n]) : (conjuncts=[n], disjuncts=[])
+    elseif n.kind === Value
+        return (conjuncts = [], disjuncts = [])
+    end
+end
+
+function get_aliases(q::PlanNode)
+    alias_nodes = []
+    for n in PostOrderDFS(q)
+        if n.kind === Alias
+            push!(alias_nodes, n)
+        end
+    end
+    return alias_nodes
+end
+
+
+function Σ(args...)
+    @assert length(args) >= 2
+    indices = args[1:end-1]
+    return Aggregate(+, indices..., args[end])
 end

@@ -24,9 +24,19 @@ function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{Index
             continue
         end
         # Tensors are stored in column major, so we reverse the index order here
-        index_order = reverse(index_order)
-        occurences = [isnothing(x) ? Inf : x for x  in indexin(index_order, prefix)]
-        !issorted(occurences) && push!(ref_set, i)
+        current_loop = 0
+        needs_reformat = false
+        for idx in reverse(index_order)
+            idx_loop = Inf
+            if idx ∈ prefix
+                idx_loop = only(indexin([idx], prefix))
+            end
+            if idx_loop < current_loop
+                needs_reformat = true
+            end
+            current_loop = idx_loop
+        end
+        needs_reformat && push!(ref_set, i)
     end
     return ref_set
 end
@@ -59,16 +69,17 @@ PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
 PLAN = Tuple{Vector{IndexExpr}, Float64}
 
 function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size, num_flops)
-    transpose_cost = output_size * RandomWriteCost
     output_compat = pc[2]
     rf_set = pc[3]
     pc_cost = 0
     if output_compat == FULL_PREFIX
         pc_cost += output_size * SeqWriteCost
     elseif output_compat == SET_PREFIX
-        pc_cost += output_size * SeqWriteCost + transpose_cost
+        pc_cost += output_size * SeqWriteCost
     else
-        pc_cost += num_flops * RandomWriteCost
+        # Theoretically, this should be num_flops * RandomWriteCost, but we've seen that
+        # lead to aggressive transposing of inputs.
+        pc_cost += output_size * RandomWriteCost
     end
     for i in rf_set
         pc_cost += reformat_costs[i]
@@ -148,11 +159,11 @@ function get_join_loop_order_bounded(agg_op,
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf
-                if haskey(new_plans, plan_class)
-                    alt_cost = new_plans[plan_class][2]
+                if haskey(new_plans, new_plan_class)
+                    alt_cost = new_plans[new_plan_class][2]
                 end
 
-                if new_cost < alt_cost
+                if new_cost <= alt_cost
                     new_plans[new_plan_class] = new_plan
                 end
             end
@@ -199,14 +210,12 @@ function get_join_loop_order_bounded(agg_op,
         end
         optimal_plans = undominated_plans
     end
-
-
     min_cost = Inf
     best_prefix = nothing
     best_plan_class = nothing
     for (plan_class, plan) in optimal_plans
         cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size, num_flops)
-        if cur_cost < min_cost
+        if cur_cost <= min_cost
             min_cost = cur_cost
             best_prefix = plan[1]
             best_plan_class = plan_class
@@ -218,7 +227,17 @@ end
 GREEDY_PLAN_K = 10
 
 function get_join_loop_order(agg_op, input_stats::Vector{TensorStats}, join_stats::TensorStats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
+    if length(get_index_set(join_stats)) == 0
+        return IndexExpr[]
+    end
     greedy_order, greedy_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
     exact_order, exact_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
+
+    if exact_cost > greedy_cost
+        println("Exact Cost: $exact_cost")
+        println("Exact Order: $exact_order")
+        println("Greedy Cost: $greedy_cost")
+        println("Greedy Order: $greedy_order")
+    end
     return exact_order
 end

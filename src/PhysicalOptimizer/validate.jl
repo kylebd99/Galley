@@ -10,6 +10,8 @@ function get_input_indices(n::PlanNode)
         get_index_set(n.stats)
     elseif n.kind == Alias
         get_index_set(n.stats)
+    elseif n.kind == Value
+        Set{IndexExpr}()
     elseif  n.kind == Aggregate
         get_input_indices(n.arg)
     elseif  n.kind == MapJoin
@@ -51,8 +53,10 @@ end
 
 function check_protocols(n::PlanNode)
     return if n.kind == Input
+        @assert !isnothing(get_index_protocols(n.stats))
         @assert length(get_index_set(n.stats)) == length(get_index_protocols(n.stats))
     elseif n.kind == Alias
+        @assert !isnothing(get_index_protocols(n.stats))
         @assert length(get_index_set(n.stats)) == length(get_index_protocols(n.stats))
     elseif n.kind == Aggregate
         check_protocols(n.arg)
@@ -65,6 +69,24 @@ function check_protocols(n::PlanNode)
     end
 end
 
+function check_formats(n::PlanNode)
+    return if n.kind == Input
+        @assert !isnothing(get_index_formats(n.stats))
+        @assert length(get_index_set(n.stats)) == length(get_index_formats(n.stats))
+    elseif n.kind == Alias
+        @assert !isnothing(get_index_formats(n.stats))
+        @assert length(get_index_set(n.stats)) == length(get_index_formats(n.stats))
+    elseif n.kind == Aggregate
+        check_formats(n.arg)
+    elseif n.kind == MapJoin
+        for arg in n.args
+            check_formats(arg)
+        end
+    elseif n.kind == Materialize
+        check_formats(n.expr)
+    end
+end
+
 function validate_physical_query(q::PlanNode)
     q = deepcopy(q)
     input_indices = get_input_indices(q.expr)
@@ -74,4 +96,5 @@ function validate_physical_query(q::PlanNode)
     @assert Set(output_indices) == Set([idx.name for idx in q.expr.idx_order])
     check_sorted_inputs(q.expr, [idx.name for idx in q.loop_order])
     check_protocols(q.expr)
+    check_formats(q.expr)
 end

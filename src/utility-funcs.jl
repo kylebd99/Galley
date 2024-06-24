@@ -28,6 +28,9 @@ function relative_sort(indices::Set{IndexExpr}, index_order; rev=false)
 end
 
 function is_sorted_wrt_index_order(indices::Vector, index_order::Vector; loop_order=false)
+    if length(indices) == 0
+        return true
+    end
     if loop_order
         return issorted(indexin(indices, index_order), rev=true)
     else
@@ -40,6 +43,10 @@ get_tensor_symbol(tns_num) = Symbol("t_$(tns_num)")
 
 # This file performs the actual execution of physical query plan.
 function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, index_sym_dict; read=true)
+    if tensor isa Number
+        return literal_instance(tensor)
+    end
+
     mode = read ? Reader() : Updater()
     mode = literal_instance(mode)
     index_expressions = []
@@ -68,23 +75,42 @@ function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, inde
     return tensor_access
 end
 
-function initialize_tensor(formats, dims::Vector{Int64}, default_value)
+function get_dim_type(dim_size)
+    if dim_size*4 <= typemax(Int32)
+        return Int32
+    elseif dim_size*4 <= typemax(Int64)
+        return Int64
+    elseif dim_size*4 <= typemax(Int128)
+        return Int128
+    end
+end
+
+
+
+function initialize_tensor(formats, dims, default_value; copy_data = nothing)
     if length(dims) == 0
         return Finch.Scalar(default_value)
     end
     B = Element(default_value)
     for i in range(1, length(dims))
+        DT = get_dim_type(dims[i])
         if formats[i] == t_sparse_list
-            B = SparseList(B, dims[i])
+            B = SparseList(B, DT(dims[i]))
         elseif formats[i] == t_dense
-            B = Dense(B, dims[i])
+            B = Dense(B, DT(dims[i]))
+        elseif formats[i] == t_bytemap
+            B = SparseByteMap(B, DT(dims[i]))
         elseif formats[i] == t_hash
-            B = Sparse(B, dims[i])
+            B = SparseDict(B, DT(dims[i]))
         else
             println("Error: Attempted to initialize invalid level format type.")
         end
     end
-    return Tensor(B)
+    if isnothing(copy_data)
+        return Tensor(B)
+    else
+        return Tensor(B, copy_data)
+    end
 end
 
 
@@ -103,33 +129,31 @@ end
 # values and 1 at all other entries.
 function get_sparsity_structure(tensor::Tensor)
     default_value = Finch.default(tensor)
-    function non_zero_func(x)
-        return x == default_value ? 0.0 : 1.0
-    end
     index_sym_dict = Dict()
     indices = [IndexExpr("t_" * string(i)) for i in 1:length(size(tensor))]
     tensor_instance = initialize_access(:A, tensor, indices, [t_default for _ in indices], index_sym_dict, read=true)
-    tensor_instance = call_instance(literal_instance(non_zero_func), tensor_instance)
-    output_tensor = initialize_tensor([t_sparse_list for _ in indices ], [dim for dim in size(tensor)], 0.0)
+    tensor_instance = call_instance(literal_instance(!=), tensor_instance, literal_instance(default_value))
+    formats = [t_sparse_list for _ in indices ]
+    output_tensor = initialize_tensor(formats, [dim for dim in size(tensor)], false)
     output_instance = initialize_access(:output_tensor, output_tensor, indices, [t_default for _ in indices], index_sym_dict, read = false)
-    full_prgm = assign_instance(output_instance, literal_instance(initwrite(0.0)), tensor_instance)
+    full_prgm = assign_instance(output_instance, literal_instance(initwrite(false)), tensor_instance)
 
     for index in indices
         full_prgm = loop_instance(index_instance(index_sym_dict[index]), Dimensionless(), full_prgm)
     end
 
-    initializer = declare_instance(variable_instance(:output_tensor), literal_instance(0.0))
+    initializer = declare_instance(variable_instance(:output_tensor), literal_instance(false))
     full_prgm = block_instance(initializer, full_prgm)
     Finch.execute(full_prgm)
     return output_tensor
 end
 
 function fully_compat_with_loop_prefix(tensor_order::Vector, loop_prefix::Vector)
-    for i in reverse(eachindex(tensor_order))
+    for i in eachindex(tensor_order)
         if i > length(loop_prefix)
             return true
         end
-        if tensor_order[i] != loop_prefix[i]
+        if reverse(tensor_order)[i] != loop_prefix[i]
             return false
         end
     end
@@ -153,7 +177,12 @@ function one_off_reduce(op,
                         output_indices,
                         s::Tensor)
     s_stats = TensorDef(s, input_indices)
-    loop_order = reverse(input_indices)
+    loop_order = []
+    for i in reverse(input_indices)
+        if i ∉ loop_order
+            push!(loop_order, i)
+        end
+    end
     output_dims = [get_dim_size(s_stats, idx) for idx in output_indices]
     output_formats = [t_hash for _ in output_indices]
     if fully_compat_with_loop_prefix(output_indices, loop_order)
@@ -162,7 +191,6 @@ function one_off_reduce(op,
     index_sym_dict = Dict()
     tensor_instance = initialize_access(:s, s, input_indices, [t_default for _ in input_indices], index_sym_dict)
     output_tensor = initialize_tensor(output_formats, output_dims, 0.0)
-
     loop_index_instances = [index_instance(index_sym_dict[idx]) for idx in loop_order]
     output_variable = tag_instance(variable_instance(:output_tensor), output_tensor)
     output_access = initialize_access(:output_tensor, output_tensor, output_indices, [t_default for _ in output_indices], index_sym_dict; read=false)
@@ -180,6 +208,29 @@ function one_off_reduce(op,
     end
     initializer = declare_instance(output_variable, literal_instance(0.0))
     full_prgm = block_instance(initializer, full_prgm)
-    Finch.execute(full_prgm, (mode=Finch.FastFinch(),))
+    Finch.execute(full_prgm, mode=:fast)
     return output_tensor
+end
+
+function count_non_default(A)
+    d = Finch.default(A)
+    n = length(size(A))
+    indexes = [Symbol("i_$i") for i in 1:n]
+    count = Scalar(0)
+    index_sym_dict = Dict()
+    count_access = initialize_access(:count, count, [], [], index_sym_dict, read=false)
+    A_access = initialize_access(:A, A, indexes, [t_default for _ in indexes], index_sym_dict)
+    prgm = call_instance(literal_instance(!=), A_access, literal_instance(d))
+    prgm = assign_instance(count_access, literal_instance(+), prgm)
+    loop_index_instances = [index_instance(index_sym_dict[idx]) for idx in reverse(indexes)]
+    for idx in reverse(loop_index_instances)
+        prgm = loop_instance(idx, Dimensionless(), prgm)
+    end
+    prgm = block_instance(declare_instance(tag_instance(variable_instance(:count), count), literal_instance(0)), prgm)
+    Finch.execute(prgm, mode=:fast)
+    return count[]
+end
+
+function count_stored(A)
+    return sum(pattern!(A))
 end

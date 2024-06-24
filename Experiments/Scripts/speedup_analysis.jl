@@ -1,67 +1,24 @@
 using CSV
 using DataFrames
 using Statistics
+include("../Experiments.jl")
+datasets = [human, aids, yeast_lite, dblp_lite]
 
+for dataset in datasets
+    greedy_exp = ExperimentParams(workload=dataset, faq_optimizer=greedy; stats_type=DCStats, max_kernel_size=5, warm_start=true, timeout=200)
+    pruned_exp = ExperimentParams(workload=dataset, faq_optimizer=pruned; stats_type=DCStats, max_kernel_size=5, warm_start=true, timeout=200)
+    greedy_data = CSV.read("Experiments/Results/$(param_to_results_filename(greedy_exp))", DataFrame)
+    pruned_data = CSV.read("Experiments/Results/$(param_to_results_filename(pruned_exp))", DataFrame)
 
-greedy_data = CSV.read("Experiments/Results/human_true_greedy_DCStats_false_true.csv", DataFrame)
-pruned_data = CSV.read("Experiments/Results/human_true_pruned_DCStats_false_true.csv", DataFrame)
-joint_data = innerjoin(greedy_data, pruned_data, on=:QueryPath, makeunique=true)
-joint_data[!, :Speedup] = joint_data[!, :Runtime] ./ joint_data[!, :Runtime_1]
-println("HUMAN ANALYSIS")
-println("Min: $(minimum(joint_data.Speedup))")
-println("Median: $(median(joint_data.Speedup))")
-println("Max: $(maximum(joint_data.Speedup))")
-println("Mean: $(mean(joint_data.Speedup))")
-println("GeoMean: $(exp(mean(log.(joint_data.Speedup))))")
-println(filter((x)->x[:Speedup] == minimum(joint_data.Speedup), joint_data).QueryPath)
-
-
-greedy_data = CSV.read("Experiments/Results/yeast_lite_true_greedy_DCStats_false.csv", DataFrame)
-pruned_data = CSV.read("Experiments/Results/yeast_lite_true_pruned_DCStats_false.csv", DataFrame)
-joint_data = innerjoin(greedy_data, pruned_data, on=:QueryPath, makeunique=true)
-joint_data[!, :Speedup] = joint_data[!, :Runtime] ./ joint_data[!, :Runtime_1]
-println("YEAST ANALYSIS")
-println("Min: $(minimum(joint_data.Speedup))")
-println("Median: $(median(joint_data.Speedup))")
-println("Max: $(maximum(joint_data.Speedup))")
-println("Mean: $(mean(joint_data.Speedup))")
-println("GeoMean: $(exp(mean(log.(joint_data.Speedup))))")
-println(filter((x)->x[:Speedup] == minimum(joint_data.Speedup), joint_data).QueryPath)
-
-
-greedy_data = CSV.read("Experiments/Results/hprd_lite_true_greedy_DCStats_false.csv", DataFrame)
-pruned_data = CSV.read("Experiments/Results/hprd_lite_true_pruned_DCStats_false.csv", DataFrame)
-joint_data = innerjoin(greedy_data, pruned_data, on=:QueryPath, makeunique=true)
-joint_data[!, :Speedup] = joint_data[!, :Runtime] ./ joint_data[!, :Runtime_1]
-println("HPRD_LITE ANALYSIS")
-println("Min: $(minimum(joint_data.Speedup))")
-println("Median: $(median(joint_data.Speedup))")
-println("Max: $(maximum(joint_data.Speedup))")
-println("Mean: $(mean(joint_data.Speedup))")
-println("GeoMean: $(exp(mean(log.(joint_data.Speedup))))")
-println(filter((x)->x[:Speedup] == minimum(joint_data.Speedup), joint_data).QueryPath)
-
-
-greedy_data = CSV.read("Experiments/Results/aids_true_greedy_DCStats_false.csv", DataFrame)
-pruned_data = CSV.read("Experiments/Results/aids_true_pruned_DCStats_false.csv", DataFrame)
-joint_data = innerjoin(greedy_data, pruned_data, on=:QueryPath, makeunique=true)
-joint_data[!, :Speedup] = joint_data[!, :Runtime] ./ joint_data[!, :Runtime_1]
-println("AIDS ANALYSIS")
-println("Min: $(minimum(joint_data.Speedup))")
-println("Median: $(median(joint_data.Speedup))")
-println("Max: $(maximum(joint_data.Speedup))")
-println("Mean: $(mean(joint_data.Speedup))")
-println("GeoMean: $(exp(mean(log.(joint_data.Speedup))))")
-println(filter((x)->x[:Speedup] == minimum(joint_data.Speedup), joint_data).QueryPath)
-
-greedy_data = CSV.read("Experiments/Results/dblp_lite_true_greedy_DCStats_false_true_5.csv", DataFrame)
-pruned_data = CSV.read("Experiments/Results/dblp_lite_true_pruned_DCStats_false_true_5.csv", DataFrame)
-joint_data = innerjoin(greedy_data, pruned_data, on=:QueryPath, makeunique=true)
-joint_data[!, :Speedup] = joint_data[!, :Runtime] ./ joint_data[!, :Runtime_1]
-println("DBLP ANALYSIS")
-println("Min: $(minimum(joint_data.Speedup))")
-println("Median: $(median(joint_data.Speedup))")
-println("Max: $(maximum(joint_data.Speedup))")
-println("Mean: $(mean(joint_data.Speedup))")
-println("GeoMean: $(exp(mean(log.(joint_data.Speedup))))")
-println(filter((x)->x[:Speedup] == minimum(joint_data.Speedup), joint_data).QueryPath)
+    joint_data = innerjoin(greedy_data, pruned_data, on=:QueryPath, makeunique=true)
+    joint_data[!, :Speedup] = joint_data[!, :Runtime] ./ joint_data[!, :Runtime_1]
+    println("$(uppercase(string(dataset))) ANALYSIS")
+    println("Min: $(minimum(joint_data.Speedup))")
+    println("Median: $(median(joint_data.Speedup))")
+    println("Max: $(maximum(joint_data.Speedup))")
+    println("Mean: $(mean(joint_data.Speedup))")
+    println("GeoMean: $(exp(mean(log.(joint_data.Speedup))))")
+    for query in sort(filter((x)->x[:Speedup] <= quantile(joint_data.Speedup, .05), joint_data), [:Speedup]).QueryPath
+        println(query)
+    end
+end

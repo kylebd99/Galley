@@ -118,7 +118,7 @@ function galley(input_queries::Vector{PlanNode};
     # We now compute the logical queries in order by performing the following steps:
     #   1. Query Splitting: We reduce queries to a size which is manageably compilable by Finch
     #   2. Physical Optimization: We make three decision about execution strategy for each query
-    #           a. Loop Order
+    #           a. Loop Order (which also determines transpositions)
     #           b. Output Format
     #           c. Access Protocols
     #   3. Execution: No more decisions are made, we simply build the kernel and hand it to

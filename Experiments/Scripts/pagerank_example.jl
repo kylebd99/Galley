@@ -3,7 +3,7 @@ using Finch
 using Galley
 using Galley: t_dense, t_sparse_list, insert_statistics!
 
-vertex_vectors, edge_matrices = load_subgraph_dataset(aids, DCStats, nothing)
+vertex_vectors, edge_matrices = load_subgraph_dataset(dblp, DCStats, nothing)
 edges = Tensor(Dense(SparseList(Element(0))), edge_matrices[0].tns.val)
 #edges = Tensor(Dense(SparseList(Element(0.0))), fsprand(Bool, 100, 100, .01))
 n = size(edges)[1]
@@ -49,31 +49,31 @@ for i in 1:5
 end
 
 
-out_degree_g = Materialize(t_dense, :j, Aggregate(+, :i, Input(edges, :i, :j)))
+out_degree_g = Materialize(t_dense, :j, Σ(:i, Input(edges, :i, :j)))
 scaled_edges_g = Materialize(t_dense, t_sparse_list, :i, :j, MapJoin(ceil_div, Input(edges, :i, :j), Input(out_degree_g, :j)))
-rank_1_g = Materialize(t_dense, :i, Aggregate(+, :j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r, :j))))
+rank_1_g = Materialize(t_dense, :i, Σ(:j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r, :j))))
 r_1_g = Materialize(t_dense, :i, MapJoin(+, beta_score, MapJoin(*, Input(rank_1_g, :i), damp)))
-rank_2_g = Materialize(t_dense, :i, Aggregate(+, :j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r_1_g, :j))))
+rank_2_g = Materialize(t_dense, :i, Σ(:j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r_1_g, :j))))
 r_2_g = Materialize(t_dense, :i, MapJoin(+, beta_score, MapJoin(*, Input(rank_2_g, :i), damp)))
-rank_3_g = Materialize(t_dense, :i, Aggregate(+, :j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r_2_g, :j))))
+rank_3_g = Materialize(t_dense, :i, Σ(:j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r_2_g, :j))))
 r_3_g = Materialize(t_dense, :i, MapJoin(+, beta_score, MapJoin(*, Input(rank_3_g, :i), damp)))
-rank_4_g = Materialize(t_dense, :i, Aggregate(+, :j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r_3_g, :j))))
+rank_4_g = Materialize(t_dense, :i, Σ(:j, MapJoin(*, Input(scaled_edges, :i, :j), Input(r_3_g, :j))))
 r_4_g = Materialize(t_dense, :i, MapJoin(+, beta_score, MapJoin(*, Input(rank_4_g, :i), damp)))
 insert_statistics!(DCStats, r_4_g)
 galley_times = []
 galley_opt_times = []
-result_galley = galley(Query(:out, r_4_g), ST=DCStats, simple_cse = false, verbose=3)
+result_galley = galley([Query(:out, r_4_g)], ST=DCStats, simple_cse = false, verbose=3)
 for i in 1:5
-    local result_galley = galley(Query(:out, r_4_g), ST=DCStats, simple_cse = false, verbose=0)
+    local result_galley = galley([Query(:out, r_4_g)], ST=DCStats, simple_cse = false, verbose=0)
     push!(galley_times, result_galley.execute_time)
     push!(galley_opt_times, result_galley.opt_time)
 end
 
 galley_cse_times = []
 galley_cse_opt_times = []
-result_galley = galley(Query(:out, r_4_g), ST=DCStats, verbose=3)
+result_galley = galley([Query(:out, r_4_g)], ST=DCStats, verbose=3)
 for i in 1:5
-    local result_galley = galley(Query(:out, r_4_g), ST=DCStats, verbose=0)
+    local result_galley = galley([Query(:out, r_4_g)], ST=DCStats, verbose=0)
     push!(galley_cse_times, result_galley.execute_time)
     push!(galley_cse_opt_times, result_galley.opt_time)
 end
@@ -82,5 +82,5 @@ println("Galley Opt: $(minimum(galley_opt_times))")
 println("Galley CSE Exec: $(minimum(galley_cse_times))")
 println("Galley CSE Opt: $(minimum(galley_cse_opt_times))")
 println("Finch Exec: $(minimum(f_times))")
-println("F = G: $(all(abs.(f_r .- result_galley.value) .< .01))")
-println("F = G: $(all(abs.(f_r .- result_galley.value) .< .01))")
+println("F = G: $(all(abs.(f_r .- result_galley.value[1]) .< .01))")
+println("F = G: $(all(abs.(f_r .- result_galley.value[1]) .< .01))")

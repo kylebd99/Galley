@@ -2,9 +2,10 @@ include("../../Experiments.jl")
 
 
 #datasets = instances(WORKLOAD)
-data = aids
+data = dblp_lite
 
 experiments = ExperimentParams[]
+push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, max_kernel_size=1, description="Max Size 1", timeout=200))
 push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, max_kernel_size=2, description="Max Size 2", timeout=200))
 push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, max_kernel_size=3, description="Max Size 3", timeout=200))
 push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, max_kernel_size=4, description="Max Size 4", timeout=200))

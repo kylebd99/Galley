@@ -25,8 +25,8 @@ for i in 1:5
     push!(f_times, f_time)
     global f_l = l
 end
-q = Materialize(Aggregate(+, :i, :j, MapJoin(*, MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))),
-                                                MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))))))
+q = Materialize(Σ(:i, :j, MapJoin(*, MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))),
+                                     MapJoin(+, Input(X, :j, :i), MapJoin(*, MapJoin(-, Input(u, :i)), Input(v, :j))))))
 insert_statistics!(DCStats, q)
 g_times = []
 g_opt_times = []

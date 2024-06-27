@@ -180,11 +180,10 @@ function get_reduce_query(reduce_idx, aq)
                 continue
             end
             idx_root_id = aq.idx_lowest_root[idx]
-            idx_root_node = aq.id_to_node[idx_root_id]
             args_with_idx = [arg for arg in root_node.args if idx.name in get_index_set(arg.stats)]
             if idx_root_id == root_node_id && relevant_args ⊇ args_with_idx
                 push!(idxs_to_be_reduced, idx)
-            elseif any([intree(idx_root_node, arg) for arg in relevant_args])
+            elseif idx ∈ aq.parent_idxs[reduce_idx]
                 push!(idxs_to_be_reduced, idx)
             end
         end
@@ -199,7 +198,7 @@ function get_reduce_query(reduce_idx, aq)
             idx_root = aq.idx_lowest_root[idx]
             if idx_root == root_node_id
                 push!(idxs_to_be_reduced, idx)
-            elseif isdescendant(idx_root, root_node)
+            elseif idx ∈ aq.parent_idxs[reduce_idx]
                 push!(idxs_to_be_reduced, idx)
             end
         end

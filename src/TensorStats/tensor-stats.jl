@@ -474,7 +474,7 @@ function _matrix_structure_to_dcs(indices::Vector{IndexExpr}, s::Tensor)
                     DC(Set(), Set([j]), d_j[]),
                     DC(Set([i]), Set([j]), d_i_j[]),
                     DC(Set([j]), Set([i]), d_j_i[]),
-                    DC(Set(), Set([i,j]), d_i[]),
+                    DC(Set(), Set([i,j]), d_ij[]),
                     ])
 end
 

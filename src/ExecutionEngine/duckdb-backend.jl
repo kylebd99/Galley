@@ -80,7 +80,7 @@ function type_to_duckdb_type(t)
     if t == Float64
         return "DOUBLE"
     elseif t == Int64
-        return "INT"
+        return "INT64"
     elseif t == Bool
         return "BOOL"
     end
@@ -308,8 +308,6 @@ end
 
 
 function duckdb_execute_logical_plan(logical_queries, dbconn, output_name, output_order, faq_time, verbose)
-    output_name = only(output_aliases)
-    output_order = output_orders[output_name]
     duckdb_opt_time = faq_time
     duckdb_exec_time = 0
     duckdb_insert_time = 0

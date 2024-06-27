@@ -36,14 +36,12 @@ end
 function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
     op = op isa PlanNode ? op.val : op
     new_default_value = nothing
-    if isidentity(op, def.default_value)
-        new_default_value = def.default_value
+    if isidentity(op, def.default_value) || isidempotent(op)
+        new_default_value = op(def.default_value, def.default_value)
     elseif op == +
         new_default_value = def.default_value * prod([def.dim_sizes[x] for x in reduce_indices])
     elseif op == *
         new_default_value = def.default_value ^ prod([def.dim_sizes[x] for x in reduce_indices])
-    elseif isidempotent(op)
-        new_default_value = op(def.default_value, def.default_value)
     else
         # This is going to be VERY SLOW. Should raise a warning about reductions over non-identity default values.
         # Depending on the semantics of reductions, we might be able to do this faster.
@@ -51,7 +49,6 @@ function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
                          This can result in a large slowdown as the new default is calculated.")
         new_default_value = op([def.default_value for _ in prod([def.dim_sizes[x] for x in reduce_indices])]...)
     end
-
     new_index_set = setdiff(def.index_set, reduce_indices)
     new_dim_sizes = Dict()
     for index in new_index_set
@@ -173,10 +170,10 @@ function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
 
     # We only keep DCs which can be inferred from all inputs. Otherwise, we might miss
     # important information which simply wasn't inferred
-    new_dcs = Dict()
+    new_dcs = Dict{Any, UInt128}()
     for key in dc_keys
         if all([haskey(dcs, key) for dcs in stats_dcs])
-            new_dcs[key] = sum([get(dcs, key, 0) for dcs in stats_dcs])
+            new_dcs[key] = min(typemax(UInt128)/2, sum([get(dcs, key, UInt128(0)) for dcs in stats_dcs]))
         end
     end
     return DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dcs))

@@ -133,6 +133,8 @@ function canonicalize(plan::PlanNode, use_dnf)
     plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan, use_dnf)
+    # Each aggregate should correspond to a unique variable, which we ensure here.
+    plan = unique_indices(Dict(), plan)
     # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting
     # later on.
     plan = plan_copy(plan)

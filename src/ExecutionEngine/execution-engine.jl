@@ -115,6 +115,8 @@ function execute_query(alias_dict, q::PlanNode, verbose)
                                             output_dimensions,
                                             output_default,
                                             copy_data = output_tensor)
+                q.expr.formats = [Value(f) for f in best_formats]
+                get_def(q.expr.stats).level_formats = best_formats
             end
         end
         verbose >= 2 && println("Touch Up Time: ", time()-touch_up_start)

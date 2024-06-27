@@ -85,9 +85,26 @@ function get_dim_type(dim_size)
     end
 end
 
+function resize_sparse_list!(stats, tns)
+    isnothing(stats) && return
+    num_idxs = length(Finch.level_size(tns))
+    idxs = get_index_order(stats)[1:num_idxs]
+    nnz = ceil(Int, estimate_nnz(stats; indices = idxs))
+    resize!(tns.idx, nnz)
+    resize!(tns.ptr, nnz)
+end
 
+function resize_sparse_dict!(stats, tns)
+    isnothing(stats) && return
+    num_idxs = length(Finch.level_size(tns))
+    idxs = get_index_order(stats)[1:num_idxs]
+    nnz = ceil(Int, estimate_nnz(stats; indices = idxs))
+    resize!(tns.idx, nnz)
+    resize!(tns.ptr, nnz)
+    resize!(tns.val, nnz)
+end
 
-function initialize_tensor(formats, dims, default_value; copy_data = nothing)
+function initialize_tensor(formats, dims, default_value; copy_data = nothing, stats=nothing)
     if length(dims) == 0
         return Finch.Scalar(default_value)
     end
@@ -96,12 +113,14 @@ function initialize_tensor(formats, dims, default_value; copy_data = nothing)
         DT = get_dim_type(dims[i])
         if formats[i] == t_sparse_list
             B = SparseList(B, DT(dims[i]))
+            resize_sparse_list!(stats, B)
         elseif formats[i] == t_dense
             B = Dense(B, DT(dims[i]))
         elseif formats[i] == t_bytemap
             B = SparseByteMap(B, DT(dims[i]))
         elseif formats[i] == t_hash
             B = SparseDict(B, DT(dims[i]))
+            resize_sparse_dict!(stats, B)
         else
             println("Error: Attempted to initialize invalid level format type.")
         end
@@ -119,7 +138,6 @@ function uniform_tensor(shape, sparsity; formats = [], default_value = 0, non_de
     if formats == []
         formats = [t_sparse_list for _ in 1:length(shape)]
     end
-
     tensor = initialize_tensor(formats, shape, default_value)
     copyto!(tensor, fsprand(Tuple(shape), sparsity, (r, n)->[non_default_value for _ in 1:n]))
     return tensor

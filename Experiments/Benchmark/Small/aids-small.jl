@@ -198,7 +198,7 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Execution Time")
-savefig(gbplot, "Experiments/Figures/aids_small_execute.png")
+savefig(gbplot, "Experiments/Figures/aids_small_execute1.png")
 
 gbplot = StatsPlots.groupedbar(Xs,
                                 opt_times,
@@ -209,4 +209,4 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Optimization Time")
-savefig(gbplot, "Experiments/Figures/aids_small_opt.png")
+savefig(gbplot, "Experiments/Figures/aids_small_opt1.png")

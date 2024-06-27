@@ -71,7 +71,7 @@ time_dict = Dict("balanced triangle"=>Dict(),
                 "balanced bowtie"=>Dict(),
                 "unbalanced bowtie"=>Dict(), )
 
-verbosity=1
+verbosity=3
 
 for ST in [DCStats, NaiveStats]
     vertices, edges = load_dataset("Experiments/Data/Subgraph_Data/yeast/yeast.graph", ST, nothing,subgraph_matching_data=true)
@@ -177,7 +177,7 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Execution Time")
-savefig(gbplot, "Experiments/Figures/yeast_small_execute.png")
+savefig(gbplot, "Experiments/Figures/yeast_small_execute1.png")
 
 gbplot = StatsPlots.groupedbar(Xs,
                                 opt_times,
@@ -188,4 +188,4 @@ gbplot = StatsPlots.groupedbar(Xs,
                                 size = (1400, 600))
 xlabel!(gbplot, "Query Type")
 ylabel!(gbplot, "Optimization Time")
-savefig(gbplot, "Experiments/Figures/yeast_small_opt.png")
+savefig(gbplot, "Experiments/Figures/yeast_small_opt1.png")

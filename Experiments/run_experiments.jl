@@ -1,24 +1,15 @@
-macro timeout(seconds, expr_to_run, expr_when_fails)
-    quote
-        tsk = @task $(esc(expr_to_run))
-        schedule(tsk)
-        num_checks = $(esc(seconds))*10
-        for i in 1:num_checks
-            sleep(.1)
-            if istaskdone(tsk)
-                break
-            end
-        end
-        if !istaskdone(tsk)
-            schedule(tsk, InterruptException(), error=true)
-        end
-        try
-            fetch(tsk)
-        catch e
-            throw(e)
-            println("Error: $e")
-            $(esc(expr_when_fails))
-        end
+function load_worker()
+    println("Spawning Worker")
+    GC.gc()
+    worker_pid = addprocs(1)[1]
+    f = @spawnat worker_pid include("Experiments/run_experiments_worker.jl")
+    fetch(f)
+    return worker_pid
+end
+
+function clear_channel(c)
+    while isready(c)
+        take!(c)
     end
 end
 

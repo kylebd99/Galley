@@ -1,21 +1,19 @@
 include("../../Experiments.jl")
 
 
-#datasets = instances(WORKLOAD)
-data = human
-
+datasets = [human, yeast_lite, aids, dblp_lite, youtube_lite]
 experiments = ExperimentParams[]
-#    push!(experiments, ExperimentParams(workload=data, faq_optimizer=naive))
-#    push!(experiments, ExperimentParams(workload=data, faq_optimizer=hypertree_width))
-push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, description="Ours", timeout=500))
-push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, use_duckdb=true, description="Ours + DuckDB", timeout=500))
-push!(experiments, ExperimentParams(workload=data, faq_optimizer=naive; stats_type=NaiveStats, use_duckdb=true, description="DuckDB", timeout=500))
-#    push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=NaiveStats))
-#    push!(experiments, ExperimentParams(workload=data, faq_optimizer=ordering))
+for data in datasets
+    push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, description="Ours (greedy)", timeout=360))
+    push!(experiments, ExperimentParams(workload=data, faq_optimizer=pruned; stats_type=DCStats, warm_start=true, description="Ours (pruned)", timeout=360))
+    push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, use_duckdb=true, description="Ours (greedy_cost) + DuckDB", timeout=360))
+    push!(experiments, ExperimentParams(workload=data, faq_optimizer=pruned; stats_type=DCStats, use_duckdb=true, description="Ours (pruned) + DuckDB", timeout=360))
+    push!(experiments, ExperimentParams(workload=data, faq_optimizer=naive; stats_type=NaiveStats, use_duckdb=true, description="DuckDB", timeout=360))
+end
 
-run_experiments(experiments)
+#run_experiments(experiments)
 
-graph_grouped_box_plot(experiments; y_type=overall_time, grouping=description, filename="$(data)_subgraph_counting_overall")
-graph_grouped_box_plot(experiments; y_type=opt_time, grouping=description, filename="$(data)_subgraph_counting_opt")
-graph_grouped_box_plot(experiments; y_type=execute_time, grouping=description, filename="$(data)_subgraph_counting_execute")
-graph_grouped_box_plot(experiments; y_type=compile_time, grouping=description, filename="$(data)_subgraph_counting_compile")
+graph_grouped_box_plot(experiments; y_type=overall_time, y_lims=[10^-5, 10^3], grouping=description, filename="subgraph_counting_overall")
+graph_grouped_box_plot(experiments; y_type=opt_time, y_lims=[10^-5, 10^3], grouping=description, filename="subgraph_counting_opt")
+graph_grouped_box_plot(experiments; y_type=execute_time, y_lims=[10^-5, 10^3], grouping=description, filename="subgraph_counting_execute")
+graph_grouped_box_plot(experiments; y_type=compile_time, y_lims=[10^-5, 10^3], grouping=description, filename="subgraph_counting_compile")

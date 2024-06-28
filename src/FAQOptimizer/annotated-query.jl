@@ -65,7 +65,6 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
     ])))(expr)
     point_expr = plan_copy(point_expr) # Need to sanitize
     insert_statistics!(ST, point_expr)
-
     id_to_node = Dict()
     for node in PreOrderDFS(point_expr)
         id_to_node[node.node_id] = node
@@ -180,10 +179,11 @@ function get_reduce_query(reduce_idx, aq)
                 continue
             end
             idx_root_id = aq.idx_lowest_root[idx]
+            idx_root_node = aq.id_to_node[idx_root_id]
             args_with_idx = [arg for arg in root_node.args if idx.name in get_index_set(arg.stats)]
             if idx_root_id == root_node_id && relevant_args ⊇ args_with_idx
                 push!(idxs_to_be_reduced, idx)
-            elseif idx ∈ aq.parent_idxs[reduce_idx]
+            elseif any([intree(idx_root_node, arg) for arg in relevant_args])
                 push!(idxs_to_be_reduced, idx)
             end
         end
@@ -196,9 +196,10 @@ function get_reduce_query(reduce_idx, aq)
                 continue
             end
             idx_root = aq.idx_lowest_root[idx]
+            idx_root_node = aq.id_to_node[idx_root_id]
             if idx_root == root_node_id
                 push!(idxs_to_be_reduced, idx)
-            elseif idx ∈ aq.parent_idxs[reduce_idx]
+            elseif isdescendant(idx_root_node, root_node)
                 push!(idxs_to_be_reduced, idx)
             end
         end
@@ -312,11 +313,11 @@ function reduce_idx!(idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-
     insert_statistics!(aq.ST, new_point_expr)
     @assert idx.name ∉ get_index_set(new_point_expr.stats)
     @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
     @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)
+    @assert all([haskey(new_id_to_node, new_idx_lowest_root[idx]) for idx in new_reduce_idxs])
     aq.reduce_idxs = new_reduce_idxs
     aq.point_expr = new_point_expr
     aq.idx_lowest_root = new_idx_lowest_root

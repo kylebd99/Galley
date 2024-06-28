@@ -196,7 +196,7 @@ function get_reduce_query(reduce_idx, aq)
                 continue
             end
             idx_root = aq.idx_lowest_root[idx]
-            idx_root_node = aq.id_to_node[idx_root_id]
+            idx_root_node = aq.id_to_node[idx_root]
             if idx_root == root_node_id
                 push!(idxs_to_be_reduced, idx)
             elseif isdescendant(idx_root_node, root_node)

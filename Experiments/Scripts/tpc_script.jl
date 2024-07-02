@@ -98,7 +98,7 @@ customer_x = align_x_dims(customer_x, x_starts[3], x_dim)
 supplier_x = align_x_dims(supplier_x, x_starts[4], x_dim)
 part_x = align_x_dims(part_x, x_starts[5], x_dim)
 
-X_g = Materialize(t_undef, t_undef, :i, :j, MapJoin(+,  Input(lineitem_x, :j, :i, "lineitem_x"),
+X_g = Materialize(t_undef, t_undef, :i, :j, MapJoin(+,  #Input(lineitem_x, :j, :i, "lineitem_x"),
                                                         Σ(:o, MapJoin(*, Input(li_order, :i, :o, "li_order"), Input(orders_x, :j, :o, "orders_x"))),
                                                         Σ(:o, :c, MapJoin(*, Input(li_order, :i, :o, "li_order"), Input(order_cust, :o, :c, "order_cust"), Input(customer_x, :j, :c, "customer_x"))),
                                                         Σ(:s, MapJoin(*, Input(li_supp, :i, :s, "li_supp"), Input(supplier_x, :j, :s, "supplier_x"))),
@@ -130,12 +130,12 @@ function finch_sp_lr(lineitem_x, li_order, orders_x, order_cust, customer_x, li_
     st = Tensor(Dense(Element(0.0)))
     d = Tensor(Dense(Element(0.0)))
     f_time = @elapsed @finch begin
-        X .= 0
+        X .= 0#=
         for i =_
             for x =_
                 X[x, i] += lineitem_x[x, i]
             end
-        end
+        end =#
 
         for o=_
             for i =_
@@ -212,10 +212,98 @@ for i in 1:5
     push!(f_ls, d)
 end
 
+sigmoid(x) = exp(x-log1pexp(x))
+p_query = Materialize(t_undef, :i, MapJoin(sigmoid, Σ(:k, MapJoin(*, X_g[:i, :k], Input(θ, :k)))))
+d_g = Query(:d_g, Materialize(t_undef, :j, Σ(:i, MapJoin(*, X_g[:i, :j], MapJoin(+, Input(Y, :i), MapJoin(-, p_query[:i]))))))
+g_log_times = []
+g_log_opt_times = []
+for i in 1:5
+    result_galley = galley([d_g], ST=DCStats,  verbose=0)
+    push!(g_log_times, result_galley.execute_time)
+    push!(g_log_opt_times, result_galley.opt_time)
+end
+result_log = galley([d_g], ST=DCStats, verbose=3)
+
+function finch_sp_log(lineitem_x, li_order, orders_x, order_cust, customer_x, li_supp, supplier_x, li_part, part_x, Y, θ)
+    X = Tensor(Dense(Dense(Element(0.0))))
+    prediction = Tensor(Dense(Element(0.0)))
+    d = Tensor(Dense(Element(0.0)))
+    f_time = @elapsed @finch begin
+        X .= 0#=
+        for i =_
+            for x =_
+                X[x, i] += lineitem_x[x, i]
+            end
+        end =#
+
+        for o=_
+            for i =_
+                for x =_
+                    X[x, i] += li_order[i, o] * orders_x[x, o]
+                end
+            end
+        end
+
+        for c=_
+            for o=_
+                for i =_
+                    for x =_
+                        X[x, i] += li_order[i, o] * order_cust[o, c] * customer_x[x, c]
+                    end
+                end
+            end
+        end
+
+        for s=_
+            for i =_
+                for x =_
+                    X[x, i] += li_supp[i, s] * supplier_x[x, s]
+                end
+            end
+        end
+
+        for p=_
+            for i =_
+                for x =_
+                    X[x, i] += li_part[i, p] * part_x[x, p]
+                end
+            end
+        end
+
+        prediction .= 0
+        for i=_
+            for k=_
+                prediction[i] += X[k, i] * θ[k]
+            end
+        end
+
+        d .= 0
+        for i = _
+            for k =_
+                d[k] += X[k, i] * (Y[i] - sigmoid(prediction[i]))
+            end
+        end
+    end
+    return f_time, d
+end
+
+f_d = nothing
+f_log_times = []
+f_logs = []
+for i in 1:5
+    f_time, d = finch_sp_log(lineitem_x, li_order, orders_x, order_cust, customer_x, li_supp, supplier_x, li_part, part_x, lineitem_y, θ)
+    push!(f_log_times, f_time)
+    push!(f_logs, d)
+end
+
 println("Galley Exec: $(minimum(g_times))")
 println("Galley Opt: $(minimum(g_opt_times))")
 println("Finch Exec: $(minimum(f_times))")
 println("∑|F_i - G_i|: $(sum(abs.(f_ls[1] - result.value[1])))")
+println("Galley Log Exec: $(minimum(g_log_times))")
+println("Galley Log Opt: $(minimum(g_log_opt_times))")
+println("Finch Log Exec: $(minimum(f_log_times))")
+println("∑|F_i - G_i|: $(sum(abs.(f_logs[1] - result_log.value[1])))")
 
 function finch_sp_lr2(li_supp, supplier_x, li_part, part_x, li_y, θ)
     Y = Tensor(Dense(Sparse(Element(0.0))))
@@ -344,7 +432,109 @@ for i in 1:3
     push!(f_ls, d)
     GC.gc()
 end
+
+function finch_sp_log2(li_supp, supplier_x, li_part, part_x, li_y, θ)
+    Y = Tensor(Dense(Sparse(Element(0.0))))
+    X = Tensor(Dense(Sparse(Sparse(Element(0.0)))))
+    li_supp_x = Tensor(Dense(Sparse(Element(0.0))))
+    prediction = Tensor(Dense(Sparse(Element(0.0))))
+    d = Tensor(Dense(Element(0.0)))
+    f_time = @elapsed @finch begin
+        X .= 0
+        Y .=0
+        for p = _
+            for i1 =_
+                for i2 =_
+                    for x =_
+                        X[x, i2, i1] += li_part[i1, p] * li_part[i2, p] * part_x[x, p]
+                    end
+                    Y[i2, i1] += li_part[i1, p] * li_part[i2, p] * (li_y[i1] - li_y[i2])
+                end
+            end
+        end
+    end
+    println("Initialized X and Y")
+    f_time += @elapsed @finch begin
+        li_supp_x .= 0
+        for s=_
+            for i1 =_
+                for x =_
+                    li_supp_x[x, i1] += li_supp[i1, s] * supplier_x[x, s]
+                end
+            end
+        end
+    end
+    println("Made li_supp_x")
+    f_time += @elapsed @finch begin
+        for i1 =_
+            for i2 =_
+                for x =_
+                    X[x, i2, i1] += Y[i2, i1] * li_supp_x[x, i1]
+                end
+            end
+        end
+    end
+    println("Added Supp 1")
+    f_time += @elapsed @finch begin
+        for i1 =_
+            for i2 =_
+                for x =_
+                    X[x, i2, i1] += Y[i2, i1] * li_supp_x[x, i2]
+                end
+            end
+        end
+    end
+    println("Added Supp 2")
+    f_time += @elapsed @finch begin
+        prediction .= 0
+        for i1=_
+            for i2=_
+                for k=_
+                    prediction[i2, i1] += X[k, i2, i1] * θ[k]
+                end
+            end
+        end
+
+        d .= 0
+        for i1=_
+            for i2=_
+                for k =_
+                    d[k] += X[k, i2, i1] * (Y[i2, i1] - sigmoid(prediction[i2, i1]))
+                end
+            end
+        end
+    end
+    return f_time, d
+end
+
+# Logistic Regression On Many-Many Join
+sigmoid(x) = exp(x-log1pexp(x))
+exp_query = Materialize(t_undef, t_undef, :i1, :i2, MapJoin(sigmoid, Σ(:k, MapJoin(*, X_g[:i1, :i2, :k], Input(θ, :k)))))
+d_g = Query(:d_g, Materialize(t_undef, :j, Σ(:i1, :i2, MapJoin(*, X_g[:i1, :i2, :j], MapJoin(+, Input(Y, :i1, :i2), MapJoin(-, exp_term[:i1, :i2]))))))
+g_log_times = []
+g_log_opt_times = []
+for i in 1:3
+    result_galley = galley(d_g, ST=DCStats,  verbose=0)
+    push!(g_log_times, result_galley.execute_time)
+    push!(g_log_opt_times, result_galley.opt_time)
+end
+result_log = galley(d_g, ST=DCStats, verbose=3)
+
+f_d = nothing
+f_log_times = []
+f_logs = []
+for i in 1:3
+    f_time, d = finch_sp_log2(li_supp, supplier_x, li_part, part_x, lineitem_y, θ)
+    push!(f_log_times, f_time)
+    push!(f_logs, d)
+    GC.gc()
+end
+
 println("Galley Exec: $(minimum(g_times))")
 println("Galley Opt: $(minimum(g_opt_times))")
 println("Finch Exec: $(minimum(f_times))")
 println("F = G: $(sum(abs.(f_ls[1] - result.value[1])))")
+println("Galley Log Exec: $(minimum(g_log_times))")
+println("Galley Log Opt: $(minimum(g_log_opt_times))")
+println("Finch Exec: $(minimum(f_log_times))")
+println("F = G: $(sum(abs.(f_logs[1] - result_log.value[1])))")

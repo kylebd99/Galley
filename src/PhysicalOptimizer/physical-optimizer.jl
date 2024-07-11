@@ -90,10 +90,13 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
 
     # Determine the optimal loop order for the query
     input_stats = get_input_stats(expr)
+    disjuncts_and_conjuncts = get_conjunctive_and_disjunctive_inputs(expr)
+    disjunct_and_conjunct_stats = (conjuncts=[s.stats for s in disjuncts_and_conjuncts.conjuncts],
+                                    disjuncts=[s.stats for s in disjuncts_and_conjuncts.disjuncts])
     agg_op = isnothing(agg_op) ? initwrite(get_default_value(expr.stats)) : agg_op
 
     output_stats = reduce_tensor_stats(agg_op, reduce_idxs, expr.stats)
-    loop_order = get_join_loop_order(agg_op, Vector{TensorStats}(collect(values(input_stats))), expr.stats, output_stats, output_order)
+    loop_order = get_join_loop_order(disjunct_and_conjunct_stats, output_stats, output_order)
     queries = []
     for (id, stats) in input_stats
         if !is_sorted_wrt_index_order(get_index_order(stats), loop_order; loop_order=true)

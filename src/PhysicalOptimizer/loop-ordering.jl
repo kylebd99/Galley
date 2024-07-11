@@ -68,7 +68,7 @@ end
 PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
 PLAN = Tuple{Vector{IndexExpr}, Float64}
 
-function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size, num_flops)
+function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size)
     output_compat = pc[2]
     rf_set = pc[3]
     pc_cost = 0
@@ -96,15 +96,20 @@ end
 # `output_stats` reflects the materialization tensor (i.e. the size of the intermediate produced)
 # `output_order` may or may not be present and reflects whether we have a set output order
 #  we care about. This will generally be present in the final query to be evaluated.
-function get_join_loop_order_bounded(agg_op,
-                                input_stats::Vector{TensorStats},
-                                join_stats::TensorStats,
-                                output_stats::TensorStats,
-                                output_order::Union{Nothing, Vector{IndexExpr}},
-                                cost_bound,
-                                top_k)
-    all_vars = union([get_index_set(stat) for stat in input_stats]...)
-    num_flops = estimate_nnz(join_stats)
+# TODO: Our cost model is off here. We compute the join stats once then just evaluate
+# prefixes relative to that. However, this could be much smaller than the iterations in a
+# loop prefix. For example, MapJoin(*, A[i,j], B[i,j], C[j]) might have a join stat with
+# size 1 if |C| = 1. In this case, we view both orders to be equal even though j,i is
+# potentially O(n) better.
+function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
+                                    output_stats::TensorStats,
+                                    output_order::Union{Nothing, Vector{IndexExpr}},
+                                    cost_bound,
+                                    top_k)
+    disjunct_stats = disjunct_and_conjunct_stats.disjuncts
+    conjunct_stats = disjunct_and_conjunct_stats.conjuncts
+    all_stats = TensorStats[disjunct_stats..., conjunct_stats...]
+    all_vars = union([get_index_set(stat) for stat in all_stats]...)
     output_size = estimate_nnz(output_stats)
     output_vars = get_index_set(output_stats)
 
@@ -115,17 +120,17 @@ function get_join_loop_order_bounded(agg_op,
 
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
-    reformat_costs = Dict(i => cost_of_reformat(input_stats[i]) for i in eachindex(input_stats))
+    reformat_costs = Dict(i => cost_of_reformat(all_stats[i]) for i in eachindex(all_stats))
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
     for var in all_vars
         prefix = [var]
         v_set = Set(prefix)
-        rf_set = get_reformat_set(input_stats, prefix)
+        rf_set = get_reformat_set(all_stats, prefix)
         output_compat = get_output_compat(output_vars, prefix)
         class = (v_set, output_compat, rf_set)
-        cost = get_prefix_cost(agg_op, v_set, join_stats)
+        cost = get_prefix_cost(v_set, conjunct_stats, disjunct_stats)
         optimal_plans[class] = (prefix, cost)
     end
 
@@ -137,7 +142,7 @@ function get_join_loop_order_bounded(agg_op,
             cost = plan[2]
             # We only consider extensions that don't result in cross products
             potential_vars = Set{IndexExpr}()
-            for stat in input_stats
+            for stat in all_stats
                 index_set = get_index_set(stat)
                 if length(∩(index_set, prefix_set)) > 0
                     potential_vars = ∪(potential_vars, index_set)
@@ -152,10 +157,10 @@ function get_join_loop_order_bounded(agg_op,
             for new_var in potential_vars
                 new_prefix_set = union(prefix_set, [new_var])
                 new_prefix = [prefix..., new_var]
-                rf_set = get_reformat_set(input_stats, new_prefix)
+                rf_set = get_reformat_set(all_stats, new_prefix)
                 output_compat = get_output_compat(output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
-                new_cost = get_prefix_cost(agg_op, new_prefix_set, join_stats) + cost
+                new_cost = get_prefix_cost(new_prefix_set, conjunct_stats, disjunct_stats) + cost
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf
@@ -185,7 +190,7 @@ function get_join_loop_order_bounded(agg_op,
             cost_1 = plan_1[2]
             output_compat_1 = plan_class_1[2]
             reformat_set_1 = plan_class_1[3]
-            if cost_1 + cost_of_plan_class(plan_class_1, reformat_costs, output_size, num_flops) > cost_bound
+            if cost_1 + cost_of_plan_class(plan_class_1, reformat_costs, output_size) > cost_bound
                 continue
             end
             is_dominated = false
@@ -204,7 +209,7 @@ function get_join_loop_order_bounded(agg_op,
         end
 
         if !isinf(top_k) && length(undominated_plans) > top_k
-            plan_and_cost = [(p[2] + cost_of_plan_class(pc, reformat_costs, output_size, num_flops), pc=>p) for (pc, p) in undominated_plans]
+            plan_and_cost = [(p[2] + cost_of_plan_class(pc, reformat_costs, output_size), pc=>p) for (pc, p) in undominated_plans]
             sort!(plan_and_cost, by=(x)->x[1])
             undominated_plans = Dict(x[2] for x in plan_and_cost[1:top_k])
         end
@@ -214,7 +219,7 @@ function get_join_loop_order_bounded(agg_op,
     best_prefix = nothing
     best_plan_class = nothing
     for (plan_class, plan) in optimal_plans
-        cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size, num_flops)
+        cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size)
         if cur_cost <= min_cost
             min_cost = cur_cost
             best_prefix = plan[1]
@@ -226,12 +231,13 @@ end
 
 GREEDY_PLAN_K = 10
 
-function get_join_loop_order(agg_op, input_stats::Vector{TensorStats}, join_stats::TensorStats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
-    if length(get_index_set(join_stats)) == 0
+function get_join_loop_order(disjunct_and_conjunct_stats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
+    if length(union([get_index_set(s) for s in disjunct_and_conjunct_stats.disjuncts]...,
+                    [get_index_set(s) for s in disjunct_and_conjunct_stats.conjuncts]...)) == 0
         return IndexExpr[]
     end
-    greedy_order, greedy_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
-    exact_order, exact_cost = get_join_loop_order_bounded(agg_op, input_stats, join_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
+    greedy_order, greedy_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
+    exact_order, exact_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
 
     if exact_cost > greedy_cost
         println("Exact Cost: $exact_cost")

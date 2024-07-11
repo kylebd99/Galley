@@ -85,5 +85,6 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
         end
     end
     clear_channel(status_channel)
+    println("PUBLISHING FINISH STATUS")
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, true))
 end

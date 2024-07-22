@@ -5,9 +5,14 @@
 @enum VALUE execute_time opt_time overall_time compile_time
 
 function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams};
-                                        x_type::GROUP=dataset, y_type::VALUE=overall_time,
-                                        grouping::GROUP=faq_optimizer, y_lims=[10^-5, 10^3],
-                                        x_label=nothing, y_label=nothing, filename=nothing)
+                                        x_type::GROUP=dataset,
+                                        y_type::VALUE=overall_time,
+                                        grouping::GROUP=faq_optimizer,
+                                        y_lims=[10^-5, 10^3],
+                                        group_order = nothing,
+                                        x_label=nothing,
+                                        y_label=nothing,
+                                        filename=nothing)
     # for now let's just use the dataset as the x-values and the cycle size as the groups
     x_values = []
     y_values = []
@@ -17,14 +22,17 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
         results_path = "Experiments/Results/" * param_to_results_filename(experiment_params)
         # println("results path: ", results_path)
         results_df = CSV.read(results_path, DataFrame; normalizenames=true)
-
+        meta_path = "Experiments/Results/" * param_to_results_filename(experiment_params; ext=".meta")
+        meta_df = CSV.read(meta_path, DataFrame; normalizenames=true)
+        num_attempted = only(meta_df.Attempted)
+        num_completed = only(meta_df.Completed)
+        for i in 1:(num_attempted-num_completed)
+            push!(results_df, (string(experiment_params.workload), "", "", 600, sum(results_df.OptTime)/nrow(results_df), 0, String15(""), true), promote=true)
+        end
         # get the x_value and grouping (same for all results in this experiment param)
 
         # keep track of the data points
         for i in 1:nrow(results_df)
-            if results_df[i, :Failed]
-                continue
-            end
             current_x = x_type == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, x_type)
             current_group = grouping == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, grouping)
             current_y = 0
@@ -47,13 +55,22 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
     end
     results_filename = param_to_results_filename(experiment_params_list[1])
     println("starting graphs")
-
+    if !isnothing(group_order)
+        groups = CategoricalArray(groups)
+        levels!(groups, group_order)
+    end
     # This seems to be necessary for using Plots.jl outside of the ipynb framework.
     # See this: https://discourse.julialang.org/t/deactivate-plot-display-to-avoid-need-for-x-server/19359/15
     ENV["GKSwstype"]="100"
     gbplot = groupedboxplot(x_values, y_values, group = groups, yscale =:log10,
                             ylims=y_lims, yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
-                            legend = :outertopleft, size = (1000, 600))
+                            legend = :topleft, size = (1000, 600),
+                            xtickfontsize=15,
+                            ytickfontsize=15,
+                            xguidefontsize=16,
+                            yguidefontsize=16,
+                            legendfontsize=16,
+                            left_margin=10mm)
     x_label !== nothing && xlabel!(gbplot, x_label)
     y_label !== nothing && ylabel!(gbplot, y_label)
     plotname = (isnothing(filename)) ? results_filename * ".png" : filename * ".png"
@@ -67,6 +84,7 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                                         x_label=nothing,
                                         y_label=nothing,
                                         y_lims=[0, 10],
+                                        group_order=nothing,
                                         filename=nothing)
     # for now let's just use the dataset as the x-values and the cycle size as the groups
     x_values = []
@@ -76,22 +94,20 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
         # load the results
         results_path = "Experiments/Results/" * param_to_results_filename(experiment_params)
         results_df = CSV.read(results_path, DataFrame; normalizenames=true)
-
-        # get the x_value and grouping (same for all results in this experiment param)
-        println(results_df)
+        n_results = nrow(results_df)
+        if y_type == opt_time
+            results_df = combine(results_df, :OptTime=>sum, nrow, renamecols=false)
+            results_df.OptTime = results_df.OptTime ./ n_results
+        elseif y_type == compile_time
+            results_df = combine(results_df, :CompileTime=>sum, nrow, renamecols=false)
+            results_df.CompileTime = results_df.CompileTime ./ n_results
+        end
         # keep track of the data points
         for i in 1:nrow(results_df)
-            if results_df[i, :Failed]
-                continue
-            end
             current_x = x_type == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, x_type)
             current_group = grouping == query_type ? results_df[i, :QueryType] : get_value_from_param(experiment_params, grouping)
             current_y = 0
-            if y_type == estimate_error
-                current_y = results_df[i, :Estimate] / results_df[i, :TrueCard]
-            elseif y_type == memory_footprint
-                current_y = results_df[i, :MemoryFootprint]/(10^6)
-            elseif y_type == opt_time
+            if y_type == opt_time
                 current_y = results_df[i, :OptTime]
             elseif y_type == compile_time
                 current_y = results_df[i, :CompileTime]
@@ -101,12 +117,19 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                 current_y = results_df[i, :OptTime] + results_df[i, :Runtime]
             end
             # push the errors and their groupings into the correct vector
+            if current_y == 0
+                continue
+            end
             push!(x_values, current_x)
             push!(y_values, current_y)
             push!(groups, current_group)
         end
     end
-    results_filename = params_to_results_filename(experiment_params_list[1])
+    if !isnothing(group_order)
+        groups = CategoricalArray(groups)
+        levels!(groups, group_order)
+    end
+    results_filename = param_to_results_filename(experiment_params_list[1])
     println("starting graphs")
 
     # This seems to be necessary for using Plots.jl outside of the ipynb framework.
@@ -118,10 +141,19 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
     gbplot = StatsPlots.groupedbar(x_values,
                             y_values,
                             group = groups,
-#                            yscale =:log10,
+                            yscale =:log10,
+                            yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
                             ylims=y_lims,
-                            legend = :outertopleft,
-                            size = (1000, 600))
+                            legend = :topleft,
+                            size = (1000, 600),
+                            xtickfontsize=15,
+                            ytickfontsize=15,
+                            xguidefontsize=16,
+                            yguidefontsize=16,
+                            legendfontsize=16,
+                            left_margin=10mm,
+                            bottom_margin=10mm,
+                            top_margin=10mm)
     if x_label !== nothing
         xlabel!(gbplot, x_label)
     else

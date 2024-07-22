@@ -360,13 +360,26 @@ run_exps(matrices)
 
 using CSV
 using DataFrames
+using CategoricalArrays
 data = CSV.read("Experiments/Results/bfs.csv", DataFrame)
+data = data[any.(zip(data.Method .== "Galley (CSE)", data.Method .== "Sparse", data.Method .== "Dense", data.Method .== "HandOpt")) , :]
+data.Method[data.Method .== "Galley (CSE)"]  .= "Galley"
+ordered_methods = CategoricalArray(data.Method)
+levels!(ordered_methods, ["Galley", "Galley (No-CSE)","Galley (One Iter)", "Sparse", "Dense", "HandOpt"])
 gbplot = StatsPlots.groupedbar(data.Dataset,
                                 data.Runtime,
-                                group = data.Method,
-                                ylims=[10^-4, 10^2],
+                                group = ordered_methods,
+                                ylims=[10^-2, 10^2],
                                 yscale=:log,
-                                legend = :outertopleft,
-                                size = (1400, 600),
-                                ylabel = "Runtime")
+                                legend = :topleft,
+                                size = (1800, 700),
+                                ylabel = "Execution Time (s)",
+                                xtickfontsize=15,
+                                ytickfontsize=15,
+                                xguidefontsize=16,
+                                yguidefontsize=16,
+                                legendfontsize=16,
+                                left_margin=10mm,
+                                bottom_margin=10mm,
+                                top_margin=10mm)
 savefig(gbplot, "Experiments/Figures/bfs.png")

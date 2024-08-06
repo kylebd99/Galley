@@ -1,7 +1,6 @@
-function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf, alias_hash)
-    aq = AnnotatedQuery(input_query, ST, use_dnf)
+function greedy_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
+    aq = copy_aq(input_aq)
     queries = []
-    cost_cache = Dict()
     total_cost = 0
     reducible_idxs = get_reducible_idxs(aq)
     while !isempty(reducible_idxs)
@@ -26,11 +25,11 @@ function greedy_query_to_plan(input_query::PlanNode, ST, use_dnf, alias_hash)
     end
     last_query = queries[end]
     # The final query should produce the result, so we ensure that it has the result's name
-    last_query.name = input_query.name
+    last_query.name = aq.output_name
     last_query.expr = Materialize(aq.output_format..., aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
     get_def(last_query.expr.stats).index_order = [idx.name for idx in aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f.val for f in aq.output_format]
     alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
-    return queries, total_cost
+    return queries, total_cost, cost_cache
 end

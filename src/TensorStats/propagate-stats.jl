@@ -116,7 +116,7 @@ end
 
 function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::NaiveStats)
     if length(reduce_indices) == 0
-        return deepcopy(stats)
+        return copy_stats(stats)
     end
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
     new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
@@ -128,11 +128,10 @@ function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::NaiveSta
 end
 
 function transpose_tensor_stats(index_order::Vector{IndexExpr}, stats::NaiveStats)
-    stats = deepcopy(stats)
+    stats = copy_stats(stats)
     stats.def = transpose_tensor_def(index_order, get_def(stats))
     return stats
 end
-
 
 ################# DCStats Propagation ##################################################
 function merge_tensor_stats_join(op, new_def, all_stats::Vararg{DCStats})
@@ -149,21 +148,22 @@ function merge_tensor_stats_join(op, new_def, all_stats::Vararg{DCStats})
 end
 
 function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
-    dc_keys = Set()
+    dc_keys = counter(Any)
     stats_dcs = []
     # We start by extending all arguments' dcs to the new dimensions and infer dcs as needed
     for stats in all_stats
 #        condense_stats!(stats, timeout=1000)
         dcs = Dict()
-        new_idxs = collect(setdiff(get_index_set(new_def), get_index_set(stats)))
+        Z = setdiff(get_index_set(new_def), get_index_set(stats))
+        Z_dimension_space_size = get_dim_space_size(new_def, Z)
         for dc in stats.dcs
             dcs[(X=dc.X, Y=dc.Y)] = dc.d
-            push!(dc_keys, (X=dc.X, Y=dc.Y))
-            Z = Set(new_idxs)
-            Z_dimension_space_size = get_dim_space_size(new_def, Z)
+            inc!(dc_keys, (X=dc.X, Y=dc.Y))
             ext_dc_key = (X=dc.X, Y=∪(dc.Y, Z))
-            dcs[ext_dc_key] = dc.d*Z_dimension_space_size
-            push!(dc_keys, ext_dc_key)
+            if !haskey(dcs, ext_dc_key)
+                inc!(dc_keys, ext_dc_key)
+            end
+            dcs[ext_dc_key] = min(get(dcs, ext_dc_key, Inf), dc.d*Z_dimension_space_size)
         end
         push!(stats_dcs, dcs)
     end
@@ -171,8 +171,8 @@ function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
     # We only keep DCs which can be inferred from all inputs. Otherwise, we might miss
     # important information which simply wasn't inferred
     new_dcs = Dict{Any, UInt128}()
-    for key in dc_keys
-        if all([haskey(dcs, key) for dcs in stats_dcs])
+    for (key, count) in dc_keys
+        if count == length(all_stats)
             new_dcs[key] = min(typemax(UInt128)/2, sum([get(dcs, key, UInt128(0)) for dcs in stats_dcs]))
         end
     end
@@ -181,16 +181,16 @@ end
 
 function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
     if length(reduce_indices) == 0
-        return deepcopy(stats)
+        return copy_stats(stats)
     end
     new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
-    new_dcs = deepcopy(stats.dcs)
+    new_dcs = copy(stats.dcs)
     new_stats = DCStats(new_def, new_dcs)
     return new_stats
 end
 
 function transpose_tensor_stats(index_order::Vector{IndexExpr}, stats::DCStats)
-    stats = deepcopy(stats)
+    stats = copy_stats(stats)
     stats.def = transpose_tensor_def(index_order, get_def(stats))
     return stats
 end

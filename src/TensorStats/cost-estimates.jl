@@ -8,6 +8,8 @@ const RandomWriteCost = 10
 
 const ComputeCost = 1
 const AllocateCost = 10
+const DenseAllocateCost = .5
+const SparseAllocateCost = 60
 
 # We estimate the prefix cost based on the number of iterations in that prefix.
 function get_loop_lookups(vars::Set{IndexExpr}, rel_conjuncts, rel_disjuncts)

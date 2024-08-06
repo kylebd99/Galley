@@ -15,31 +15,31 @@ function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     agg_expr.stats = input.stats
     formats = select_output_format(agg_expr.stats, reverse(input_order), fixed_order)
     reorder_query = Query(Alias(gensym("A")), Materialize(formats..., fixed_order..., agg_expr), reverse(input_order)...)
-    reorder_stats = deepcopy(input.stats)
+    reorder_stats = copy_stats(input.stats)
     reorder_def = get_def(reorder_stats)
     reorder_def.index_order = fixed_order
     reorder_def.level_formats = formats
     reorder_query.expr.stats = reorder_stats
     if true || formats == select_output_format(agg_expr.stats, reverse(fixed_order), fixed_order)
         final_alias_expr = Alias(reorder_query.name.name)
-        final_alias_expr.stats = deepcopy(reorder_stats)
+        final_alias_expr.stats = copy_stats(reorder_stats)
         expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
         return [reorder_query], expr
     end
 
     fixed_formats = select_output_format(reorder_stats, reverse(fixed_order), fixed_order)
     alias_expr = Alias(reorder_query.name.name)
-    alias_expr.stats = deepcopy(reorder_stats)
+    alias_expr.stats = copy_stats(reorder_stats)
     alias_agg_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
     alias_agg_expr.stats = alias_expr.stats
     reformat_query = Query(Alias(gensym("A")), Materialize(fixed_formats..., fixed_order..., alias_agg_expr), reverse(fixed_order)... )
-    reformat_stats = deepcopy(alias_expr.stats)
+    reformat_stats = copy_stats(alias_expr.stats)
     reformat_def = get_def(reformat_stats)
     reformat_def.level_formats = fixed_formats
     reformat_query.expr.stats = reformat_stats
 
     final_alias_expr = Alias(reformat_query.name.name)
-    final_alias_expr.stats = deepcopy(reformat_stats)
+    final_alias_expr.stats = copy_stats(reformat_stats)
     expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
     return [reorder_query, reformat_query], expr
 end
@@ -115,7 +115,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     needs_intermediate = length(output_order) > 0 && ((!isnothing(output_formats) && first_formats != output_formats))
     if needs_intermediate
         intermediate_query = Query(Alias(gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
-        reorder_stats = deepcopy(expr.stats)
+        reorder_stats = copy_stats(expr.stats)
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order = output_order
         reorder_def.level_formats = first_formats
@@ -128,7 +128,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
         result_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
         result_expr.stats = reorder_stats
         result_query = Query(query.name, Materialize(best_formats... , output_order..., result_expr), reverse(output_order)...)
-        result_stats = deepcopy(reorder_stats)
+        result_stats = copy_stats(reorder_stats)
         result_def = get_def(result_stats)
         result_def.index_order = output_order
         result_def.level_formats = best_formats
@@ -136,7 +136,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
         push!(queries, result_query)
     else
         result_query = Query(query.name, Materialize(first_formats..., output_order..., expr), loop_order...)
-        reorder_stats = deepcopy(expr.stats)
+        reorder_stats = copy_stats(expr.stats)
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order =  output_order
         reorder_def.level_formats = first_formats

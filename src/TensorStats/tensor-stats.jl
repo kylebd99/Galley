@@ -12,7 +12,7 @@
 end
 TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
 
-Base.copy(def::TensorDef) = TensorDef(copy(def.index_set),
+copy_def(def::TensorDef) = TensorDef(copy(def.index_set),
                                 copy(def.dim_sizes),
                                 copy(def.default_value),
                                 isnothing(def.level_formats) ? nothing : copy(def.level_formats),
@@ -118,7 +118,7 @@ get_index_format(stat::TensorStats, idx::IndexExpr) = get_index_format(get_def(s
 get_index_formats(stat::TensorStats) = get_index_formats(get_def(stat))
 get_index_protocol(stat::TensorStats, idx::IndexExpr) = get_index_protocol(get_def(stat), idx)
 get_index_protocols(stat::TensorStats) = get_index_protocols(get_def(stat))
-
+copy_stats(stat::Nothing) = nothing
 #################  NaiveStats Definition ###################################################
 
 @auto_hash_equals mutable struct NaiveStats <: TensorStats
@@ -132,7 +132,7 @@ condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
 function fix_cardinality!(stat::NaiveStats, card)
     stat.cardinality = card
 end
-Base.copy(stat::NaiveStats) = NaiveStats(copy(stat.def), stat.cardinality)
+copy_stats(stat::NaiveStats) = NaiveStats(copy_def(stat.def), stat.cardinality)
 
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)
 
@@ -173,7 +173,7 @@ end
     dcs::Set{DC}
 end
 
-Base.copy(stat::DCStats) = DCStats(copy(stat.def), copy(stat.dcs))
+copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.dcs))
 
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def

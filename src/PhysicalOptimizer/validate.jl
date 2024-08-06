@@ -88,7 +88,7 @@ function check_formats(n::PlanNode)
 end
 
 function validate_physical_query(q::PlanNode)
-    q = deepcopy(q)
+    q = plan_copy(q)
     input_indices = get_input_indices(q.expr)
     @assert input_indices == Set([idx.name for idx in q.loop_order])
     output_indices = Set([idx.name for idx in q.expr.idx_order])

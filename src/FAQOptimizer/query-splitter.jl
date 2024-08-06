@@ -42,7 +42,7 @@ end
 #   Query(name, Materialize(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
 # It outputs a set of queries where the final one binds `name` and each
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
-function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
+function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
     insert_node_ids!(q)
     aq = AnnotatedQuery(q, ST, false)
     pe = aq.point_expr
@@ -53,6 +53,10 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
     queries = []
     cost_cache = Dict()
     cur_occurences = count_index_occurences([pe])
+    if verbose > 2 && cur_occurences > max_kernel_size
+        println("Splitting the following query (cur_occurences = $cur_occurences): ")
+        println(q)
+    end
     while cur_occurences > max_kernel_size
         nodes_to_remove = nothing
         new_query = nothing
@@ -119,8 +123,8 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
         push!(queries, new_query)
         setdiff!(aq.reduce_idxs, new_agg_idxs)
         condense_stats!(new_query.expr.stats; cheap=false)
-        alias = deepcopy(new_query.name)
-        alias.stats = deepcopy(new_query.expr.stats)
+        alias = Alias(new_query.name.name)
+        alias.stats = copy_stats(new_query.expr.stats)
         alias.node_id = node_id_counter
         node_id_counter += 1
         replace_and_remove_nodes!(pe, nodes_to_remove[1], alias, nodes_to_remove[2:end])
@@ -139,10 +143,10 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats)
     return queries
 end
 
-function split_queries(ST, p::PlanNode; alias_stats=Dict())
+function split_queries(ST, max_kernel_size, p::PlanNode; alias_stats=Dict(), verbose)
     new_queries = []
     for query in p.queries
-        append!(new_queries, split_query(ST, query, alias_stats))
+        append!(new_queries, split_query(query, ST, max_kernel_size, alias_stats, verbose))
     end
     new_plan = Plan(new_queries..., p.outputs)
     insert_node_ids!(new_plan)

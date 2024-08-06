@@ -17,6 +17,8 @@ const ID = 4
     Outputs      =  9ID | IS_TREE   #  Outputs(args...::TI)
     Plan         = 10ID | IS_TREE   #  Plan(Queries..., Outputs)
 end
+Mat = Materialize
+Agg = Aggregate
 
 # Here, we define the internal expression type that we use to describe logical query plans.
 mutable struct PlanNode
@@ -82,9 +84,17 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
         elseif (kind === Alias && length(args) >= 1)
             idxs = length(args) > 1 ? args[2:end] : []
             return PlanNode(kind, idxs, args[1], nothing)
+        elseif (kind === Materialize)
+            num_indices = sum([arg isa Symbol || (arg isa PlanNode && arg.kind === Index) for arg in args[1:end-1]]; init=0)
+            if num_indices == length(args)-1
+                return PlanNode(kind, [[t_undef for _ in args[1:end-1]]..., args...], nothing, nothing)
+            elseif num_indices == (length(args)-1)/2
+                return PlanNode(kind, args, nothing, nothing)
+            else
+                error("wrong number of arguments to $kind(...)")
+            end
         elseif (kind === MapJoin && length(args) >= 2) ||
             (kind === Aggregate && length(args) >= 2) ||
-            (kind === Materialize && length(args) >= 1 && length(args) % 2 == 1) ||
             (kind === Outputs) ||
             (kind === Plan)
             return PlanNode(kind, args, nothing, nothing)
@@ -110,8 +120,9 @@ SyntaxInterface.operation(node::PlanNode) = node.kind
 
 function SyntaxInterface.similarterm(x::PlanNode, op::PlanNodeKind, args)
     @assert Int(op) & IS_TREE != 0
-    PlanNode(op, args, nothing, deepcopy(x.stats), x.node_id)
+    PlanNode(op, args, nothing, copy_stats(x.stats), x.node_id)
 end
+Base.copy(x::Nothing) = nothing
 
 logic_leaf(arg) = Value(arg)
 logic_leaf(arg::Type) = Value(arg)
@@ -351,17 +362,17 @@ end
 
 
 # The goal of this is to emulate deepcopy except for the actual data
-function plan_copy(n::PlanNode; copy_stats = true)
+function plan_copy(n::PlanNode; copy_statistics= true)
     if n.kind === Input
         p = Input(n.tns, [idx.name for idx in n.idxs]..., n.id)
-        p.stats = (copy_stats && !isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
+        p.stats = (copy_statistics && !isnothing(n.stats)) ? copy_stats(n.stats) : n.stats
         p.node_id = n.node_id
         return p
     else
-        stats = (copy_stats && !isnothing(n.stats)) ? deepcopy(n.stats) : n.stats
+        stats = (copy_statistics && !isnothing(n.stats)) ? copy_stats(n.stats) : n.stats
         children = []
         for i in eachindex(n.children)
-            push!(children, plan_copy(n.children[i], copy_stats=copy_stats))
+            push!(children, plan_copy(n.children[i], copy_statistics=copy_statistics))
         end
         return PlanNode(n.kind, children, n.val, stats, n.node_id)
     end

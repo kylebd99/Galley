@@ -11,22 +11,22 @@ mutable struct AnnotatedQuery
     parent_idxs
 end
 
-function Base.copy(aq::AnnotatedQuery)
+function copy_aq(aq::AnnotatedQuery)
     new_point_expr = plan_copy(aq.point_expr)
     id_to_node = Dict()
     for node in PreOrderDFS(new_point_expr)
         id_to_node[node.node_id] = node
     end
     return AnnotatedQuery(aq.ST,
-                          deepcopy(aq.output_name),
-                          deepcopy(aq.output_order),
-                          deepcopy(aq.output_format),
-                          deepcopy(aq.reduce_idxs),
+                          aq.output_name,
+                          copy(aq.output_order),
+                          copy(aq.output_format),
+                          copy(aq.reduce_idxs),
                           new_point_expr,
-                          deepcopy(aq.idx_lowest_root),
-                          deepcopy(aq.idx_op),
+                          copy(aq.idx_lowest_root),
+                          copy(aq.idx_op),
                           id_to_node,
-                          deepcopy(aq.parent_idxs),
+                          copy(aq.parent_idxs),
                           )
 end
 # Takes in a query and preprocesses it to gather relevant info
@@ -247,6 +247,11 @@ function get_forced_transpose_cost(n)
     end
 end
 
+function is_dense(mat_stats)
+    sparsity = estimate_nnz(mat_stats) / get_dim_space_size(mat_stats, get_index_set(mat_stats))
+    return sparsity > .5
+end
+
 # Returns the cost of reducing out an index
 function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
     query, _, _ = get_reduce_query(reduce_idx, aq)
@@ -254,7 +259,9 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
     if !haskey(cache, cache_key)
         comp_stats = query.expr.arg.stats
         mat_stats = query.expr.stats
-        cost = estimate_nnz(comp_stats) * ComputeCost + estimate_nnz(mat_stats) * AllocateCost
+        mat_factor = is_dense(mat_stats)  ? DenseAllocateCost : SparseAllocateCost
+        comp_factor = length(get_index_set(comp_stats)) * ComputeCost
+        cost = estimate_nnz(comp_stats) * comp_factor + estimate_nnz(mat_stats) * mat_factor
         forced_transpose_cost = get_forced_transpose_cost(query.expr)
         cache[cache_key] = cost + forced_transpose_cost
     end
@@ -284,14 +291,14 @@ end
 
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
-function reduce_idx!(idx, aq)
-    query, node_to_replace, nodes_to_remove = get_reduce_query(idx, aq)
-    condense_stats!(query.expr.stats)
+function reduce_idx!(reduce_idx, aq)
+    query, node_to_replace, nodes_to_remove = get_reduce_query(reduce_idx, aq)
+#    condense_stats!(query.expr.stats)
 
     reduced_idxs = query.expr.idxs
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
-    alias_expr.stats = deepcopy(query.expr.stats)
+    alias_expr.stats = copy_stats(query.expr.stats)
     new_point_expr = replace_and_remove_nodes!(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
     new_id_to_node = Dict()
     for node in PreOrderDFS(new_point_expr)
@@ -313,8 +320,9 @@ function reduce_idx!(idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-    insert_statistics!(aq.ST, new_point_expr)
-    @assert idx.name ∉ get_index_set(new_point_expr.stats)
+    reduced_idx_exprs = Set{IndexExpr}([idx.name for idx in reduced_idxs])
+    insert_statistics!(aq.ST, new_point_expr; affected_indices = reduced_idx_exprs)
+    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
     @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
     @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)
     @assert all([haskey(new_id_to_node, new_idx_lowest_root[idx]) for idx in new_reduce_idxs])

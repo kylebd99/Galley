@@ -12,7 +12,7 @@ function select_output_format(output_stats::TensorStats,
         needs_rw = !fully_compat_with_loop_prefix(prefix, loop_order)
         approx_sparsity = estimate_nnz(output_stats; indices=prefix) / get_dim_space_size(output_stats, Set(prefix))
 
-        if approx_sparsity > .9
+        if approx_sparsity > .5
             if get_dim_space_size(output_stats, Set(prefix)) > 10^11
                 throw(OutOfMemoryError())
             end

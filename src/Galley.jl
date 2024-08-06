@@ -24,7 +24,7 @@ using PrettyPrinting
 
 export galley
 export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan, IndexExpr
-export Scalar, OutTensor, RenameIndices, declare_binary_operator, Σ
+export Scalar, OutTensor, RenameIndices, declare_binary_operator, Σ, Mat, Agg
 export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, hypertree_width, greedy, pruned, exact
@@ -128,7 +128,7 @@ function galley(input_queries::Vector{PlanNode};
     plan_hash_result, alias_result = Dict(), Dict()
     for l_query in logical_queries
         split_start = time()
-        split_queries = split_query(l_query, ST, max_kernel_size, alias_stats)
+        split_queries = split_query(l_query, ST, max_kernel_size, alias_stats, verbose)
         total_split_time  += time() - split_start
         for s_query in split_queries
             phys_opt_start = time()

@@ -1,5 +1,5 @@
-function branch_and_bound(input_query::PlanNode, ST, k, max_cost, use_dnf, alias_hash, cost_cache = Dict())
-    input_aq = AnnotatedQuery(input_query, ST, use_dnf)
+function branch_and_bound(input_aq::AnnotatedQuery, k, max_cost, alias_hash, cost_cache = Dict())
+    input_aq = copy_aq(input_aq)
     PLAN_AND_COST = Tuple{Vector{PlanNode}, Vector{PlanNode}, AnnotatedQuery, Float64}
     optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}(Set{IndexExpr}()=>(PlanNode[], PlanNode[], input_aq, 0))
     prev_new_optimal_orders = optimal_orders
@@ -22,13 +22,23 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost, use_dnf, alias
                 end
             end
         end
-
+        if length(best_idx_ext) == 0
+            break
+        end
         new_optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}()
         for (new_vars, idx_ext_info) in best_idx_ext
             aq, idx, old_order, old_queries, cost = idx_ext_info
-            new_aq = copy(aq)
-            query = reduce_idx!(idx, new_aq)
-            alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
+            # We don't need to recompute the resulting AQ if we already have ~some~ order
+            # for that set of variables.
+            query, new_aq = if haskey(optimal_orders, new_vars)
+                pc = optimal_orders[new_vars]
+                get_reduce_query(idx, aq), copy_aq(pc[3])
+            else
+                aq_copy = copy_aq(aq)
+                reduce_query = reduce_idx!(idx, aq_copy)
+                alias_hash[reduce_query.name] = cannonical_hash(reduce_query.expr, alias_hash)
+                reduce_query, aq_copy
+            end
             new_queries = PlanNode[old_queries..., query]
             new_order = PlanNode[old_order..., idx]
             new_optimal_orders[new_vars] = (new_order, new_queries, new_aq, cost)
@@ -46,38 +56,37 @@ function branch_and_bound(input_query::PlanNode, ST, k, max_cost, use_dnf, alias
     return optimal_orders[Set([i.name for i in input_aq.reduce_idxs])], cost_cache
 end
 
-function pruned_query_to_plan(input_query::PlanNode, ST, use_dnf, alias_hash)
-    (greedy_order, greedy_queries, greedy_aq, greedy_cost), cost_cache = branch_and_bound(plan_copy(input_query), ST, 1, Inf, use_dnf, alias_hash)
-    (exact_order, exact_queries, exact_aq, exact_cost), cost_cache = branch_and_bound(plan_copy(input_query), ST, Inf, greedy_cost, use_dnf, alias_hash, cost_cache)
+function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
+    greedy_queries, greedy_cost, cost_cache = greedy_query_to_plan(input_aq, cost_cache, alias_hash)
+    (exact_order, exact_queries, exact_aq, exact_cost), cost_cache = branch_and_bound(input_aq, 1, greedy_cost, alias_hash, cost_cache)
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)
         push!(exact_queries, remaining_q)
     end
     last_query = exact_queries[end]
     # The final query should produce the result, so we ensure that it has the result's name
-    last_query.name = input_query.name
+    last_query.name = exact_aq.output_name
     last_query.expr = Materialize(exact_aq.output_format..., exact_aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
     get_def(last_query.expr.stats).index_order = [idx.name for idx in exact_aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f.val for f in exact_aq.output_format]
     alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
-    return exact_queries, exact_cost
+    return exact_queries, exact_cost, cost_cache
 end
 
-
-function exact_query_to_plan(input_query::PlanNode, ST, use_dnf, alias_hash)
-    (exact_order, exact_queries, exact_aq, exact_cost), cost_cache = branch_and_bound(plan_copy(input_query), ST, Inf, Inf, use_dnf, alias_hash)
+function exact_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
+    (exact_order, exact_queries, exact_aq, exact_cost), cost_cache = branch_and_bound(input_aq,Inf, Inf, alias_hash, cost_cache)
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)
         push!(exact_queries, remaining_q)
     end
     last_query = exact_queries[end]
     # The final query should produce the result, so we ensure that it has the result's name
-    last_query.name = input_query.name
+    last_query.name = exact_aq.output_name
     last_query.expr = Materialize(exact_aq.output_format..., exact_aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
     get_def(last_query.expr.stats).index_order = [idx.name for idx in exact_aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f.val for f in exact_aq.output_format]
     alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
-    return exact_queries, exact_cost
+    return exact_queries, exact_cost, cost_cache
 end

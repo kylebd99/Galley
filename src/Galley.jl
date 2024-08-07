@@ -84,14 +84,14 @@ function galley(input_queries::Vector{PlanNode};
     # where point_expr is made up of just MapJoin, Input, and Alias nodes.
     opt_start, faq_opt_start = time(), time()
     logical_queries = []
-    alias_stats, alias_hash = Dict{PlanNode, TensorStats}(),  Dict{PlanNode, UInt}()
+    alias_stats, alias_hash = Dict{IndexExpr, TensorStats}(),  Dict{IndexExpr, UInt}()
     output_aliases = [input_query.name for input_query in input_queries]
     output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_queries)
     for input_query in input_queries
         logical_plan = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, verbose)
         for query in logical_plan
-            alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
-            alias_stats[query.name] = query.expr.stats
+            alias_hash[query.name.name] = cannonical_hash(query.expr, alias_hash)
+            alias_stats[query.name.name] = query.expr.stats
         end
         append!(logical_queries, logical_plan)
     end
@@ -125,7 +125,7 @@ function galley(input_queries::Vector{PlanNode};
     #      Finch.
     #   4. Touch Up: We check the actual output cardinality and fix our stats accordingly.
     total_split_time, total_phys_opt_time, total_exec_time, total_count_time = 0,0,0,0
-    plan_hash_result, alias_result = Dict(), Dict()
+    plan_hash_result, alias_result = Dict(), Dict{IndexExpr, Any}()
     for l_query in logical_queries
         split_start = time()
         split_queries = split_query(l_query, ST, max_kernel_size, alias_stats, verbose)
@@ -140,21 +140,21 @@ function galley(input_queries::Vector{PlanNode};
                 verbose > 3 && validate_physical_query(p_query)
                 exec_start = time()
                 p_query_hash = cannonical_hash(p_query.expr, alias_hash)
-                alias_hash[p_query.name] = p_query_hash
+                alias_hash[p_query.name.name] = p_query_hash
                 if simple_cse && haskey(plan_hash_result, p_query_hash)
-                    alias_result[p_query.name] = plan_hash_result[p_query_hash]
+                    alias_result[p_query.name.name] = plan_hash_result[p_query_hash]
                 else
                     execute_query(alias_result, p_query, verbose)
-                    plan_hash_result[p_query_hash] = alias_result[p_query.name]
+                    plan_hash_result[p_query_hash] = alias_result[p_query.name.name]
                 end
                 total_exec_time += time() - exec_start
-                if alias_result[p_query.name] isa Tensor && update_cards
+                if alias_result[p_query.name.name] isa Tensor && update_cards
                     count_start = time()
-                    fix_cardinality!(alias_stats[p_query.name], count_non_default(alias_result[p_query.name]))
+                    fix_cardinality!(alias_stats[p_query.name.name], count_non_default(alias_result[p_query.name.name]))
                     total_count_time += time() - count_start
                 end
                 phys_opt_start = time()
-                condense_stats!(alias_stats[p_query.name]; cheap=false)
+                condense_stats!(alias_stats[p_query.name.name]; cheap=false)
                 total_phys_opt_time += time() - phys_opt_start
             end
         end
@@ -167,7 +167,7 @@ function galley(input_queries::Vector{PlanNode};
     verbose >= 1 && println("Time to Execute: ", total_exec_time)
     verbose >= 1 && println("Time to count: ", total_count_time)
     verbose >= 1 && println("Overall Time: ", total_overall_time)
-    return (value=[alias_result[alias] for alias in output_aliases],
+    return (value=[alias_result[alias.name] for alias in output_aliases],
             opt_time=(faq_opt_time + total_split_time + total_phys_opt_time + total_count_time),
             execute_time= total_exec_time,
             overall_time=total_overall_time)

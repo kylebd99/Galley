@@ -12,12 +12,12 @@
 end
 TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
 
-copy_def(def::TensorDef) = TensorDef(copy(def.index_set),
-                                copy(def.dim_sizes),
-                                copy(def.default_value),
-                                isnothing(def.level_formats) ? nothing : copy(def.level_formats),
-                                isnothing(def.index_order) ? nothing : copy(def.index_order),
-                                isnothing(def.index_protocols) ? nothing : copy(def.index_protocols))
+copy_def(def::TensorDef) = TensorDef(Set([x for x in def.index_set]),
+                                        Dict(x for x in def.dim_sizes),
+                                        def.default_value,
+                                isnothing(def.level_formats) ? nothing : [x for x in def.level_formats],
+                                isnothing(def.index_order) ? nothing : [x for x in def.index_order],
+                                isnothing(def.index_protocols) ? nothing : [x for x in def.index_protocols])
 
 function level_to_enum(lvl)
     if typeof(lvl) <: SparseListLevel
@@ -173,7 +173,8 @@ end
     dcs::Set{DC}
 end
 
-copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.dcs))
+#copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), Set{DC}(dc for dc in stat.dcs))
+copy_stats(stat::DCStats) = deepcopy(stat)
 
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def

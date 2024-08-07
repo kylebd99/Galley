@@ -20,28 +20,10 @@ function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     reorder_def.index_order = fixed_order
     reorder_def.level_formats = formats
     reorder_query.expr.stats = reorder_stats
-    if true || formats == select_output_format(agg_expr.stats, reverse(fixed_order), fixed_order)
-        final_alias_expr = Alias(reorder_query.name.name)
-        final_alias_expr.stats = copy_stats(reorder_stats)
-        expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
-        return [reorder_query], expr
-    end
-
-    fixed_formats = select_output_format(reorder_stats, reverse(fixed_order), fixed_order)
-    alias_expr = Alias(reorder_query.name.name)
-    alias_expr.stats = copy_stats(reorder_stats)
-    alias_agg_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
-    alias_agg_expr.stats = alias_expr.stats
-    reformat_query = Query(Alias(gensym("A")), Materialize(fixed_formats..., fixed_order..., alias_agg_expr), reverse(fixed_order)... )
-    reformat_stats = copy_stats(alias_expr.stats)
-    reformat_def = get_def(reformat_stats)
-    reformat_def.level_formats = fixed_formats
-    reformat_query.expr.stats = reformat_stats
-
-    final_alias_expr = Alias(reformat_query.name.name)
-    final_alias_expr.stats = copy_stats(reformat_stats)
+    final_alias_expr = Alias(reorder_query.name.name)
+    final_alias_expr.stats = copy_stats(reorder_stats)
     expr = Rewrite(Postwalk(@rule ~n => final_alias_expr where n.node_id == input.node_id))(expr)
-    return [reorder_query, reformat_query], expr
+    return [reorder_query], expr
 end
 
 
@@ -57,7 +39,7 @@ end
 # where formats can't be t_undef.
 # `alias_stats` is a dictionary which holds stats objects for the results of any previous
 # queries. This is needed to get the stats for `Alias` inputs.
-function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dict{PlanNode, TensorStats},; verbose = 0)
+function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dict{IndexExpr, TensorStats}; verbose = 0)
     if !(@capture query Query(~name, Materialize(~args...))) &&
             !(@capture query Query(~name, Aggregate(~args...))) &&
             !(@capture query Query(~name, MapJoin(~args...)))
@@ -90,6 +72,9 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
 
     # Determine the optimal loop order for the query
     input_stats = get_input_stats(expr)
+    for (id, stats) in input_stats
+        @assert !isnothing(get_index_order(stats)) "query: $query stats: $stats"
+    end
     disjuncts_and_conjuncts = get_conjunctive_and_disjunctive_inputs(expr)
     disjunct_and_conjunct_stats = (conjuncts=[s.stats for s in disjuncts_and_conjuncts.conjuncts],
                                     disjuncts=[s.stats for s in disjuncts_and_conjuncts.disjuncts])
@@ -119,7 +104,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order = output_order
         reorder_def.level_formats = first_formats
-        alias_stats[intermediate_query.name] = reorder_stats
+        alias_stats[intermediate_query.name.name] = reorder_stats
         intermediate_query.expr.stats = reorder_stats
         push!(queries, intermediate_query)
         best_formats = !isnothing(output_formats) ? output_formats : select_output_format(output_stats, reverse(output_order), output_order)
@@ -138,7 +123,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
         result_query = Query(query.name, Materialize(first_formats..., output_order..., expr), loop_order...)
         reorder_stats = copy_stats(expr.stats)
         reorder_def = get_def(reorder_stats)
-        reorder_def.index_order =  output_order
+        reorder_def.index_order = output_order
         reorder_def.level_formats = first_formats
         result_query.expr.stats = reorder_stats
         push!(queries, result_query)
@@ -146,7 +131,8 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     for query in queries
         insert_node_ids!(query)
         modify_protocols!(query.expr)
-        alias_stats[query.name] = query.expr.stats
+        alias_stats[query.name.name] = query.expr.stats
+        @assert !isnothing(get_index_order(alias_stats[query.name.name])) "$(query.name.name)"
     end
     return queries
 end

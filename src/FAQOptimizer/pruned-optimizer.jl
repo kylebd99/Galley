@@ -36,7 +36,7 @@ function branch_and_bound(input_aq::AnnotatedQuery, k, max_cost, alias_hash, cos
             else
                 aq_copy = copy_aq(aq)
                 reduce_query = reduce_idx!(idx, aq_copy)
-                alias_hash[reduce_query.name] = cannonical_hash(reduce_query.expr, alias_hash)
+                alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
                 reduce_query, aq_copy
             end
             new_queries = PlanNode[old_queries..., query]
@@ -70,7 +70,7 @@ function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     last_query.expr.stats = last_query.expr.expr.stats
     get_def(last_query.expr.stats).index_order = [idx.name for idx in exact_aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f.val for f in exact_aq.output_format]
-    alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
+    alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)
     return exact_queries, exact_cost, cost_cache
 end
 
@@ -87,6 +87,6 @@ function exact_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     last_query.expr.stats = last_query.expr.expr.stats
     get_def(last_query.expr.stats).index_order = [idx.name for idx in exact_aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f.val for f in exact_aq.output_format]
-    alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
+    alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)
     return exact_queries, exact_cost, cost_cache
 end

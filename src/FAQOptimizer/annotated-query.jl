@@ -293,7 +293,7 @@ end
 # along with the properly formed query which performs that reduction.
 function reduce_idx!(reduce_idx, aq)
     query, node_to_replace, nodes_to_remove = get_reduce_query(reduce_idx, aq)
-#    condense_stats!(query.expr.stats)
+    condense_stats!(query.expr.stats)
 
     reduced_idxs = query.expr.idxs
     alias_expr = Alias(query.name.name)

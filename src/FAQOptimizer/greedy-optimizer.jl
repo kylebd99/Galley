@@ -14,7 +14,7 @@ function greedy_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
             end
         end
         query = reduce_idx!(cheapest_idx, aq)
-        alias_hash[query.name] = cannonical_hash(query.expr, alias_hash)
+        alias_hash[query.name.name] = cannonical_hash(query.expr, alias_hash)
         push!(queries, query)
         reducible_idxs = get_reducible_idxs(aq)
         total_cost += cheapest_cost
@@ -30,6 +30,6 @@ function greedy_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     last_query.expr.stats = last_query.expr.expr.stats
     get_def(last_query.expr.stats).index_order = [idx.name for idx in aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f.val for f in aq.output_format]
-    alias_hash[last_query.name] = cannonical_hash(last_query.expr, alias_hash)
+    alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)
     return queries, total_cost, cost_cache
 end

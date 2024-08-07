@@ -247,12 +247,20 @@ function Base.hash(a::PlanNode, h::UInt)
         else
             return hash(a.kind, hash(a.val, h))
         end
-    elseif a.kind === Alias || a.kind === Index
+    elseif a.kind === Alias
+        h = hash(a.kind, hash(a.val, h))
+        if !isnothing(a.stats) && !isnothing(get_index_order(a.stats))
+            for idx in get_index_order(a.stats)
+                h = hash(idx, h)
+            end
+        end
+        return h
+    elseif a.kind === Index
         return hash(a.kind, hash(a.val, h))
     elseif a.kind == Input
         h = hash(a.kind, hash(a.id, h))
-        for id in a.idxs
-            h = hash(id, h)
+        for idx in a.idxs
+            h = hash(idx, h)
         end
         return h
     elseif istree(a)
@@ -364,7 +372,7 @@ end
 # The goal of this is to emulate deepcopy except for the actual data
 function plan_copy(n::PlanNode; copy_statistics= true)
     if n.kind === Input
-        p = Input(n.tns, [idx.name for idx in n.idxs]..., n.id)
+        p = Input(n.tns.val, [idx.name for idx in n.idxs]..., n.id)
         p.stats = (copy_statistics && !isnothing(n.stats)) ? copy_stats(n.stats) : n.stats
         p.node_id = n.node_id
         return p

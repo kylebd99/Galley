@@ -19,10 +19,6 @@ function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{Index
     ref_set = Set()
     for i in eachindex(input_stats)
         index_order = get_index_order(input_stats[i])
-        # We don't need to worry about child bags when calculating reformat cost
-        if isnothing(index_order)
-            continue
-        end
         # Tensors are stored in column major, so we reverse the index order here
         current_loop = 0
         needs_reformat = false

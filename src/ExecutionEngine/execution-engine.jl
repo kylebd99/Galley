@@ -9,8 +9,9 @@ end
 
 function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode)
     if rhs.kind == Alias
-        tns = alias_dict[rhs]
+        tns = alias_dict[rhs.name]
         idxs = get_index_order(rhs.stats)
+        @assert all([get_dim_size(rhs.stats, idxs[i]) == size(tns)[i] for i in eachindex(idxs)]) "$(size(tns)) $(idxs) $(rhs.stats.def.dim_sizes)"
         protocols = [get_index_protocol(rhs.stats, idx) for idx in idxs]
         t_name = get_tensor_symbol(tensor_counter[1])
         tensor_counter[1] += 1
@@ -51,7 +52,7 @@ end
 function execute_query(alias_dict, q::PlanNode, verbose)
     tensor_counter = [0]
     index_sym_dict = Dict()
-    name = q.name
+    name = q.name.name
     mat_expr = q.expr
     loop_order = [idx.name for idx in q.loop_order]
     output_formats = [f.val for f in mat_expr.formats]

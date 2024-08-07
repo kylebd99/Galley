@@ -51,12 +51,7 @@ end
 # reduction, so we only update the stats objects which were involved with those indices.
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false, affected_indices::Set{IndexExpr}=Set{IndexExpr}())
     for expr in PostOrderDFS(plan)
-        if !isempty(affected_indices) && !isnothing(expr.stats) && isempty(∩(get_index_set(expr.stats), affected_indices))
-            continue
-        end
-        if expr.kind === Query
-            bindings[expr.name] = copy_stats(expr.expr.stats)
-        elseif expr.kind === MapJoin
+        if expr.kind === MapJoin
             expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
         elseif expr.kind === Aggregate
             expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
@@ -66,8 +61,8 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
             def.level_formats = [f.val for f in expr.formats]
             def.index_order = [idx.name for idx in expr.idx_order]
         elseif expr.kind === Alias
-            if haskey(bindings, expr)
-                expr.stats = get(bindings, expr, nothing)
+            if haskey(bindings, expr.name)
+                expr.stats = get(bindings, expr.name, nothing)
             end
 
             if !isnothing(expr.stats)
@@ -160,7 +155,7 @@ function cannonical_hash(plan::PlanNode, alias_hash)
             end
             n.name = idx_translate_dict[n.name]
         elseif n.kind === Alias
-            n.name = gen_alias_name(alias_hash[n])
+            n.name = gen_alias_name(alias_hash[n.name])
         end
     end
     return hash(plan)

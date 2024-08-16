@@ -1,4 +1,4 @@
-function branch_and_bound(input_aq::AnnotatedQuery, k, max_cost, alias_hash, cost_cache = Dict())
+function branch_and_bound(input_aq::AnnotatedQuery, k, max_subquery_costs, alias_hash, cost_cache = Dict())
     input_aq = copy_aq(input_aq)
     PLAN_AND_COST = Tuple{Vector{PlanNode}, Vector{PlanNode}, AnnotatedQuery, Float64}
     optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}(Set{IndexExpr}()=>(PlanNode[], PlanNode[], input_aq, 0))
@@ -14,9 +14,15 @@ function branch_and_bound(input_aq::AnnotatedQuery, k, max_cost, alias_hash, cos
                 cost, reduced_vars = cost_of_reduce(idx, aq, cost_cache, alias_hash)
                 cost += prev_cost
                 new_vars = union(vars, [i.name for i in reduced_vars])
+                bound = Inf
+                for vars2 in keys(max_subquery_costs)
+                    if vars2 ⊇ new_vars
+                        bound = min(bound, max_subquery_costs[vars2])
+                    end
+                end
                 cheapest_cost = min(get(best_idx_ext, new_vars, (nothing, nothing, nothing, nothing, Inf))[5],
                                     get(optimal_orders, new_vars, (nothing, nothing, nothing, Inf))[4],
-                                    max_cost)
+                                    bound)
                 if cost <= cheapest_cost + 1 # We add 1 to avoid FP issues
                     best_idx_ext[new_vars] = (aq, idx, pc[1], pc[2], cost)
                 end
@@ -25,40 +31,43 @@ function branch_and_bound(input_aq::AnnotatedQuery, k, max_cost, alias_hash, cos
         if length(best_idx_ext) == 0
             break
         end
+        num_to_keep = Int(min(k, length(best_idx_ext)))
+        top_k_idx_ext = Dict(sort(collect(best_idx_ext), by=(v_p)->v_p[2][5])[1:num_to_keep])
+
         new_optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}()
-        for (new_vars, idx_ext_info) in best_idx_ext
+        for (new_vars, idx_ext_info) in top_k_idx_ext
             aq, idx, old_order, old_queries, cost = idx_ext_info
-            # We don't need to recompute the resulting AQ if we already have ~some~ order
-            # for that set of variables.
-            query, new_aq = if haskey(optimal_orders, new_vars)
-                pc = optimal_orders[new_vars]
-                get_reduce_query(idx, aq), copy_aq(pc[3])
-            else
-                aq_copy = copy_aq(aq)
-                reduce_query = reduce_idx!(idx, aq_copy)
-                alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
-                reduce_query, aq_copy
-            end
-            new_queries = PlanNode[old_queries..., query]
+            new_aq = copy_aq(aq)
+            reduce_query = reduce_idx!(idx, new_aq)
+            alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
+            new_queries = PlanNode[old_queries..., reduce_query]
             new_order = PlanNode[old_order..., idx]
             new_optimal_orders[new_vars] = (new_order, new_queries, new_aq, cost)
         end
 
         merge!(optimal_orders, new_optimal_orders)
         # At each step, we only keep the k cheapest plans for each # of reduced idxs
-        prev_new_optimal_orders = Dict()
-        for i in 1:length(input_aq.reduce_idxs)
-            i_length = filter((v_p)->length(v_p[1])==i, new_optimal_orders)
-            num_to_keep = Int(min(k, length(i_length)))
-            merge!(prev_new_optimal_orders, Dict(sort(collect(i_length), by=(v_p)->v_p[2][4])[1:num_to_keep]))
+        prev_new_optimal_orders = new_optimal_orders
+    end
+
+    # During the greedy pass, we compute upper bounds on the cost of each subquery which
+    # will be used in the pruned pass.
+    optimal_subquery_costs = Dict()
+    if k == 1
+        for vars in keys(optimal_orders)
+            optimal_subquery_costs[vars] = optimal_orders[vars][4]
         end
     end
-    return optimal_orders[Set([i.name for i in input_aq.reduce_idxs])], cost_cache
+    return optimal_orders[Set([i.name for i in input_aq.reduce_idxs])], optimal_subquery_costs, cost_cache
 end
 
 function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
-    greedy_queries, greedy_cost, cost_cache = greedy_query_to_plan(input_aq, cost_cache, alias_hash)
-    (exact_order, exact_queries, exact_aq, exact_cost), cost_cache = branch_and_bound(input_aq, 1, greedy_cost, alias_hash, cost_cache)
+    start = time()
+    (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(input_aq, 1, Dict(), alias_hash, cost_cache)
+    println("Greedy Time: $(time()-start)")
+    start = time()
+    (exact_order, exact_queries, exact_aq, exact_cost), exact_subquery_costs, cost_cache = branch_and_bound(input_aq, Inf, greedy_subquery_costs, alias_hash, cost_cache)
+    println("Exact Time: $(time()-start)")
     remaining_q = get_remaining_query(exact_aq)
     if !isnothing(remaining_q)
         push!(exact_queries, remaining_q)

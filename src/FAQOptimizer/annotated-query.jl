@@ -9,6 +9,7 @@ mutable struct AnnotatedQuery
     idx_op
     id_to_node
     parent_idxs
+    connected_components
 end
 
 function copy_aq(aq::AnnotatedQuery)
@@ -27,8 +28,38 @@ function copy_aq(aq::AnnotatedQuery)
                           copy(aq.idx_op),
                           id_to_node,
                           copy(aq.parent_idxs),
+                          copy(aq.connected_components),
                           )
 end
+
+function get_idx_connected_components(parent_idxs)
+    component_ids = Dict(x=>i for (i,x) in enumerate(keys(parent_idxs)))
+    finished = false
+    while !finished
+        finished = true
+        for (idx1, parents) in parent_idxs
+            for idx2 in parents
+                if component_ids[idx2] != component_ids[idx1]
+                    finished = false
+                end
+                component_ids[idx2] = min(component_ids[idx2], component_ids[idx1])
+                component_ids[idx1] = min(component_ids[idx2], component_ids[idx1])
+            end
+        end
+    end
+    components = []
+    for id in unique(values(component_ids))
+        idx_in_component = []
+        for idx in keys(parent_idxs)
+            if component_ids[idx] == id
+                push!(idx_in_component, idx)
+            end
+        end
+        push!(components, idx_in_component)
+    end
+    return components
+end
+
 # Takes in a query and preprocesses it to gather relevant info
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
@@ -114,31 +145,39 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
                 relabel_index(node, idx.name, new_idx)
                 idx_op[Index(new_idx)] = agg_op
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
+                idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
                 push!(reduce_idxs, Index(new_idx))
             end
         end
     end
 
     parent_idxs = Dict(i=>[] for i in reduce_idxs)
+    connected_idxs = Dict(i=>[] for i in reduce_idxs)
     for idx1 in reduce_idxs
         idx1_op = idx_op[idx1]
         idx1_bottom_root = id_to_node[idx_lowest_root[idx1]]
         for idx2 in reduce_idxs
             idx2_op = idx_op[idx2]
+            idx2_top_root = id_to_node[idx_starting_root[idx2]]
             idx2_bottom_root = id_to_node[idx_lowest_root[idx2]]
             # If idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
-            if isdescendant(idx2_bottom_root, idx1_bottom_root)
+            if intree(idx2_bottom_root, idx1_bottom_root)
+                push!(connected_idxs[idx1], idx2)
+            end
+            mergeable_agg_op = (idx1_op == idx2_op && isassociative(idx1_op) && iscommutative(idx1_op))
+            if isdescendant(idx2_top_root, idx1_bottom_root)
                 push!(parent_idxs[idx1], idx2)
-            # If they can both be pushed down to the same node, then we check whether they
+            # If they can both be pushed past each other, then we check whether they
             # commute. If not, we check which one was lower in the topological order.
-            elseif (!(idx1_op == idx2_op && isassociative(idx1_op) && iscommutative(idx1_op)) &&
-                        idx2_bottom_root == idx1_bottom_root &&
+            elseif (!(mergeable_agg_op) &&
                         idx_top_order[idx2] < idx_top_order[idx1])
                 push!(parent_idxs[idx1], idx2)
-                continue
             end
         end
     end
+    # If a set of aggregates are unrelated in the expression tree, then they don't need to
+    # be co-optimized.
+    connected_components = get_idx_connected_components(connected_idxs)
     return AnnotatedQuery(ST,
                             output_name,
                             output_index_order,
@@ -148,7 +187,8 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
                             idx_lowest_root,
                             idx_op,
                             id_to_node,
-                            parent_idxs)
+                            parent_idxs,
+                            connected_components)
 end
 
 function get_reduce_query(reduce_idx, aq)

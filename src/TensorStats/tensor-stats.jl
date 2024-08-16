@@ -173,8 +173,7 @@ end
     dcs::Set{DC}
 end
 
-#copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), Set{DC}(dc for dc in stat.dcs))
-copy_stats(stat::DCStats) = deepcopy(stat)
+copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), Set{DC}(dc for dc in stat.dcs))
 
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Set())
 get_def(stat::DCStats) = stat.def

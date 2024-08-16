@@ -4,6 +4,7 @@ function merge_mapjoins(plan::PlanNode)
         (@rule MapJoin(~f, ~a..., MapJoin(~f, ~b...), ~c...) => MapJoin(f, a..., b..., c...) where isassociative(f.val)),
         (@rule MapJoin(~f, ~a..., MapJoin(~f, ~b...)) => MapJoin(f, a..., b...) where isassociative(f.val)),
         (@rule MapJoin(~f, MapJoin(~f, ~a...), ~b...) => MapJoin(f, a..., b...) where isassociative(f.val)),
+        (@rule Aggregate(~f, ~idxs1..., Aggregate(~f, ~idxs2..., ~a)) => Aggregate(f, idxs1..., idxs2..., a)),
     ])))(plan)
 end
 
@@ -133,6 +134,7 @@ function canonicalize(plan::PlanNode, use_dnf)
     plan = remove_extraneous_mapjoins(plan)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan, use_dnf)
+    plan = merge_mapjoins(plan)
     # Each aggregate should correspond to a unique variable, which we ensure here.
     plan = unique_indices(Dict(), plan)
     # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting

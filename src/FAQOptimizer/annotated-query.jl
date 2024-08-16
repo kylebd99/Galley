@@ -52,11 +52,16 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
     end
     starting_reduce_idxs = []
     idx_starting_root = Dict{PlanNode, Int}()
+    # This dictionary captures the original topological ordering of the aggregates.
+    idx_top_order = Dict{PlanNode, Int}()
+    top_counter = 1
     idx_op = Dict()
     point_expr = Rewrite(Postwalk(Chain([
         (@rule Aggregate(~f::isvalue, ~idxs..., ~a) => begin
         for idx in idxs
             idx_starting_root[idx] = a.node_id
+            idx_top_order[idx] = top_counter
+            top_counter += 1
             idx_op[idx] = f.val
         end
         append!(starting_reduce_idxs, idxs)
@@ -108,7 +113,6 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
                 new_idx = new_idxs[i]
                 relabel_index(node, idx.name, new_idx)
                 idx_op[Index(new_idx)] = agg_op
-                idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
                 push!(reduce_idxs, Index(new_idx))
             end
@@ -118,21 +122,20 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
     parent_idxs = Dict(i=>[] for i in reduce_idxs)
     for idx1 in reduce_idxs
         idx1_op = idx_op[idx1]
-        idx1_starting_root = id_to_node[idx_starting_root[idx1]]
-        idx1_bottom_root = id_to_node[max(idx_lowest_root[idx1]...)]
+        idx1_bottom_root = id_to_node[idx_lowest_root[idx1]]
         for idx2 in reduce_idxs
             idx2_op = idx_op[idx2]
-            idx2_starting_root = id_to_node[idx_starting_root[idx2]]
-            # if idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
-            if isdescendant(idx2_starting_root, idx1_starting_root)
-                if idx1_op != idx2_op || !isassociative(idx1_op) || !iscommutative(idx1_op)
-                    push!(parent_idxs[idx1], idx2)
-                    continue
-                end
-                if isdescendant(idx2_starting_root, idx1_bottom_root)
-                    push!(parent_idxs[idx1], idx2)
-                    continue
-                end
+            idx2_bottom_root = id_to_node[idx_lowest_root[idx2]]
+            # If idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
+            if isdescendant(idx2_bottom_root, idx1_bottom_root)
+                push!(parent_idxs[idx1], idx2)
+            # If they can both be pushed down to the same node, then we check whether they
+            # commute. If not, we check which one was lower in the topological order.
+            elseif (!(idx1_op == idx2_op && isassociative(idx1_op) && iscommutative(idx1_op)) &&
+                        idx2_bottom_root == idx1_bottom_root &&
+                        idx_top_order[idx2] < idx_top_order[idx1])
+                push!(parent_idxs[idx1], idx2)
+                continue
             end
         end
     end

@@ -84,40 +84,41 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
             optimal_subquery_costs[vars] = optimal_orders[vars][4]
         end
     end
-    return optimal_orders[Set([i.name for i in component])], optimal_subquery_costs, cost_cache
+    if haskey(optimal_orders, Set([i.name for i in component]))
+        return optimal_orders[Set([i.name for i in component])], optimal_subquery_costs, cost_cache
+    else
+        return nothing
+    end
 end
 
 function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     total_cost = 0
     elimination_order = []
     for component in input_aq.connected_components
-        start = time()
         (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(input_aq, component, 1, Dict(), alias_hash, cost_cache)
-        println("Greedy Time: $(time()-start)")
-        start = time()
-        (exact_order, exact_queries, exact_aq, exact_cost), exact_subquery_costs, cost_cache = branch_and_bound(input_aq, component, Inf, greedy_subquery_costs, alias_hash, cost_cache)
-        println("Exact Time: $(time()-start)")
-        append!(elimination_order, exact_order)
-        total_cost += exact_cost
+        exact_opt_result = branch_and_bound(input_aq, component, Inf, greedy_subquery_costs, alias_hash, cost_cache)
+        if !isnothing(exact_opt_result)
+            (exact_order, exact_queries, exact_aq, exact_cost), exact_subquery_costs, cost_cache = exact_opt_result
+            append!(elimination_order, exact_order)
+            total_cost += exact_cost
+        else
+            println("WARNING: Pruned Optimizer Failed. Falling Back to Greedy Plan.")
+            append!(elimination_order, greedy_order)
+            total_cost += greedy_cost
+        end
     end
     queries = order_to_queries(input_aq, elimination_order, alias_hash)
-    println(elimination_order)
     return queries, total_cost, cost_cache
 end
 
 function exact_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
-    (exact_order, exact_queries, exact_aq, exact_cost), cost_cache = branch_and_bound(input_aq,Inf, Inf, alias_hash, cost_cache)
-    remaining_q = get_remaining_query(exact_aq)
-    if !isnothing(remaining_q)
-        push!(exact_queries, remaining_q)
+    total_cost = 0
+    elimination_order = []
+    for component in input_aq.connected_components
+        (exact_order, exact_queries, exact_aq, exact_cost), exact_subquery_costs, cost_cache = branch_and_bound(input_aq, component, Inf, Dict(), alias_hash, cost_cache)
+        append!(elimination_order, exact_order)
+        total_cost += exact_cost
     end
-    last_query = exact_queries[end]
-    # The final query should produce the result, so we ensure that it has the result's name
-    last_query.name = exact_aq.output_name
-    last_query.expr = Materialize(exact_aq.output_format..., exact_aq.output_order..., last_query.expr)
-    last_query.expr.stats = last_query.expr.expr.stats
-    get_def(last_query.expr.stats).index_order = [idx.name for idx in exact_aq.output_order]
-    get_def(last_query.expr.stats).level_formats = [f.val for f in exact_aq.output_format]
-    alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)
-    return exact_queries, exact_cost, cost_cache
+    queries = order_to_queries(input_aq, elimination_order, alias_hash)
+    return queries, total_cost, cost_cache
 end

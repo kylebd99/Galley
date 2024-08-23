@@ -148,7 +148,7 @@ function galley(input_queries::Vector{PlanNode};
                     plan_hash_result[p_query_hash] = alias_result[p_query.name.name]
                 end
                 total_exec_time += time() - exec_start
-                if alias_result[p_query.name.name] isa Tensor && update_cards
+                if update_cards && alias_result[p_query.name.name] isa Tensor
                     count_start = time()
                     fix_cardinality!(alias_stats[p_query.name.name], count_non_default(alias_result[p_query.name.name]))
                     total_count_time += time() - count_start

@@ -67,7 +67,7 @@ function galley(input_queries::Vector{PlanNode};
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,
                     simple_cse=true,
-                    max_kernel_size=5,
+                    max_kernel_size=10,
                     verbose=0)
     overall_start = time()
     # To avoid input corruption, we start by copying the input queries (except for the data)
@@ -96,7 +96,7 @@ function galley(input_queries::Vector{PlanNode};
         append!(logical_queries, logical_plan)
     end
     faq_opt_time = time() - faq_opt_start
-    if verbose >= 2
+    if verbose >= 1
         println("FAQ Opt Time: $faq_opt_time")
         println("--------------- Logical Plan ---------------")
         for query in logical_queries
@@ -179,7 +179,7 @@ function galley(input_query::PlanNode;
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,
                     simple_cse=true,
-                    max_kernel_size=5,
+                    max_kernel_size=10,
                     verbose=0)
     result = galley([input_query];faq_optimizer=faq_optimizer,
                                 ST=ST,

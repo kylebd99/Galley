@@ -13,12 +13,20 @@ function iscommutative(f)
     end
      return Finch.iscommutative(Finch.DefaultAlgebra(), f)
 end
+
+function isunarynull(f)
+    if typeof(f) == PlanNode
+        throw(error("Can't check commutativity of plan nodes!"))
+    end
+    return f in (max, min, *, +)
+end
+
 function isdistributive(f, g)
     if typeof(f) == PlanNode && typeof(g) == PlanNode
         throw(error("Can't check distributivity of plan nodes!"))
     end
 #    distributes = Finch.isdistributive(Finch.DefaultAlgebra(), f, g)
-    distributes = (((g == max) || (g == min)) && (f == +))
+    distributes = ((f == +) && ((g == max) || (g == min)))
     distributes = distributes || ((f == choose(false)) && (g == |))
     distributes = distributes || ((f == |) && (g == choose(false)))
     distributes = distributes || ((f == &) && (g == choose(false)))

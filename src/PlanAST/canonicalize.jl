@@ -123,8 +123,8 @@ function remove_extraneous_mapjoins(plan::PlanNode)
     Rewrite(Fixpoint(Postwalk(Chain([
         (@rule MapJoin(~f, ~x..., ~v) => v where (v.kind == Value && isannihilator(f.val, v.val))),
         (@rule MapJoin(~f,  ~v, ~x...) => v where (v.kind == Value && isannihilator(f.val, v.val))),
-        (@rule MapJoin(~f,  ~x..., ~v, ~y...) => v where (v.kind == Value && isannihilator(f.val, v.val)))]))))(plan)
-
+        (@rule MapJoin(~f,  ~x..., ~v, ~y...) => v where (v.kind == Value && isannihilator(f.val, v.val))),
+        (@rule MapJoin(~f,  ~x) => x where (isunarynull(f.val)))]))))(plan)
 end
 
 function canonicalize(plan::PlanNode, use_dnf)

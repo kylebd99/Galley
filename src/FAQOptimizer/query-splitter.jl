@@ -44,7 +44,7 @@ end
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
 function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
     insert_node_ids!(q)
-    aq = AnnotatedQuery(q, ST, false)
+    aq = AnnotatedQuery(q, ST)
     pe = aq.point_expr
     insert_statistics!(ST, pe, bindings=alias_stats)
     has_agg = length(aq.reduce_idxs) > 0
@@ -54,7 +54,7 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
     cost_cache = Dict()
     cur_occurences = count_index_occurences([pe])
     if verbose > 2 && cur_occurences > max_kernel_size
-        println("Splitting the following query (cur_occurences = $cur_occurences): ")
+        println("Splitting the following query (cur_occurences = $cur_occurences) (max_kernel_size = $max_kernel_size): ")
         println(q)
     end
     while cur_occurences > max_kernel_size

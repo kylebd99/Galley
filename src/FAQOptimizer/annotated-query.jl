@@ -8,7 +8,8 @@ mutable struct AnnotatedQuery
     idx_lowest_root
     idx_op
     id_to_node
-    parent_idxs
+    parent_idxs # Index orders that must be respected
+    original_idx # When an index is split into many, we track their relationship.
     connected_components
 end
 
@@ -28,6 +29,7 @@ function copy_aq(aq::AnnotatedQuery)
                           copy(aq.idx_op),
                           id_to_node,
                           copy(aq.parent_idxs),
+                          copy(aq.original_idx),
                           copy(aq.connected_components),
                           )
 end
@@ -64,12 +66,12 @@ end
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
 #      - or of the form Query(name, agg_map_expr)
-function AnnotatedQuery(q::PlanNode, ST, use_dnf)
+function AnnotatedQuery(q::PlanNode, ST)
     if !(@capture q Query(~name, ~expr))
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr)) or Query(name, agg_map_expr)"))
     end
+    insert_node_ids!(q)
     insert_statistics!(ST, q)
-    q = canonicalize(q, use_dnf)
     output_name = q.name
     has_mat_expr = q.expr.kind === Materialize
     expr, output_formats, output_index_order = (nothing, nothing, nothing)
@@ -107,6 +109,7 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
     end
 
     reduce_idxs = []
+    original_idx = Dict()
     idx_lowest_root = Dict()
     for idx in starting_reduce_idxs
         agg_op = idx_op[idx]
@@ -114,10 +117,10 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
         lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]])
         if length(lowest_roots) == 1
             idx_lowest_root[idx] = only(lowest_roots)
+            original_idx[idx] = idx
             push!(reduce_idxs, idx)
         else
             new_idxs = [gensym(idx.name) for _ in lowest_roots]
-            new_idxs[1] = idx.name
             for i in eachindex(lowest_roots)
                 node = id_to_node[lowest_roots[i]]
                 if idx.name ∉ get_index_set(node.stats)
@@ -146,6 +149,7 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
                 idx_op[Index(new_idx)] = agg_op
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
                 idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
+                original_idx[Index(new_idx)] = idx
                 push!(reduce_idxs, Index(new_idx))
             end
         end
@@ -188,6 +192,7 @@ function AnnotatedQuery(q::PlanNode, ST, use_dnf)
                             idx_op,
                             id_to_node,
                             parent_idxs,
+                            original_idx,
                             connected_components)
 end
 
@@ -208,10 +213,17 @@ function get_reduce_query(reduce_idx, aq)
         relevant_args = [arg for arg in root_node.args if get_index_set(arg.stats) ⊆ kernel_idxs]
         if length(relevant_args) == length(root_node.args)
             node_to_replace = root_node.node_id
+            for node in PreOrderDFS(root_node)
+                if node.node_id != node_to_replace
+                    push!(nodes_to_remove, node.node_id)
+                end
+            end
         else
             node_to_replace = relevant_args[1].node_id
             for arg in relevant_args[2:end]
-                push!(nodes_to_remove, arg.node_id)
+                for node in PreOrderDFS(arg)
+                    push!(nodes_to_remove, node.node_id)
+                end
             end
         end
         query_expr = MapJoin(root_node.op, relevant_args...)
@@ -247,11 +259,22 @@ function get_reduce_query(reduce_idx, aq)
             end
         end
     end
-    query_expr = Aggregate(aq.idx_op[reduce_idx], idxs_to_be_reduced..., query_expr)
-    query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx.name for idx in idxs_to_be_reduced]), query_expr.arg.stats)
+    query_expr = plan_copy(query_expr)
+    final_idxs_to_be_reduced = Set()
+    for idx in idxs_to_be_reduced
+        if aq.original_idx[idx] != idx
+            relabel_index(query_expr, idx.name, aq.original_idx[idx].name)
+            push!(final_idxs_to_be_reduced, aq.original_idx[idx])
+        else
+            push!(final_idxs_to_be_reduced, idx)
+        end
+    end
+    reduced_idxs = union(final_idxs_to_be_reduced, idxs_to_be_reduced)
+    query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
+    query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx.name for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(gensym("A")), query_expr)
     @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
-    return query, node_to_replace, nodes_to_remove
+    return query, node_to_replace, nodes_to_remove, reduced_idxs
 end
 
 function get_forced_transpose_cost(n)
@@ -297,7 +320,7 @@ end
 
 # Returns the cost of reducing out an index
 function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
-    query, _, _ = get_reduce_query(reduce_idx, aq)
+    query, _, _,_ = get_reduce_query(reduce_idx, aq)
     cache_key = cannonical_hash(query.expr, alias_hash)
     if !haskey(cache, cache_key)
         comp_stats = query.expr.arg.stats
@@ -335,10 +358,9 @@ end
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
 function reduce_idx!(reduce_idx, aq)
-    query, node_to_replace, nodes_to_remove = get_reduce_query(reduce_idx, aq)
-    condense_stats!(query.expr.stats)
+    query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
+#    condense_stats!(query.expr.stats)
 
-    reduced_idxs = query.expr.idxs
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
     alias_expr.stats = copy_stats(query.expr.stats)

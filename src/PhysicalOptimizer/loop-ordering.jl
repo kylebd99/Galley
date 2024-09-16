@@ -83,6 +83,12 @@ function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size)
     return pc_cost
 end
 
+function get_enumerate_set(all_stats, loop_prefix)
+    for stats in all_stats
+        indices = get_index_set(stats)
+
+    end
+end
 # We use a version of Selinger's algorithm to determine the join loop ordering.
 # For each subset of variables, we calculate their optimal ordering via dynamic programming.
 # This is singly exponential in the number of loop variables, and it uses the statistics to
@@ -120,6 +126,12 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
+    intersection_vars = Set{IndexExpr}()
+    for var in all_vars
+        if sum([var in get_index_set(stats) for stats in all_stats]) > 1
+            push!(intersection_vars, var)
+        end
+    end
     for var in all_vars
         prefix = [var]
         v_set = Set(prefix)
@@ -150,9 +162,35 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 potential_vars = setdiff(all_vars, prefix_set)
             end
 
-            for new_var in potential_vars
-                new_prefix_set = union(prefix_set, [new_var])
-                new_prefix = [prefix..., new_var]
+            # We handle intersection variables first and do cross products at the end.
+            if length(∩(potential_vars, intersection_vars)) > 0
+                potential_vars = ∩(potential_vars, intersection_vars)
+                for new_var in potential_vars
+                    new_prefix_set = union(prefix_set, [new_var])
+                    new_prefix = [prefix..., new_var]
+
+                    rf_set = get_reformat_set(all_stats, new_prefix)
+                    output_compat = get_output_compat(output_vars, new_prefix)
+                    new_plan_class = (new_prefix_set, output_compat, rf_set)
+                    new_cost = get_prefix_cost(new_prefix_set, conjunct_stats, disjunct_stats) + cost
+                    new_plan = (new_prefix, new_cost)
+
+                    alt_cost = Inf
+                    if haskey(new_plans, new_plan_class)
+                        alt_cost = new_plans[new_plan_class][2]
+                    end
+
+                    if new_cost <= alt_cost
+                        new_plans[new_plan_class] = new_plan
+                    end
+                end
+            else
+                # If we're dealing with a remainder cross product, the order doesn't matter.
+                new_prefix = [prefix...]
+                for stats in all_stats
+                    append!(new_prefix, [x for x in get_index_order(stats) if x ∉ prefix])
+                end
+                new_prefix_set = union(prefix_set, potential_vars)
                 rf_set = get_reformat_set(all_stats, new_prefix)
                 output_compat = get_output_compat(output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
@@ -225,15 +263,19 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
     return best_prefix, min_cost
 end
 
-GREEDY_PLAN_K = 10
+GREEDY_PLAN_K = 1
 
 function get_join_loop_order(disjunct_and_conjunct_stats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
-    if length(union([get_index_set(s) for s in disjunct_and_conjunct_stats.disjuncts]...,
-                    [get_index_set(s) for s in disjunct_and_conjunct_stats.conjuncts]...)) == 0
+    num_vars = length(union([get_index_set(s) for s in disjunct_and_conjunct_stats.disjuncts]...,
+                    [get_index_set(s) for s in disjunct_and_conjunct_stats.conjuncts]...))
+    if num_vars == 0
         return IndexExpr[]
     end
     greedy_order, greedy_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
-    exact_order, exact_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order,  greedy_cost * 1.1, Inf)
+    if num_vars > 10
+        return greedy_order
+    end
+    exact_order, exact_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order,  greedy_cost * 1.01, Inf)
 
     if exact_cost > greedy_cost
         println("Exact Cost: $exact_cost")

@@ -372,7 +372,9 @@ end
 # The goal of this is to emulate deepcopy except for the actual data
 function plan_copy(n::PlanNode; copy_statistics= true)
     if n.kind === Input
-        p = Input(n.tns.val, [idx.name for idx in n.idxs]..., n.id)
+        tensor_val = Value(n.tns.val)
+        tensor_val.node_id = n.tns.node_id
+        p = Input(tensor_val, [plan_copy(idx) for idx in n.idxs]..., n.id)
         p.stats = (copy_statistics && !isnothing(n.stats)) ? copy_stats(n.stats) : n.stats
         p.node_id = n.node_id
         return p

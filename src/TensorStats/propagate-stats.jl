@@ -30,6 +30,7 @@ function merge_tensor_def(op, all_defs::Vararg{TensorDef})
             end
         end
     end
+    @assert new_index_set ⊆ keys(new_dim_sizes)
     return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing, nothing, nothing)
 end
 
@@ -142,6 +143,7 @@ function merge_tensor_stats_join(op, new_def, all_stats::Vararg{DCStats})
         if dc.d < current_dc
             new_dc_dict[dc_key] = dc.d
         end
+        @assert new_dc_dict[dc_key] != 0
     end
     new_stats = DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dc_dict))
     return new_stats
@@ -173,9 +175,19 @@ function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
     new_dcs = Dict{Any, UInt128}()
     for (key, count) in dc_keys
         if count == length(all_stats)
-            new_dcs[key] = min(typemax(UInt128)/2, sum([get(dcs, key, UInt128(0)) for dcs in stats_dcs]))
+            new_dcs[key] = min(typemax(UInt64), sum([get(dcs, key, UInt128(0)) for dcs in stats_dcs]))
+            if key.Y ⊆ get_index_set(new_def)
+                new_dcs[key] = min(new_dcs[key], get_dim_space_size(new_def, key.Y))
+            end
         end
     end
+
+    for Y in subsets(collect(get_index_set(new_def)))
+        Y = Set{IndexExpr}(Y)
+        proj_dc_key = (X=Set{IndexExpr}(), Y=Y)
+        new_dcs[proj_dc_key] = min(get(new_dcs, proj_dc_key, typemax(UInt64)/2), get_dim_space_size(new_def, Y))
+    end
+
     return DCStats(new_def, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dcs))
 end
 

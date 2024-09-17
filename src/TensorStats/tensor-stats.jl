@@ -100,8 +100,8 @@ function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
     for idx in indices
         dim_space_size *= def.dim_sizes[idx]
     end
-    if dim_space_size > typemax(Int)
-        return Inf
+    if dim_space_size == 0  || dim_space_size > typemax(Int)
+        return UInt128(2)^63
     end
     return dim_space_size
 end
@@ -368,6 +368,7 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
     if length(indices) == 0
         return 1
     end
+
     current_weights = Dict{Vector{IndexExpr}, UInt128}(Vector{IndexExpr}()=>1)
     frontier = Set{Vector{IndexExpr}}([Vector{IndexExpr}()])
     finished = false
@@ -380,11 +381,10 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
                 if x ⊇ dc.X
                     y = sort!(∪(x, dc.Y))
                     if get(current_weights, y, Inf) >  weight * dc.d
-                        current_weights[y] = weight * dc.d
+                        # We need to be careful about overflow here. Turns out UInts overflow as 0 >:(
+                        current_weights[y] = ((weight > (2^62)) || (dc.d > (2^62))) ? UInt128(2)^64 : (weight * dc.d)
                         finished = false
-                        if y ∉ new_frontier
-                            push!(new_frontier, y)
-                        end
+                        push!(new_frontier, y)
                     end
                 end
             end

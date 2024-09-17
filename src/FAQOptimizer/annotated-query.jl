@@ -66,7 +66,7 @@ end
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
 #      - or of the form Query(name, agg_map_expr)
-function AnnotatedQuery(q::PlanNode, ST)
+function AnnotatedQuery(q::PlanNode, ST; do_pushdown=true)
     if !(@capture q Query(~name, ~expr))
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr)) or Query(name, agg_map_expr)"))
     end
@@ -109,15 +109,15 @@ function AnnotatedQuery(q::PlanNode, ST)
     end
 
     reduce_idxs = []
-    original_idx = Dict()
+    original_idx = Dict(idx => idx for idx in get_index_set(q.expr.stats))
     idx_lowest_root = Dict()
     for idx in starting_reduce_idxs
         agg_op = idx_op[idx]
         idx_dim_size = get_dim_size(point_expr.stats, idx.name)
-        lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]])
+        lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]], do_pushdown)
+        original_idx[idx.name] = idx.name
         if length(lowest_roots) == 1
             idx_lowest_root[idx] = only(lowest_roots)
-            original_idx[idx] = idx
             push!(reduce_idxs, idx)
         else
             new_idxs = [gensym(idx.name) for _ in lowest_roots]
@@ -145,11 +145,12 @@ function AnnotatedQuery(q::PlanNode, ST)
                     end
                 end
                 new_idx = new_idxs[i]
-                relabel_index(node, idx.name, new_idx)
                 idx_op[Index(new_idx)] = agg_op
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
                 idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
-                original_idx[Index(new_idx)] = idx
+                #TODO: This forces us to do pushdown, limiting us from valuable options.
+                idx_starting_root[Index(new_idx)] = lowest_roots[i]
+                original_idx[new_idx] = idx.name
                 push!(reduce_idxs, Index(new_idx))
             end
         end
@@ -164,11 +165,11 @@ function AnnotatedQuery(q::PlanNode, ST)
             idx2_op = idx_op[idx2]
             idx2_top_root = id_to_node[idx_starting_root[idx2]]
             idx2_bottom_root = id_to_node[idx_lowest_root[idx2]]
-            # If idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
             if intree(idx2_bottom_root, idx1_bottom_root)
                 push!(connected_idxs[idx1], idx2)
             end
             mergeable_agg_op = (idx1_op == idx2_op && isassociative(idx1_op) && iscommutative(idx1_op))
+            # If idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
             if isdescendant(idx2_top_root, idx1_bottom_root)
                 push!(parent_idxs[idx1], idx2)
             # If they can both be pushed past each other, then we check whether they
@@ -179,6 +180,7 @@ function AnnotatedQuery(q::PlanNode, ST)
             end
         end
     end
+
     # If a set of aggregates are unrelated in the expression tree, then they don't need to
     # be co-optimized.
     connected_components = get_idx_connected_components(connected_idxs)
@@ -197,6 +199,7 @@ function AnnotatedQuery(q::PlanNode, ST)
 end
 
 function get_reduce_query(reduce_idx, aq)
+    original_idx = aq.original_idx[reduce_idx.name]
     reduce_op = aq.idx_op[reduce_idx]
     root_node_id = aq.idx_lowest_root[reduce_idx]
     root_node = aq.id_to_node[root_node_id]
@@ -208,7 +211,7 @@ function get_reduce_query(reduce_idx, aq)
     if root_node.kind === MapJoin && isdistributive(root_node.op.val, reduce_op)
         # If you're already reducing one index, then it may make sense to reduce others as well.
         # E.g. when you reduce one vertex of a triangle, you should do the other two as well.
-        args_with_reduce_idx = [arg for arg in root_node.args if reduce_idx.name in get_index_set(arg.stats)]
+        args_with_reduce_idx = [arg for arg in root_node.args if original_idx in get_index_set(arg.stats)]
         kernel_idxs = union([get_index_set(arg.stats) for arg in args_with_reduce_idx]...)
         relevant_args = [arg for arg in root_node.args if get_index_set(arg.stats) ⊆ kernel_idxs]
         if length(relevant_args) == length(root_node.args)
@@ -228,15 +231,14 @@ function get_reduce_query(reduce_idx, aq)
         end
         query_expr = MapJoin(root_node.op, relevant_args...)
         query_expr.stats = merge_tensor_stats(root_node.op, [arg.stats for arg in relevant_args]...)
-
         for idx in reducible_idxs
             if aq.idx_op[idx] != aq.idx_op[reduce_idx]
                 continue
             end
             idx_root_id = aq.idx_lowest_root[idx]
             idx_root_node = aq.id_to_node[idx_root_id]
-            args_with_idx = [arg for arg in root_node.args if idx.name in get_index_set(arg.stats)]
-            if idx_root_id == root_node_id && relevant_args ⊇ args_with_idx
+            args_with_idx = [arg for arg in root_node.args if aq.original_idx[idx.name] in get_index_set(arg.stats)]
+            if (idx_root_id == root_node_id) && (relevant_args ⊇ args_with_idx)
                 push!(idxs_to_be_reduced, idx)
             elseif any([intree(idx_root_node, arg) for arg in relevant_args])
                 push!(idxs_to_be_reduced, idx)
@@ -262,14 +264,14 @@ function get_reduce_query(reduce_idx, aq)
     query_expr = plan_copy(query_expr)
     final_idxs_to_be_reduced = Set()
     for idx in idxs_to_be_reduced
-        if aq.original_idx[idx] != idx
-            relabel_index(query_expr, idx.name, aq.original_idx[idx].name)
-            push!(final_idxs_to_be_reduced, aq.original_idx[idx])
+        if aq.original_idx[idx.name] != idx.name
+            push!(final_idxs_to_be_reduced, Index(aq.original_idx[idx.name]))
         else
             push!(final_idxs_to_be_reduced, idx)
         end
     end
-    reduced_idxs = union(final_idxs_to_be_reduced, idxs_to_be_reduced)
+
+    reduced_idxs = idxs_to_be_reduced
     query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
     query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx.name for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(gensym("A")), query_expr)
@@ -329,6 +331,17 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
         comp_factor = length(get_index_set(comp_stats)) * ComputeCost
         cost = estimate_nnz(comp_stats) * comp_factor + estimate_nnz(mat_stats) * mat_factor
         forced_transpose_cost = get_forced_transpose_cost(query.expr)
+        if count_index_occurences([query.expr.arg]) > 10
+            cost += count_index_occurences([query.expr]) * cost # We really would rather not split.
+        end
+        if cost == Inf
+            println("INFINITE QUERY FOR: $reduce_idx")
+            println(query)
+            println("COMP STATS: $(estimate_nnz(comp_stats))")
+            println(comp_stats)
+            println("MAT STATS: $(estimate_nnz(mat_stats))")
+            println(mat_stats)
+        end
         cache[cache_key] = cost + forced_transpose_cost
     end
     return cache[cache_key], query.expr.idxs
@@ -386,7 +399,7 @@ function reduce_idx!(reduce_idx, aq)
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
     reduced_idx_exprs = Set{IndexExpr}([idx.name for idx in reduced_idxs])
-    insert_statistics!(aq.ST, new_point_expr; affected_indices = reduced_idx_exprs)
+    insert_statistics!(aq.ST, new_point_expr)
     @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
     @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
     @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)
@@ -431,15 +444,15 @@ function get_reducible_idxs(aq, n)
 end
 
 # Returns the lowest set of nodes that the reduction can be pushed to
-function find_lowest_roots(op, idx, root)
+function find_lowest_roots(op, idx, root, do_pushdown)
     if @capture root MapJoin(~f, ~args...)
         args_with_idx = [arg for arg in args if idx.name in get_index_set(arg.stats)]
         args_without_idx = [arg for arg in args if idx.name ∉ get_index_set(arg.stats)]
         if isdistributive(f.val, op) && length(args_with_idx) == 1
-            return find_lowest_roots(op, idx, only(args_with_idx))
-        elseif cansplitpush(f.val, op)
+            return find_lowest_roots(op, idx, only(args_with_idx), do_pushdown)
+        elseif do_pushdown && cansplitpush(f.val, op)
             return [[arg.node_id for arg in args_without_idx]...,
-                    reduce(vcat, [find_lowest_roots(op, idx, arg) for arg in args_with_idx])...]
+                    reduce(vcat, [find_lowest_roots(op, idx, arg, do_pushdown) for arg in args_with_idx])...]
         else
             return [root.node_id]
         end

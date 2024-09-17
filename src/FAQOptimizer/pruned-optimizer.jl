@@ -6,8 +6,7 @@ function order_to_queries(input_aq::AnnotatedQuery, elimination_order, alias_has
         idx_to_reduce = elimination_order[1]
         reduce_query = reduce_idx!(idx_to_reduce, input_aq)
         alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
-        reduced_idxs = reduce_query.expr.idxs
-        filter!((x)-> !(x ∈ reduced_idxs), elimination_order)
+        filter!((x)-> (x ∈ input_aq.reduce_idxs), elimination_order)
         push!(queries, reduce_query)
     end
     remaining_q = get_remaining_query(input_aq)

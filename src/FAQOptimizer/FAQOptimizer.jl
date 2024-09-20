@@ -1,4 +1,3 @@
-
 include("annotated-query.jl")
 include("greedy-optimizer.jl")
 include("pruned-optimizer.jl")
@@ -52,7 +51,7 @@ end
 
 function enumerate_distributed_plans(q::PlanNode, max_depth=1)
     plans = [q]
-    plan_frontier = [q]
+    plan_frontier = [plan_copy(q)]
     visited_plans = Set()
     for _ in 1:max_depth
         new_plans = []
@@ -87,29 +86,29 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     insert_statistics!(ST, q)
     q_non_dnf = canonicalize(plan_copy(q), false)
     input_aq = AnnotatedQuery(q_non_dnf, ST)
-    logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq,alias_hash, Dict(), verbose)
+    logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict(), verbose)
     if check_dnf
         min_cost = cnf_cost
-        min_query = q_non_dnf
-        for query in enumerate_distributed_plans(min_query, 3)
+        min_query = canonicalize(plan_copy(q), false)
+        for query in enumerate_distributed_plans(min_query, 1)
             input_aq = AnnotatedQuery(query, ST)
             plan, cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
             if cost < min_cost
                 logical_plan = plan
                 min_cost = cost
-                min_query = query
+                min_query = plan_copy(query)
             end
         end
         # We check the fully distributed option too just to see
         input_aq = AnnotatedQuery(canonicalize(q_non_dnf, true), ST)
         dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
-        if dnf_cost < min_cost
+        if verbose >= 1 && dnf_cost < min_cost
             println("USED FULL DNF")
             logical_plan = dnf_plan
             min_cost = dnf_cost
         end
+        verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost) \n QUERY: $min_query")
     end
-    verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost)")
     return logical_plan
 end
 

@@ -253,6 +253,10 @@ function Base.hash(a::PlanNode, h::UInt)
             for idx in get_index_order(a.stats)
                 h = hash(idx, h)
             end
+        else
+            for idx in a.idxs
+                h = hash(idx, h)
+            end
         end
         return h
     elseif a.kind === Index
@@ -374,7 +378,7 @@ function plan_copy(n::PlanNode; copy_statistics= true)
     if n.kind === Input
         tensor_val = Value(n.tns.val)
         tensor_val.node_id = n.tns.node_id
-        p = Input(tensor_val, [plan_copy(idx) for idx in n.idxs]..., n.id)
+        p = Input(tensor_val, [plan_copy(idx, copy_statistics=copy_statistics) for idx in n.idxs]..., n.id)
         p.stats = (copy_statistics && !isnothing(n.stats)) ? copy_stats(n.stats) : n.stats
         p.node_id = n.node_id
         return p

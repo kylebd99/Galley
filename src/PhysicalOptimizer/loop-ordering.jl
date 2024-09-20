@@ -13,7 +13,13 @@ function get_join_loop_order_simple(input_stats)
     return vars
 end
 
-cost_of_reformat(stat::TensorStats) = estimate_nnz(stat) * RandomWriteCost
+function cost_of_reformat(stat::TensorStats)
+    if !isnothing(get_index_formats(stat)) && all([f == t_dense for f in get_index_formats(stat)])
+        return estimate_nnz(stat) * DenseAllocateCost * .01
+    else
+        return estimate_nnz(stat) * SparseAllocateCost
+    end
+end
 
 function get_reformat_set(input_stats::Vector{TensorStats}, prefix::Vector{IndexExpr})
     ref_set = Set()
@@ -188,7 +194,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 # If we're dealing with a remainder cross product, the order doesn't matter.
                 new_prefix = [prefix...]
                 for stats in all_stats
-                    append!(new_prefix, [x for x in get_index_order(stats) if x ∉ prefix])
+                    append!(new_prefix, reverse([x for x in get_index_order(stats) if x ∉ prefix]))
                 end
                 new_prefix_set = union(prefix_set, potential_vars)
                 rf_set = get_reformat_set(all_stats, new_prefix)
@@ -207,7 +213,6 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 end
             end
         end
-
         plans_by_set = Dict()
         for (plan_class, plan) in new_plans
             idx_set = plan_class[1]
@@ -264,7 +269,6 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
 end
 
 GREEDY_PLAN_K = 1
-
 function get_join_loop_order(disjunct_and_conjunct_stats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
     num_vars = length(union([get_index_set(s) for s in disjunct_and_conjunct_stats.disjuncts]...,
                     [get_index_set(s) for s in disjunct_and_conjunct_stats.conjuncts]...))

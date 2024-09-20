@@ -13,7 +13,12 @@ function greedy_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
                 cheapest_cost = cost
             end
         end
+        if cheapest_cost == Inf
+            println("REDUCIBLE IDXs: $reducible_idxs")
+            println("$(aq.point_expr)")
+        end
         query = reduce_idx!(cheapest_idx, aq)
+
         alias_hash[query.name.name] = cannonical_hash(query.expr, alias_hash)
         push!(queries, query)
         reducible_idxs = get_reducible_idxs(aq)

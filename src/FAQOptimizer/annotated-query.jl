@@ -66,7 +66,7 @@ end
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
 #      - or of the form Query(name, agg_map_expr)
-function AnnotatedQuery(q::PlanNode, ST; do_pushdown=true)
+function AnnotatedQuery(q::PlanNode, ST)
     if !(@capture q Query(~name, ~expr))
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr)) or Query(name, agg_map_expr)"))
     end
@@ -114,7 +114,7 @@ function AnnotatedQuery(q::PlanNode, ST; do_pushdown=true)
     for idx in starting_reduce_idxs
         agg_op = idx_op[idx]
         idx_dim_size = get_dim_size(point_expr.stats, idx.name)
-        lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]], do_pushdown)
+        lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]])
         original_idx[idx.name] = idx.name
         if length(lowest_roots) == 1
             idx_lowest_root[idx] = only(lowest_roots)
@@ -148,8 +148,6 @@ function AnnotatedQuery(q::PlanNode, ST; do_pushdown=true)
                 idx_op[Index(new_idx)] = agg_op
                 idx_lowest_root[Index(new_idx)] = lowest_roots[i]
                 idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
-                #TODO: This forces us to do pushdown, limiting us from valuable options.
-                idx_starting_root[Index(new_idx)] = lowest_roots[i]
                 original_idx[new_idx] = idx.name
                 push!(reduce_idxs, Index(new_idx))
             end
@@ -261,6 +259,7 @@ function get_reduce_query(reduce_idx, aq)
             end
         end
     end
+    # This plan_copy is structural important
     query_expr = plan_copy(query_expr)
     final_idxs_to_be_reduced = Set()
     for idx in idxs_to_be_reduced
@@ -315,21 +314,22 @@ function get_forced_transpose_cost(n)
     end
 end
 
-function is_dense(mat_stats)
-    sparsity = estimate_nnz(mat_stats) / get_dim_space_size(mat_stats, get_index_set(mat_stats))
+function is_dense(mat_stats, mat_size)
+    sparsity = mat_size / get_dim_space_size(mat_stats, get_index_set(mat_stats))
     return sparsity > .5
 end
 
 # Returns the cost of reducing out an index
 function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
-    query, _, _,_ = get_reduce_query(reduce_idx, aq)
+    query, _, _,reduced_idxs = get_reduce_query(reduce_idx, aq)
     cache_key = cannonical_hash(query.expr, alias_hash)
     if !haskey(cache, cache_key)
         comp_stats = query.expr.arg.stats
         mat_stats = query.expr.stats
-        mat_factor = is_dense(mat_stats)  ? DenseAllocateCost : SparseAllocateCost
+        mat_size = estimate_nnz(mat_stats)
+        mat_factor = is_dense(mat_stats, mat_size)  ? DenseAllocateCost : SparseAllocateCost
         comp_factor = length(get_index_set(comp_stats)) * ComputeCost
-        cost = estimate_nnz(comp_stats) * comp_factor + estimate_nnz(mat_stats) * mat_factor
+        cost = estimate_nnz(comp_stats) * comp_factor + mat_size * mat_factor
         forced_transpose_cost = get_forced_transpose_cost(query.expr)
         if count_index_occurences([query.expr.arg]) > 10
             cost += count_index_occurences([query.expr]) * cost # We really would rather not split.
@@ -344,7 +344,7 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
         end
         cache[cache_key] = cost + forced_transpose_cost
     end
-    return cache[cache_key], query.expr.idxs
+    return cache[cache_key], reduced_idxs
 end
 
 function replace_and_remove_nodes!(expr, node_id_to_replace, new_node, nodes_to_remove)
@@ -372,7 +372,7 @@ end
 # along with the properly formed query which performs that reduction.
 function reduce_idx!(reduce_idx, aq)
     query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
-#    condense_stats!(query.expr.stats)
+    condense_stats!(query.expr.stats)
 
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
@@ -444,15 +444,15 @@ function get_reducible_idxs(aq, n)
 end
 
 # Returns the lowest set of nodes that the reduction can be pushed to
-function find_lowest_roots(op, idx, root, do_pushdown)
+function find_lowest_roots(op, idx, root)
     if @capture root MapJoin(~f, ~args...)
         args_with_idx = [arg for arg in args if idx.name in get_index_set(arg.stats)]
         args_without_idx = [arg for arg in args if idx.name ∉ get_index_set(arg.stats)]
         if isdistributive(f.val, op) && length(args_with_idx) == 1
-            return find_lowest_roots(op, idx, only(args_with_idx), do_pushdown)
-        elseif do_pushdown && cansplitpush(f.val, op)
+            return find_lowest_roots(op, idx, only(args_with_idx))
+        elseif cansplitpush(f.val, op)
             return [[arg.node_id for arg in args_without_idx]...,
-                    reduce(vcat, [find_lowest_roots(op, idx, arg, do_pushdown) for arg in args_with_idx])...]
+                    reduce(vcat, [find_lowest_roots(op, idx, arg) for arg in args_with_idx])...]
         else
             return [root.node_id]
         end

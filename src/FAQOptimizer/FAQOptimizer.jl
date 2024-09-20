@@ -102,8 +102,8 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
         # We check the fully distributed option too just to see
         input_aq = AnnotatedQuery(canonicalize(q_non_dnf, true), ST)
         dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
-        if verbose >= 1 && dnf_cost < min_cost
-            println("USED FULL DNF")
+        if dnf_cost < min_cost
+            verbose >= 1 && println("USED FULL DNF")
             logical_plan = dnf_plan
             min_cost = dnf_cost
         end

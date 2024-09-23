@@ -132,23 +132,17 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
-    intersection_vars = Set{IndexExpr}()
-    for var in all_vars
-        if sum([var in get_index_set(stats) for stats in all_stats]) > 1
-            push!(intersection_vars, var)
-        end
-    end
     for var in all_vars
         prefix = [var]
         v_set = Set(prefix)
         rf_set = get_reformat_set(all_stats, prefix)
         output_compat = get_output_compat(output_vars, prefix)
         class = (v_set, output_compat, rf_set)
-        cost = get_prefix_cost(v_set, conjunct_stats, disjunct_stats)
+        cost = get_prefix_cost(var, v_set, conjunct_stats, disjunct_stats)
         optimal_plans[class] = (prefix, cost)
     end
 
-    for _ in 2:length(all_vars)
+    for iter in 2:length(all_vars)
         new_plans =  Dict{PLAN_CLASS, PLAN}()
         for (plan_class, plan) in optimal_plans
             prefix_set = plan_class[1]
@@ -168,39 +162,14 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 potential_vars = setdiff(all_vars, prefix_set)
             end
 
-            # We handle intersection variables first and do cross products at the end.
-            if length(∩(potential_vars, intersection_vars)) > 0
-                potential_vars = ∩(potential_vars, intersection_vars)
-                for new_var in potential_vars
-                    new_prefix_set = union(prefix_set, [new_var])
-                    new_prefix = [prefix..., new_var]
+            for new_var in potential_vars
+                new_prefix_set = union(prefix_set, [new_var])
+                new_prefix = [prefix..., new_var]
 
-                    rf_set = get_reformat_set(all_stats, new_prefix)
-                    output_compat = get_output_compat(output_vars, new_prefix)
-                    new_plan_class = (new_prefix_set, output_compat, rf_set)
-                    new_cost = get_prefix_cost(new_prefix_set, conjunct_stats, disjunct_stats) + cost
-                    new_plan = (new_prefix, new_cost)
-
-                    alt_cost = Inf
-                    if haskey(new_plans, new_plan_class)
-                        alt_cost = new_plans[new_plan_class][2]
-                    end
-
-                    if new_cost <= alt_cost
-                        new_plans[new_plan_class] = new_plan
-                    end
-                end
-            else
-                # If we're dealing with a remainder cross product, the order doesn't matter.
-                new_prefix = [prefix...]
-                for stats in all_stats
-                    append!(new_prefix, reverse([x for x in get_index_order(stats) if x ∉ prefix]))
-                end
-                new_prefix_set = union(prefix_set, potential_vars)
                 rf_set = get_reformat_set(all_stats, new_prefix)
                 output_compat = get_output_compat(output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
-                new_cost = get_prefix_cost(new_prefix_set, conjunct_stats, disjunct_stats) + cost
+                new_cost = get_prefix_cost(new_var, new_prefix_set, conjunct_stats, disjunct_stats) + cost
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf

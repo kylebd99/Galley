@@ -18,15 +18,15 @@ function order_to_queries(input_aq::AnnotatedQuery, elimination_order, alias_has
     last_query.name = input_aq.output_name
     last_query.expr = Materialize(input_aq.output_format..., input_aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
-    get_def(last_query.expr.stats).index_order = [idx.name for idx in input_aq.output_order]
-    get_def(last_query.expr.stats).level_formats = [f.val for f in input_aq.output_format]
+    get_def(last_query.expr.stats).index_order = [idx for idx in input_aq.output_order]
+    get_def(last_query.expr.stats).level_formats = [f for f in input_aq.output_format]
     alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)
     return queries
 end
 
 function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_costs, alias_hash, cost_cache = Dict())
     input_aq = copy_aq(input_aq)
-    PLAN_AND_COST = Tuple{Vector{PlanNode}, Vector{PlanNode}, AnnotatedQuery, Float64}
+    PLAN_AND_COST = Tuple{Vector{IndexExpr}, Vector{PlanNode}, AnnotatedQuery, Float64}
     optimal_orders = Dict{Set{IndexExpr}, PLAN_AND_COST}(Set{IndexExpr}()=>(PlanNode[], PlanNode[], input_aq, 0))
     prev_new_optimal_orders = optimal_orders
     # To speed up inference, we cache cost calculations for each set of already reduced idxs
@@ -39,7 +39,7 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
             for idx in get_reducible_idxs(aq) ∩ component
                 cost, reduced_vars = cost_of_reduce(idx, aq, cost_cache, alias_hash)
                 cost += prev_cost
-                new_vars = union(vars, [i.name for i in reduced_vars])
+                new_vars = union(vars, IndexExpr[i for i in reduced_vars])
                 bound = Inf
                 for vars2 in keys(max_subquery_costs)
                     if vars2 ⊇ new_vars
@@ -68,7 +68,7 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
             reduce_query = reduce_idx!(idx, new_aq)
             alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
             new_queries = PlanNode[old_queries..., reduce_query]
-            new_order = PlanNode[old_order..., idx]
+            new_order = IndexExpr[old_order..., idx]
             new_optimal_orders[new_vars] = (new_order, new_queries, new_aq, cost)
         end
         merge!(optimal_orders, new_optimal_orders)
@@ -83,8 +83,8 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
             optimal_subquery_costs[vars] = optimal_orders[vars][4]
         end
     end
-    if haskey(optimal_orders, Set([i.name for i in component]))
-        return optimal_orders[Set([i.name for i in component])], optimal_subquery_costs, cost_cache
+    if haskey(optimal_orders, Set{IndexExpr}([i for i in component]))
+        return optimal_orders[Set{IndexExpr}([i for i in component])], optimal_subquery_costs, cost_cache
     else
         return nothing
     end
@@ -92,7 +92,7 @@ end
 
 function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     total_cost = 0
-    elimination_order = []
+    elimination_order = IndexExpr[]
     for component in input_aq.connected_components
         (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(input_aq, component, 1, Dict(), alias_hash, cost_cache)
         exact_opt_result = branch_and_bound(input_aq, component, Inf, greedy_subquery_costs, alias_hash, cost_cache)

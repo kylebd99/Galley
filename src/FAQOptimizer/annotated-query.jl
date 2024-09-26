@@ -1,22 +1,22 @@
 mutable struct AnnotatedQuery
-    ST
-    output_name
-    output_order
-    output_format
-    reduce_idxs
-    point_expr
-    idx_lowest_root
-    idx_op
-    id_to_node
-    parent_idxs # Index orders that must be respected
-    original_idx # When an index is split into many, we track their relationship.
-    connected_components
-    connected_idxs
+    ST::Type
+    output_name::Symbol
+    output_order::Union{Nothing, Vector{IndexExpr}}
+    output_format::Union{Nothing, Vector{LevelFormat}}
+    reduce_idxs::Vector{IndexExpr}
+    point_expr::PlanNode
+    idx_lowest_root::Dict{IndexExpr, Int}
+    idx_op::Dict{IndexExpr, Function}
+    id_to_node::Dict{Int, PlanNode}
+    parent_idxs::Dict{IndexExpr, Vector{IndexExpr}} # Index orders that must be respected
+    original_idx::Dict{IndexExpr, IndexExpr} # When an index is split into many, we track their relationship.
+    connected_components::Vector{Vector{IndexExpr}}
+    connected_idxs::Dict{IndexExpr, Vector{IndexExpr}}
 end
 
 function copy_aq(aq::AnnotatedQuery)
     new_point_expr = plan_copy(aq.point_expr)
-    id_to_node = Dict()
+    id_to_node = Dict{Int, PlanNode}()
     for node in PreOrderDFS(new_point_expr)
         id_to_node[node.node_id] = node
     end
@@ -90,32 +90,32 @@ function AnnotatedQuery(q::PlanNode, ST)
     end
     insert_node_ids!(q)
     insert_statistics!(ST, q)
-    output_name = q.name
+    output_name = q.name.name
     has_mat_expr = q.expr.kind === Materialize
     expr, output_formats, output_index_order = (nothing, nothing, nothing)
     if has_mat_expr
         mat_expr = q.expr
-        output_formats = mat_expr.formats
-        output_index_order = mat_expr.idx_order
+        output_formats = [f.val for f in mat_expr.formats]
+        output_index_order = IndexExpr[idx.name for idx in mat_expr.idx_order]
         expr = mat_expr.expr
     else
         expr = q.expr
     end
-    starting_reduce_idxs = PlanNode[]
-    idx_starting_root = Dict{PlanNode, Int}()
+    starting_reduce_idxs = IndexExpr[]
+    idx_starting_root = Dict{IndexExpr, Int}()
     # This dictionary captures the original topological ordering of the aggregates.
-    idx_top_order = Dict{PlanNode, Int}()
+    idx_top_order = Dict{IndexExpr, Int}()
     top_counter = 1
-    idx_op = Dict{PlanNode, Any}()
+    idx_op = Dict{IndexExpr, Any}()
     point_expr = Rewrite(Postwalk(Chain([
         (@rule Aggregate(~f::isvalue, ~idxs..., ~a) => begin
         for idx in idxs
-            idx_starting_root[idx] = a.node_id
-            idx_top_order[idx] = top_counter
+            idx_starting_root[idx.name] = a.node_id
+            idx_top_order[idx.name] = top_counter
             top_counter += 1
-            idx_op[idx] = f.val
+            idx_op[idx.name] = f.val
         end
-        append!(starting_reduce_idxs, idxs)
+        append!(starting_reduce_idxs, [idx.name for idx in idxs])
         a
         end),
     ])))(expr)
@@ -126,22 +126,22 @@ function AnnotatedQuery(q::PlanNode, ST)
         id_to_node[node.node_id] = node
     end
 
-    reduce_idxs = PlanNode[]
+    reduce_idxs = IndexExpr[]
     original_idx = Dict(idx => idx for idx in get_index_set(q.expr.stats))
-    idx_lowest_root = Dict{PlanNode, Int}()
+    idx_lowest_root = Dict{IndexExpr, Int}()
     for idx in starting_reduce_idxs
         agg_op = idx_op[idx]
-        idx_dim_size = get_dim_size(point_expr.stats, idx.name)
+        idx_dim_size = get_dim_size(point_expr.stats, idx)
         lowest_roots = find_lowest_roots(agg_op, idx, id_to_node[idx_starting_root[idx]])
-        original_idx[idx.name] = idx.name
+        original_idx[idx] = idx
         if length(lowest_roots) == 1
             idx_lowest_root[idx] = only(lowest_roots)
             push!(reduce_idxs, idx)
         else
-            new_idxs = [gensym(idx.name) for _ in lowest_roots]
+            new_idxs = [gensym(idx) for _ in lowest_roots]
             for i in eachindex(lowest_roots)
                 node = id_to_node[lowest_roots[i]]
-                if idx.name ∉ get_index_set(node.stats)
+                if idx ∉ get_index_set(node.stats)
                     # If the lowest root doesn't contain the reduction index, we attempt
                     # to remove the reduction via a repeat_operator, i.e.
                     # ∑_i B_j = B_j*|Dom(i)|
@@ -163,11 +163,11 @@ function AnnotatedQuery(q::PlanNode, ST)
                     end
                 end
                 new_idx = new_idxs[i]
-                idx_op[Index(new_idx)] = agg_op
-                idx_lowest_root[Index(new_idx)] = lowest_roots[i]
-                idx_starting_root[Index(new_idx)] = idx_starting_root[idx]
-                original_idx[new_idx] = idx.name
-                push!(reduce_idxs, Index(new_idx))
+                idx_op[new_idx] = agg_op
+                idx_lowest_root[new_idx] = lowest_roots[i]
+                idx_starting_root[new_idx] = idx_starting_root[idx]
+                original_idx[new_idx] = idx
+                push!(reduce_idxs, new_idx)
             end
         end
     end
@@ -216,7 +216,7 @@ function AnnotatedQuery(q::PlanNode, ST)
 end
 
 function get_reduce_query(reduce_idx, aq)
-    original_idx = aq.original_idx[reduce_idx.name]
+    original_idx = aq.original_idx[reduce_idx]
     reduce_op = aq.idx_op[reduce_idx]
     root_node_id = aq.idx_lowest_root[reduce_idx]
     root_node = aq.id_to_node[root_node_id]
@@ -252,7 +252,7 @@ function get_reduce_query(reduce_idx, aq)
             if aq.idx_op[idx] != aq.idx_op[reduce_idx]
                 continue
             end
-            args_with_idx = [arg for arg in root_node.args if aq.original_idx[idx.name] in get_index_set(arg.stats)]
+            args_with_idx = [arg for arg in root_node.args if aq.original_idx[idx] in get_index_set(arg.stats)]
             if (idx ∈ aq.connected_idxs[reduce_idx]) && (relevant_args ⊇ args_with_idx)
                 push!(idxs_to_be_reduced, idx)
             end
@@ -272,8 +272,8 @@ function get_reduce_query(reduce_idx, aq)
     end
     final_idxs_to_be_reduced = Set()
     for idx in idxs_to_be_reduced
-        if aq.original_idx[idx.name] != idx.name
-            push!(final_idxs_to_be_reduced, Index(aq.original_idx[idx.name]))
+        if aq.original_idx[idx] != idxs_to_be_reduced
+            push!(final_idxs_to_be_reduced, Index(aq.original_idx[idx]))
         else
             push!(final_idxs_to_be_reduced, idx)
         end
@@ -281,7 +281,7 @@ function get_reduce_query(reduce_idx, aq)
 
     reduced_idxs = idxs_to_be_reduced
     query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
-    query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx.name for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
+    query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(gensym("A")), query_expr)
 #    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
     return query, node_to_replace, nodes_to_remove, reduced_idxs
@@ -409,7 +409,6 @@ function reduce_idx!(reduce_idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-    reduced_idx_exprs = Set{IndexExpr}([idx.name for idx in reduced_idxs])
     insert_statistics!(aq.ST, new_point_expr)
 #    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
 #    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
@@ -457,8 +456,8 @@ end
 # Returns the lowest set of nodes that the reduction can be pushed to
 function find_lowest_roots(op, idx, root)
     if @capture root MapJoin(~f, ~args...)
-        args_with_idx = [arg for arg in args if idx.name in get_index_set(arg.stats)]
-        args_without_idx = [arg for arg in args if idx.name ∉ get_index_set(arg.stats)]
+        args_with_idx = [arg for arg in args if idx in get_index_set(arg.stats)]
+        args_without_idx = [arg for arg in args if idx ∉ get_index_set(arg.stats)]
         if isdistributive(f.val, op) && length(args_with_idx) == 1
             return find_lowest_roots(op, idx, only(args_with_idx))
         elseif cansplitpush(f.val, op)

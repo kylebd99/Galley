@@ -33,8 +33,8 @@ function greedy_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     last_query.name = aq.output_name
     last_query.expr = Materialize(aq.output_format..., aq.output_order..., last_query.expr)
     last_query.expr.stats = last_query.expr.expr.stats
-    get_def(last_query.expr.stats).index_order = [idx.name for idx in aq.output_order]
-    get_def(last_query.expr.stats).level_formats = [f.val for f in aq.output_format]
+    get_def(last_query.expr.stats).index_order = [idx for idx in aq.output_order]
+    get_def(last_query.expr.stats).level_formats = [f for f in aq.output_format]
     alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)
     return queries, total_cost, cost_cache
 end

@@ -50,7 +50,7 @@ function one_step_distribute(q::PlanNode)
 end
 
 function enumerate_distributed_plans(q::PlanNode, max_depth=1)
-    plans = [q]
+    plans = []
     plan_frontier = [plan_copy(q)]
     visited_plans = Set()
     for _ in 1:max_depth
@@ -77,7 +77,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     insert_statistics!(ST, q; bindings = alias_stats)
     if faq_optimizer === naive
         insert_node_ids!(q)
-        return [q]
+        return PlanNode[q]
     end
 
     # If there's the possibility of distributivity, we attempt that pushdown and see
@@ -100,12 +100,14 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
             end
         end
         # We check the fully distributed option too just to see
-        input_aq = AnnotatedQuery(canonicalize(q_non_dnf, true), ST)
-        dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
+        q_dnf = canonicalize(q, true)
+        dnf_aq = AnnotatedQuery(q_dnf , ST)
+        dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, dnf_aq, alias_hash, cost_cache, verbose)
         if dnf_cost < min_cost
             verbose >= 1 && println("USED FULL DNF")
             logical_plan = dnf_plan
             min_cost = dnf_cost
+            min_query = q_dnf
         end
         verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost) \n QUERY: $min_query")
     end

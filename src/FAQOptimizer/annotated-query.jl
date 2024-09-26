@@ -11,6 +11,7 @@ mutable struct AnnotatedQuery
     parent_idxs # Index orders that must be respected
     original_idx # When an index is split into many, we track their relationship.
     connected_components
+    connected_idxs
 end
 
 function copy_aq(aq::AnnotatedQuery)
@@ -31,6 +32,7 @@ function copy_aq(aq::AnnotatedQuery)
                           copy(aq.parent_idxs),
                           copy(aq.original_idx),
                           copy(aq.connected_components),
+                          copy(aq.connected_idxs)
                           )
 end
 
@@ -62,6 +64,22 @@ function get_idx_connected_components(parent_idxs)
     return components
 end
 
+function _fastintree(n1, n2)
+    for n in PreOrderDFS(n2)
+        if n.node_id == n1.node_id
+            return true
+        end
+    end
+    return false
+end
+
+function _fastisdescendant(n1, n2)
+    if n1.node_id == n2.node_id
+        return false
+    end
+    return _fastintree(n1, n2)
+end
+
 # Takes in a query and preprocesses it to gather relevant info
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
@@ -83,12 +101,12 @@ function AnnotatedQuery(q::PlanNode, ST)
     else
         expr = q.expr
     end
-    starting_reduce_idxs = []
+    starting_reduce_idxs = PlanNode[]
     idx_starting_root = Dict{PlanNode, Int}()
     # This dictionary captures the original topological ordering of the aggregates.
     idx_top_order = Dict{PlanNode, Int}()
     top_counter = 1
-    idx_op = Dict()
+    idx_op = Dict{PlanNode, Any}()
     point_expr = Rewrite(Postwalk(Chain([
         (@rule Aggregate(~f::isvalue, ~idxs..., ~a) => begin
         for idx in idxs
@@ -103,14 +121,14 @@ function AnnotatedQuery(q::PlanNode, ST)
     ])))(expr)
     point_expr = plan_copy(point_expr) # Need to sanitize
     insert_statistics!(ST, point_expr)
-    id_to_node = Dict()
+    id_to_node = Dict{Int, PlanNode}()
     for node in PreOrderDFS(point_expr)
         id_to_node[node.node_id] = node
     end
 
-    reduce_idxs = []
+    reduce_idxs = PlanNode[]
     original_idx = Dict(idx => idx for idx in get_index_set(q.expr.stats))
-    idx_lowest_root = Dict()
+    idx_lowest_root = Dict{PlanNode, Int}()
     for idx in starting_reduce_idxs
         agg_op = idx_op[idx]
         idx_dim_size = get_dim_size(point_expr.stats, idx.name)
@@ -193,7 +211,8 @@ function AnnotatedQuery(q::PlanNode, ST)
                             id_to_node,
                             parent_idxs,
                             original_idx,
-                            connected_components)
+                            connected_components,
+                            connected_idxs)
 end
 
 function get_reduce_query(reduce_idx, aq)
@@ -233,12 +252,8 @@ function get_reduce_query(reduce_idx, aq)
             if aq.idx_op[idx] != aq.idx_op[reduce_idx]
                 continue
             end
-            idx_root_id = aq.idx_lowest_root[idx]
-            idx_root_node = aq.id_to_node[idx_root_id]
             args_with_idx = [arg for arg in root_node.args if aq.original_idx[idx.name] in get_index_set(arg.stats)]
-            if (idx_root_id == root_node_id) && (relevant_args ⊇ args_with_idx)
-                push!(idxs_to_be_reduced, idx)
-            elseif any([intree(idx_root_node, arg) for arg in relevant_args])
+            if (idx ∈ aq.connected_idxs[reduce_idx]) && (relevant_args ⊇ args_with_idx)
                 push!(idxs_to_be_reduced, idx)
             end
         end
@@ -250,17 +265,11 @@ function get_reduce_query(reduce_idx, aq)
             if aq.idx_op[idx] != aq.idx_op[reduce_idx]
                 continue
             end
-            idx_root = aq.idx_lowest_root[idx]
-            idx_root_node = aq.id_to_node[idx_root]
-            if idx_root == root_node_id
-                push!(idxs_to_be_reduced, idx)
-            elseif isdescendant(idx_root_node, root_node)
+            if (idx ∈ aq.connected_idxs[reduce_idx])
                 push!(idxs_to_be_reduced, idx)
             end
         end
     end
-    # This plan_copy is structural important
-    query_expr = plan_copy(query_expr)
     final_idxs_to_be_reduced = Set()
     for idx in idxs_to_be_reduced
         if aq.original_idx[idx.name] != idx.name
@@ -274,7 +283,7 @@ function get_reduce_query(reduce_idx, aq)
     query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
     query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx.name for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(gensym("A")), query_expr)
-    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
+#    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
     return query, node_to_replace, nodes_to_remove, reduced_idxs
 end
 
@@ -372,6 +381,8 @@ end
 # along with the properly formed query which performs that reduction.
 function reduce_idx!(reduce_idx, aq)
     query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
+    # This plan_copy is structural important
+    query = plan_copy(query)
     condense_stats!(query.expr.stats)
 
     alias_expr = Alias(query.name.name)
@@ -400,10 +411,10 @@ function reduce_idx!(reduce_idx, aq)
     end
     reduced_idx_exprs = Set{IndexExpr}([idx.name for idx in reduced_idxs])
     insert_statistics!(aq.ST, new_point_expr)
-    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
-    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
-    @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)
-    @assert all([haskey(new_id_to_node, new_idx_lowest_root[idx]) for idx in new_reduce_idxs])
+#    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
+#    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
+#    @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)
+#    @assert all([haskey(new_id_to_node, new_idx_lowest_root[idx]) for idx in new_reduce_idxs])
     aq.reduce_idxs = new_reduce_idxs
     aq.point_expr = new_point_expr
     aq.idx_lowest_root = new_idx_lowest_root

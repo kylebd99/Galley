@@ -15,7 +15,7 @@ end
 
 function cost_of_reformat(stat::TensorStats)
     if !isnothing(get_index_formats(stat)) && all([f == t_dense for f in get_index_formats(stat)])
-        return estimate_nnz(stat) * DenseAllocateCost * .01
+        return estimate_nnz(stat) * DenseAllocateCost * .1
     else
         return estimate_nnz(stat) * SparseAllocateCost
     end

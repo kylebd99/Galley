@@ -2,6 +2,7 @@
 module Galley
 
 using AutoHashEquals
+using Base: hash, copy, convert, getproperty, getfield, setfield!, getindex, ==, show
 using Combinatorics
 using DataStructures
 using Random
@@ -181,7 +182,7 @@ function galley(input_query::PlanNode;
                     simple_cse=true,
                     max_kernel_size=10,
                     verbose=0)
-    result = galley([input_query];faq_optimizer=faq_optimizer,
+    result = galley(PlanNode[input_query];faq_optimizer=faq_optimizer,
                                 ST=ST,
                                 dbconn=dbconn,
                                 update_cards=update_cards,

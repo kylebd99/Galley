@@ -66,24 +66,29 @@ function get_idx_connected_components(parent_idxs, connected_idxs)
         end
         push!(components, idx_in_component)
     end
+    finished = false
     component_order = Dict(c=>i for (i,c) in enumerate(components))
-    for component1 in components
-        for component2 in components
-            is_parent_of_1 = false
-            for idx1 in component1
-                for idx2 in component2
-                    if idx2 ∈ parent_idxs[idx1]
-                        is_parent_of_1 = true
-                        break
+    while !finished
+        finished = true
+        for component1 in components
+            for component2 in components
+                is_parent_of_1 = false
+                for idx1 in component1
+                    for idx2 in component2
+                        if idx2 ∈ parent_idxs[idx1]
+                            is_parent_of_1 = true
+                            break
+                        end
                     end
+                    is_parent_of_1 && break
                 end
-                is_parent_of_1 && break
-            end
-            if is_parent_of_1
-                max_pos = max(component_order[component1],component_order[component2])
-                min_pos = min(component_order[component1],component_order[component2])
-                component_order[component1] = max_pos
-                component_order[component2] = min_pos
+                if is_parent_of_1 && component_order[component2] > component_order[component1]
+                    max_pos = max(component_order[component1],component_order[component2])
+                    min_pos = min(component_order[component1],component_order[component2])
+                    component_order[component1] = max_pos
+                    component_order[component2] = min_pos
+                    finished=false
+                end
             end
         end
     end
@@ -193,7 +198,10 @@ function AnnotatedQuery(q::PlanNode, ST, alias_counter)
                 new_idx = new_idxs[i]
                 idx_op[new_idx] = agg_op
                 idx_lowest_root[new_idx] = lowest_roots[i]
-                idx_starting_root[new_idx] = idx_starting_root[idx]
+                #TODO: This forces us to push down aggressively which is an assumption
+                # about what plans will be most efficiently. It also makes things more efficient.
+                idx_starting_root[new_idx] = lowest_roots[i]
+#                idx_starting_root[new_idx] = idx_starting_root[idx]
                 original_idx[new_idx] = idx
                 push!(reduce_idxs, new_idx)
             end

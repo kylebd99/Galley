@@ -88,6 +88,7 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
     else
         println("Component: $component")
         println("Optimal Orders: $(keys(optimal_orders))")
+        println("Reducible Idxs: $(get_reducible_idxs(input_aq))")
         return nothing
     end
 end

@@ -49,14 +49,14 @@ function one_step_distribute(q::PlanNode)
     return plans
 end
 
-function enumerate_distributed_plans(q::PlanNode, visited_plans, max_depth=1)
+function enumerate_distributed_plans(q::PlanNode, visited_plans, alias_hash, max_depth=1)
     plans = []
     plan_frontier = [plan_copy(q)]
     for _ in 1:max_depth
         new_plans = []
         for plan in plan_frontier
             for new_plan in one_step_distribute(plan)
-                phash = hash(new_plan)
+                phash = cannonical_hash(new_plan, alias_hash)
                 if phash ∉ visited_plans
                     push!(new_plans, new_plan)
                     push!(visited_plans, phash)
@@ -93,7 +93,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
         finished = false
         while !finished
             finished = true
-            for query in enumerate_distributed_plans(min_query, visited_queries, 1)
+            for query in enumerate_distributed_plans(min_query, visited_queries, alias_hash, 1)
                 input_aq = AnnotatedQuery(query, ST, alias_counter)
                 plan, cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
                 if cost < min_cost
@@ -103,10 +103,10 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
                     finished = false
                 end
             end
-        end
+        end#=
         # We check the fully distributed option too just to see
         q_dnf = canonicalize(q, true)
-        if hash(q_dnf) ∉ visited_queries
+        if cannonical_hash(q_dnf, alias_hash) ∉ visited_queries
             dnf_aq = AnnotatedQuery(q_dnf , ST, alias_counter)
             dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, dnf_aq, alias_hash, cost_cache, verbose)
             if dnf_cost < min_cost
@@ -115,7 +115,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
                 min_cost = dnf_cost
                 min_query = q_dnf
             end
-        end
+        end =#
         verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost) \n QUERY: $min_query")
     end
     return logical_plan

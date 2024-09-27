@@ -64,7 +64,7 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
                 internal_expr = plan_copy(mat_expr.expr)
                 # If the somewhere down the expression tree, there exists a reference to
                 # new_idxs[i], then we would like to rename it to avoid conflict.
-                prior_idx_translate = Dict(new_idxs[i].name => gensym(new_idxs[i].name) for i in eachindex(old_idxs) if new_idxs[i] ∉ old_idxs)
+                prior_idx_translate = Dict(new_idxs[i].name => galley_gensym(new_idxs[i].name) for i in eachindex(old_idxs) if new_idxs[i] ∉ old_idxs)
                 for (i, j) in prior_idx_translate
                     relabel_index(internal_expr, i, j)
                 end

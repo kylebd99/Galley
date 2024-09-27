@@ -41,6 +41,14 @@ TensorId = String
 # The set of optimizers implemented by Galley
 @enum FAQ_OPTIMIZERS greedy naive pruned exact
 
+name_counter::UInt64 = 0
+
+function galley_gensym(s::String)
+    global name_counter += 1
+    return Symbol(s*"_$name_counter")
+end
+galley_gensym(s::Symbol) = galley_gensym(string(s))
+
 include("finch-algebra_ext.jl")
 include("utility-funcs.jl")
 include("PlanAST/PlanAST.jl")

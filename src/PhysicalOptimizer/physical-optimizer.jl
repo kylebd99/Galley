@@ -14,7 +14,7 @@ function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     agg_expr = Aggregate(initwrite(get_default_value(input.stats)), input)
     agg_expr.stats = input.stats
     formats = select_output_format(agg_expr.stats, reverse(input_order), fixed_order)
-    reorder_query = Query(Alias(gensym("A")), Materialize(formats..., fixed_order..., agg_expr), reverse(input_order)...)
+    reorder_query = Query(Alias(galley_gensym("A")), Materialize(formats..., fixed_order..., agg_expr), reverse(input_order)...)
     reorder_stats = copy_stats(input.stats)
     reorder_def = get_def(reorder_stats)
     reorder_def.index_order = fixed_order
@@ -99,7 +99,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
 
     needs_intermediate = length(output_order) > 0 && ((!isnothing(output_formats) && first_formats != output_formats))
     if needs_intermediate
-        intermediate_query = Query(Alias(gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
+        intermediate_query = Query(Alias(galley_gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
         reorder_stats = copy_stats(expr.stats)
         reorder_def = get_def(reorder_stats)
         reorder_def.index_order = output_order

@@ -10,31 +10,31 @@ using Finch
     @testset "get_reduce_query" begin
         chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
-        query = reduce_idx!(Index(:i), aq)
+        query = reduce_idx!(:i, aq)
         expected_expr = Aggregate(+, :i, Input(A, :i, :j, "a1"))
         @test query.expr == expected_expr
 
         aq = AnnotatedQuery(chain_expr, NaiveStats)
-        query = reduce_idx!(Index(:j), aq)
+        query = reduce_idx!(:j, aq)
         expected_expr = Aggregate(+, :i, :j, :k, MapJoin(*, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))
         @test query.expr == expected_expr
 
         aq = AnnotatedQuery(chain_expr, NaiveStats)
-        query = reduce_idx!(Index(:k), aq)
+        query = reduce_idx!(:k, aq)
         expected_expr = Aggregate(+, :k, Input(A, :j, :k, "a2"))
         @test query.expr == expected_expr
 
         # Check that we don't push aggregates past operations which don't distribute over them.
         chain_expr = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
-        query = reduce_idx!(Index(:i), aq)
+        query = reduce_idx!(:i, aq)
         expected_expr = Aggregate(+, :i, :j, :k, MapJoin(max, Input(A, :i, :j, "a1"), Input(A, :j, :k, "a2")))
         @test query.expr == expected_expr
 
         # Check that we respect aggregates' position in the exression
         chain_expr = Query(:out, Materialize(Aggregate(+, :j, :k, MapJoin(max, Aggregate(+, :i, Input(A, :i, :j, "a1")), Input(A, :j, :k, "a2")))))
         aq = AnnotatedQuery(chain_expr, NaiveStats)
-        query = reduce_idx!(Index(:i), aq)
+        query = reduce_idx!(:i, aq)
         expected_expr = Aggregate(+, :i, Input(A, :i, :j, "a1"))
         @test query.expr == expected_expr
     end

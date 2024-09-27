@@ -46,6 +46,7 @@ function get_prefix_cost(new_var, vars::Set{IndexExpr},  conjunct_stats, disjunc
         end
         if isnothing(get_index_formats(stat))
             lookup_factor += SeqReadCost
+            continue
         end
         format = get_index_format(stat, new_var)
         if format == t_dense

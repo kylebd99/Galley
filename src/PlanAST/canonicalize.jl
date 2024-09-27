@@ -66,7 +66,7 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
             def.index_order = [idx.name for idx in expr.idx_order]
         elseif expr.kind === Alias
             if haskey(bindings, expr.name)
-                expr.stats = get(bindings, expr.name, nothing)
+                expr.stats = bindings[expr.name]
             end
 
             if !isnothing(expr.stats)

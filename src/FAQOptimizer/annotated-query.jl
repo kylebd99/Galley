@@ -198,8 +198,8 @@ function AnnotatedQuery(q::PlanNode, ST)
                 idx_lowest_root[new_idx] = lowest_roots[i]
                 #TODO: This forces us to push down aggressively which is an assumption
                 # about what plans will be most efficiently. It also makes things more efficient.
-                idx_starting_root[new_idx] = lowest_roots[i]
-#                idx_starting_root[new_idx] = idx_starting_root[idx]
+#                idx_starting_root[new_idx] = lowest_roots[i]
+                idx_starting_root[new_idx] = idx_starting_root[idx]
                 original_idx[new_idx] = idx
                 push!(reduce_idxs, new_idx)
             end

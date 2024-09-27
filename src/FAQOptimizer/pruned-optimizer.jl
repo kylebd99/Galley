@@ -99,6 +99,15 @@ function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     cur_aq = copy_aq(input_aq)
     for component in input_aq.connected_components
         (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(cur_aq, component, 1, Dict(), alias_hash, cost_cache)
+        if length(component) >=10
+            append!(elimination_order, greedy_order)
+            for idx in greedy_order
+                reduce_query = reduce_idx!(idx, cur_aq)
+                alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
+            end
+            total_cost += greedy_cost
+            continue
+        end
         exact_opt_result = branch_and_bound(cur_aq, component, Inf, greedy_subquery_costs, alias_hash, cost_cache)
         if !isnothing(exact_opt_result)
             (exact_order, exact_queries, exact_aq, exact_cost), exact_subquery_costs, cost_cache = exact_opt_result

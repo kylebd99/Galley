@@ -155,11 +155,12 @@ function galley(input_queries::Vector{PlanNode};
 
     for query in physical_queries
         if query.expr.kind === Aggregate
-            loop_order = alias_to_loop_order[query.name.name]
+            loop_order_when_used = alias_to_loop_order[query.name.name]
             output_stats = query.expr.stats
+            output_order = relative_sort(get_index_set(output_stats), loop_order_when_used, rev=true)
+            loop_order_when_built = IndexExpr[idx.name for idx in query.loop_order]
             # Determine the optimal output format & add a further query to reformat if necessary.
-            output_order = relative_sort(get_index_set(output_stats), loop_order, rev=true)
-            output_formats = select_output_format(output_stats, loop_order, output_order)
+            output_formats = select_output_format(output_stats, loop_order_when_built, output_order)
             query.expr = Materialize(output_formats..., output_order..., query.expr)
             reorder_stats = copy_stats(output_stats)
             reorder_def = get_def(reorder_stats)

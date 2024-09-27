@@ -95,14 +95,38 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
 
     # Determine the optimal output format & add a further query to reformat if necessary.
     if !isnothing(output_order)
-        output_formats = isnothing(output_formats) ? select_output_format(output_stats, loop_order, output_order) : output_formats
-        result_query = Query(query.name, Materialize(output_formats..., output_order..., expr), loop_order...)
-        reorder_stats = copy_stats(expr.stats)
-        reorder_def = get_def(reorder_stats)
-        reorder_def.index_order = output_order
-        reorder_def.level_formats = output_formats
-        result_query.expr.stats = reorder_stats
-        push!(queries, result_query)
+        first_formats =  select_output_format(output_stats, loop_order, output_order)
+        if !isnothing(output_formats) && first_formats != output_formats
+            intermediate_query = Query(Alias(galley_gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)
+            reorder_stats = copy_stats(expr.stats)
+            reorder_def = get_def(reorder_stats)
+            reorder_def.index_order = output_order
+            reorder_def.level_formats = first_formats
+            alias_stats[intermediate_query.name.name] = reorder_stats
+            intermediate_query.expr.stats = reorder_stats
+            push!(queries, intermediate_query)
+            best_formats = !isnothing(output_formats) ? output_formats : select_output_format(output_stats, reverse(output_order), output_order)
+            alias_expr = Alias(intermediate_query.name.name)
+            alias_expr.stats = reorder_stats
+            result_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
+            result_expr.stats = reorder_stats
+            result_query = Query(query.name, Materialize(best_formats... , output_order..., result_expr), reverse(output_order)...)
+            result_stats = copy_stats(reorder_stats)
+            result_def = get_def(result_stats)
+            result_def.index_order = output_order
+            result_def.level_formats = best_formats
+            result_query.expr.stats = result_stats
+            push!(queries, result_query)
+        else
+            output_formats = isnothing(output_formats) ? select_output_format(output_stats, loop_order, output_order) : output_formats
+            result_query = Query(query.name, Materialize(output_formats..., output_order..., expr), loop_order...)
+            reorder_stats = copy_stats(expr.stats)
+            reorder_def = get_def(reorder_stats)
+            reorder_def.index_order = output_order
+            reorder_def.level_formats = output_formats
+            result_query.expr.stats = reorder_stats
+            push!(queries, result_query)
+        end
     else
         result_query = Query(query.name, expr, loop_order...)
         push!(queries, result_query)

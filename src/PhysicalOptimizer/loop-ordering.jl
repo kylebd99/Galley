@@ -121,7 +121,6 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
     output_size = estimate_nnz(output_stats)
     output_vars = get_index_set(output_stats)
 
-    output_vars = get_index_set(output_stats)
     if !isnothing(output_order)
         output_vars = relative_sort(output_vars, output_order)
     end

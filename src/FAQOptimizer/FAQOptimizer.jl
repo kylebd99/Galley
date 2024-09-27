@@ -73,7 +73,7 @@ function enumerate_distributed_plans(q::PlanNode, max_depth=1)
     return plans
 end
 
-function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, alias_stats, alias_hash, verbose)
+function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, alias_stats, alias_hash, alias_counter, verbose)
     insert_statistics!(ST, q; bindings = alias_stats)
     if faq_optimizer === naive
         insert_node_ids!(q)
@@ -85,13 +85,13 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     check_dnf = !allequal([n.op.val for n in PostOrderDFS(q) if n.kind === MapJoin])
     insert_statistics!(ST, q)
     q_non_dnf = canonicalize(plan_copy(q), false)
-    input_aq = AnnotatedQuery(q_non_dnf, ST)
+    input_aq = AnnotatedQuery(q_non_dnf, ST, alias_counter)
     logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict(), verbose)
     if check_dnf
         min_cost = cnf_cost
         min_query = canonicalize(plan_copy(q), false)
         for query in enumerate_distributed_plans(min_query, 1)
-            input_aq = AnnotatedQuery(query, ST)
+            input_aq = AnnotatedQuery(query, ST, alias_counter)
             plan, cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
             if cost < min_cost
                 logical_plan = plan
@@ -101,7 +101,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
         end
         # We check the fully distributed option too just to see
         q_dnf = canonicalize(q, true)
-        dnf_aq = AnnotatedQuery(q_dnf , ST)
+        dnf_aq = AnnotatedQuery(q_dnf , ST, alias_counter)
         dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, dnf_aq, alias_hash, cost_cache, verbose)
         if dnf_cost < min_cost
             verbose >= 1 && println("USED FULL DNF")

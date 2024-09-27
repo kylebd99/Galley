@@ -12,6 +12,7 @@ mutable struct AnnotatedQuery
     original_idx::Dict{IndexExpr, IndexExpr} # When an index is split into many, we track their relationship.
     connected_components::Vector{Vector{IndexExpr}}
     connected_idxs::Dict{IndexExpr, Vector{IndexExpr}}
+    counter::Vector{UInt64}
 end
 
 function copy_aq(aq::AnnotatedQuery)
@@ -32,17 +33,21 @@ function copy_aq(aq::AnnotatedQuery)
                           copy(aq.parent_idxs),
                           copy(aq.original_idx),
                           copy(aq.connected_components),
-                          copy(aq.connected_idxs)
+                          copy(aq.connected_idxs),
+                          aq.counter
                           )
 end
 
-function get_idx_connected_components(parent_idxs)
-    component_ids = Dict(x=>i for (i,x) in enumerate(keys(parent_idxs)))
+function get_idx_connected_components(parent_idxs, connected_idxs)
+    component_ids = Dict(x=>i for (i,x) in enumerate(keys(connected_idxs)))
     finished = false
     while !finished
         finished = true
-        for (idx1, parents) in parent_idxs
-            for idx2 in parents
+        for (idx1, connected_idxs) in connected_idxs
+            for idx2 in connected_idxs
+                if idx2 ∈ parent_idxs[idx1]
+                    continue
+                end
                 if component_ids[idx2] != component_ids[idx1]
                     finished = false
                 end
@@ -54,15 +59,38 @@ function get_idx_connected_components(parent_idxs)
     components = []
     for id in unique(values(component_ids))
         idx_in_component = []
-        for idx in keys(parent_idxs)
+        for idx in keys(connected_idxs)
             if component_ids[idx] == id
                 push!(idx_in_component, idx)
             end
         end
         push!(components, idx_in_component)
     end
+    component_order = Dict(c=>i for (i,c) in enumerate(components))
+    for component1 in components
+        for component2 in components
+            is_parent_of_1 = false
+            for idx1 in component1
+                for idx2 in component2
+                    if idx2 ∈ parent_idxs[idx1]
+                        is_parent_of_1 = true
+                        break
+                    end
+                end
+                is_parent_of_1 && break
+            end
+            if is_parent_of_1
+                max_pos = max(component_order[component1],component_order[component2])
+                min_pos = min(component_order[component1],component_order[component2])
+                component_order[component1] = max_pos
+                component_order[component2] = min_pos
+            end
+        end
+    end
+    sort!(components, by=(c)->component_order[c])
     return components
 end
+
 
 function _fastintree(n1, n2)
     for n in PreOrderDFS(n2)
@@ -84,7 +112,7 @@ end
 # Assumptions:
 #      - expr is of the form Query(name, Materialize(formats, index_order, agg_map_expr))
 #      - or of the form Query(name, agg_map_expr)
-function AnnotatedQuery(q::PlanNode, ST)
+function AnnotatedQuery(q::PlanNode, ST, alias_counter)
     if !(@capture q Query(~name, ~expr))
         throw(ErrorException("Annotated Queries can only be built from queries of the form: Query(name, Materialize(formats, index_order, agg_map_expr)) or Query(name, agg_map_expr)"))
     end
@@ -138,7 +166,7 @@ function AnnotatedQuery(q::PlanNode, ST)
             idx_lowest_root[idx] = only(lowest_roots)
             push!(reduce_idxs, idx)
         else
-            new_idxs = [gensym(idx) for _ in lowest_roots]
+            new_idxs = [Symbol("$(idx)_$i") for i in lowest_roots]
             for i in eachindex(lowest_roots)
                 node = id_to_node[lowest_roots[i]]
                 if idx ∉ get_index_set(node.stats)
@@ -199,7 +227,7 @@ function AnnotatedQuery(q::PlanNode, ST)
 
     # If a set of aggregates are unrelated in the expression tree, then they don't need to
     # be co-optimized.
-    connected_components = get_idx_connected_components(connected_idxs)
+    connected_components = get_idx_connected_components(parent_idxs, connected_idxs)
     return AnnotatedQuery(ST,
                             output_name,
                             output_index_order,
@@ -212,7 +240,8 @@ function AnnotatedQuery(q::PlanNode, ST)
                             parent_idxs,
                             original_idx,
                             connected_components,
-                            connected_idxs)
+                            connected_idxs,
+                            alias_counter)
 end
 
 function get_reduce_query(reduce_idx, aq)
@@ -282,7 +311,8 @@ function get_reduce_query(reduce_idx, aq)
     reduced_idxs = idxs_to_be_reduced
     query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
     query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
-    query = Query(Alias(gensym("A")), query_expr)
+    query = Query(Alias(Symbol("A_$(aq.counter[1])")), query_expr)
+    aq.counter[1] += 1
 #    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
     return query, node_to_replace, nodes_to_remove, reduced_idxs
 end

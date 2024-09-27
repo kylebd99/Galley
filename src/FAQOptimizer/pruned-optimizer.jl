@@ -49,7 +49,7 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
                 cheapest_cost = min(get(best_idx_ext, new_vars, (nothing, nothing, nothing, nothing, Inf))[5],
                                     get(optimal_orders, new_vars, (nothing, nothing, nothing, Inf))[4],
                                     bound)
-                if cost <= cheapest_cost + 1 # We add 1 to avoid FP issues
+                if cost <= cheapest_cost + 10 # We add 1 to avoid FP issues
                     best_idx_ext[new_vars] = (aq, idx, pc[1], pc[2], cost)
                 end
             end
@@ -86,6 +86,8 @@ function branch_and_bound(input_aq::AnnotatedQuery, component, k, max_subquery_c
     if haskey(optimal_orders, Set{IndexExpr}([i for i in component]))
         return optimal_orders[Set{IndexExpr}([i for i in component])], optimal_subquery_costs, cost_cache
     else
+        println("Component: $component")
+        println("Optimal Orders: $(keys(optimal_orders))")
         return nothing
     end
 end
@@ -93,16 +95,25 @@ end
 function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache, alias_hash)
     total_cost = 0
     elimination_order = IndexExpr[]
+    cur_aq = copy_aq(input_aq)
     for component in input_aq.connected_components
-        (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(input_aq, component, 1, Dict(), alias_hash, cost_cache)
-        exact_opt_result = branch_and_bound(input_aq, component, Inf, greedy_subquery_costs, alias_hash, cost_cache)
+        (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(cur_aq, component, 1, Dict(), alias_hash, cost_cache)
+        exact_opt_result = branch_and_bound(cur_aq, component, Inf, greedy_subquery_costs, alias_hash, cost_cache)
         if !isnothing(exact_opt_result)
             (exact_order, exact_queries, exact_aq, exact_cost), exact_subquery_costs, cost_cache = exact_opt_result
             append!(elimination_order, exact_order)
+            for idx in exact_order
+                reduce_query = reduce_idx!(idx, cur_aq)
+                alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
+            end
             total_cost += exact_cost
         else
             println("WARNING: Pruned Optimizer Failed. Falling Back to Greedy Plan.")
             append!(elimination_order, greedy_order)
+            for idx in greedy_order
+                reduce_query = reduce_idx!(idx, cur_aq)
+                alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
+            end
             total_cost += greedy_cost
         end
     end

@@ -21,26 +21,29 @@ end
 
 # In cannonical form, two aggregates in the plan shouldn't reduce out the same variable.
 # E.g. MapJoin(*, Aggregate(+, Input(tns, i, j)))
-function unique_indices(scope_dict, n::PlanNode)
+function unique_indices(scope_dict, n::PlanNode, counter)
     if n.kind === Plan
-        return Plan([unique_indices(scope_dict, query) for query in n.queries]..., n.outputs)
+        return Plan([unique_indices(scope_dict, query, counter) for query in n.queries]..., n.outputs)
     elseif n.kind === Query
-        return Query(n.name, unique_indices(scope_dict, n.expr))
+        return Query(n.name, unique_indices(scope_dict, n.expr, counter))
     elseif n.kind === Materialize
-        return Materialize(n.formats..., n.idx_order..., unique_indices(scope_dict, n.expr))
+        return Materialize(n.formats..., n.idx_order..., unique_indices(scope_dict, n.expr, counter))
     elseif n.kind === MapJoin
-        return MapJoin(n.op, [unique_indices(scope_dict, arg) for arg in n.args]...)
+        return MapJoin(n.op, [unique_indices(scope_dict, arg, counter) for arg in n.args]...)
     elseif n.kind === Input
-        return relabel_input(n, [unique_indices(scope_dict, idx).name for idx in n.idxs]...)
+        return relabel_input(n, [unique_indices(scope_dict, idx, counter).name for idx in n.idxs]...)
     elseif n.kind === Aggregate
         new_idxs = []
         for idx in n.idxs
             old_idx = idx.val
-            new_idx = haskey(scope_dict, old_idx) ? gensym(idx.val) : idx.val
+            new_idx = haskey(scope_dict, old_idx) ? Symbol("$(idx.val)_$(counter[1])") : idx.val
+            if new_idx != idx.val
+                counter[1] += 1
+            end
             push!(new_idxs, new_idx)
             scope_dict[old_idx] = new_idx
         end
-        return Aggregate(n.op, new_idxs..., unique_indices(scope_dict, n.arg))
+        return Aggregate(n.op, new_idxs..., unique_indices(scope_dict, n.arg, counter))
     elseif n.kind === Index
         return Index(get(scope_dict, n.name, n.name))
     else
@@ -128,7 +131,8 @@ function remove_extraneous_mapjoins(plan::PlanNode)
 end
 
 function canonicalize(plan::PlanNode, use_dnf)
-    plan = unique_indices(Dict(), plan)
+    counter = [1]
+    plan = unique_indices(Dict(), plan, counter)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan, use_dnf)
     plan = remove_extraneous_mapjoins(plan)
@@ -136,7 +140,7 @@ function canonicalize(plan::PlanNode, use_dnf)
     plan = distribute_mapjoins(plan, use_dnf)
     plan = merge_mapjoins(plan)
     # Each aggregate should correspond to a unique variable, which we ensure here.
-    plan = unique_indices(Dict(), plan)
+    plan = unique_indices(Dict(), plan, counter)
     # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting
     # later on.
     plan = plan_copy(plan)

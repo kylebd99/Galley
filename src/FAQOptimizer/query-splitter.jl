@@ -42,9 +42,9 @@ end
 #   Query(name, Materialize(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
 # It outputs a set of queries where the final one binds `name` and each
 # query has less than `MAX_INDEX_OCCURENCES` index occurences.
-function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
+function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, alias_counter, verbose)
     insert_node_ids!(q)
-    aq = AnnotatedQuery(q, ST)
+    aq = AnnotatedQuery(q, ST, alias_counter)
     pe = aq.point_expr
     insert_statistics!(ST, pe, bindings=alias_stats)
     has_agg = length(aq.reduce_idxs) > 0
@@ -80,7 +80,8 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
                 nodes_to_remove = [node.node_id]
                 new_expr = (has_agg && !isempty(n_reduce_idxs)) ? Aggregate(agg_op, n_reduce_idxs..., node) : node
                 new_expr.stats = n_mat_stats
-                new_query = Query(Alias(gensym(:A)), new_expr)
+                new_query = Query(Alias(Symbol("A_$(alias_counter[1])")), new_expr)
+                alias_counter[1] += 1
                 new_agg_idxs = n_reduce_idxs
                 min_cost = n_cost + get_forced_transpose_cost(node)
             end
@@ -107,7 +108,8 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
                                                 Aggregate(agg_op, s_reduce_idxs..., MapJoin(node.op, s...)) :
                                                 MapJoin(node.op, s...)
                         new_expr.stats = s_mat_stats
-                        new_query = Query(Alias(gensym(:A)), new_expr)
+                        new_query = Query(Alias(Symbol("A_$(alias_counter[1])")), new_expr)
+                        alias_counter[1] += 1
                         new_agg_idxs = s_reduce_idxs
                         # We want to prefer larger kernels here.
                         min_cost = s_cost - length(s) * 1000
@@ -143,10 +145,10 @@ function split_query(q::PlanNode, ST, max_kernel_size, alias_stats, verbose)
     return queries
 end
 
-function split_queries(ST, max_kernel_size, p::PlanNode; alias_stats=Dict(), verbose)
+function split_queries(ST, max_kernel_size, p::PlanNode; alias_stats=Dict(), alias_counter, verbose)
     new_queries = []
     for query in p.queries
-        append!(new_queries, split_query(query, ST, max_kernel_size, alias_stats, verbose))
+        append!(new_queries, split_query(query, ST, max_kernel_size, alias_stats, alias_counter, verbose))
     end
     new_plan = Plan(new_queries..., p.outputs)
     insert_node_ids!(new_plan)

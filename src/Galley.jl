@@ -69,6 +69,8 @@ function galley(input_queries::Vector{PlanNode};
                     update_cards=true,
                     simple_cse=true,
                     max_kernel_size=10,
+                    output_logical_plan=false,
+                    output_physical_plan=false,
                     verbose=0)
     overall_start = time()
     # To avoid input corruption, we start by copying the input queries (except for the data)
@@ -79,7 +81,7 @@ function galley(input_queries::Vector{PlanNode};
             println(input_query)
         end
     end
-
+    alias_counter = [1]
     # First, we perform high level optimization where each query is translated to one or
     # more queries with a simpler structure: Query(name, Aggregate(op, idxs, point_expr))
     # where point_expr is made up of just MapJoin, Input, and Alias nodes.
@@ -89,7 +91,7 @@ function galley(input_queries::Vector{PlanNode};
     output_aliases = [input_query.name for input_query in input_queries]
     output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_queries)
     for input_query in input_queries
-        logical_plan = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, verbose)
+        logical_plan = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, alias_counter, verbose)
         for query in logical_plan
             alias_hash[query.name.name] = cannonical_hash(query.expr, alias_hash)
             alias_stats[query.name.name] = query.expr.stats
@@ -97,6 +99,9 @@ function galley(input_queries::Vector{PlanNode};
         append!(logical_queries, logical_plan)
     end
     faq_opt_time = time() - faq_opt_start
+    if output_logical_plan
+        return logical_queries
+    end
     if verbose >= 1
         println("FAQ Opt Time: $faq_opt_time")
         println("--------------- Logical Plan ---------------")
@@ -129,7 +134,7 @@ function galley(input_queries::Vector{PlanNode};
     plan_hash_result, alias_result = Dict(), Dict{IndexExpr, Any}()
     for l_query in logical_queries
         split_start = time()
-        split_queries = split_query(l_query, ST, max_kernel_size, alias_stats, verbose)
+        split_queries = split_query(l_query, ST, max_kernel_size, alias_stats, alias_counter, verbose)
         total_split_time  += time() - split_start
         for s_query in split_queries
             phys_opt_start = time()

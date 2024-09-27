@@ -49,10 +49,9 @@ function one_step_distribute(q::PlanNode)
     return plans
 end
 
-function enumerate_distributed_plans(q::PlanNode, max_depth=1)
+function enumerate_distributed_plans(q::PlanNode, visited_plans, max_depth=1)
     plans = []
     plan_frontier = [plan_copy(q)]
-    visited_plans = Set()
     for _ in 1:max_depth
         new_plans = []
         for plan in plan_frontier
@@ -90,24 +89,32 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     if check_dnf
         min_cost = cnf_cost
         min_query = canonicalize(plan_copy(q), false)
-        for query in enumerate_distributed_plans(min_query, 1)
-            input_aq = AnnotatedQuery(query, ST, alias_counter)
-            plan, cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
-            if cost < min_cost
-                logical_plan = plan
-                min_cost = cost
-                min_query = plan_copy(query)
+        visited_queries = Set()
+        finished = false
+        while !finished
+            finished = true
+            for query in enumerate_distributed_plans(min_query, visited_queries, 1)
+                input_aq = AnnotatedQuery(query, ST, alias_counter)
+                plan, cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, cost_cache, verbose)
+                if cost < min_cost
+                    logical_plan = plan
+                    min_cost = cost
+                    min_query = plan_copy(query)
+                    finished = false
+                end
             end
         end
         # We check the fully distributed option too just to see
         q_dnf = canonicalize(q, true)
-        dnf_aq = AnnotatedQuery(q_dnf , ST, alias_counter)
-        dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, dnf_aq, alias_hash, cost_cache, verbose)
-        if dnf_cost < min_cost
-            verbose >= 1 && println("USED FULL DNF")
-            logical_plan = dnf_plan
-            min_cost = dnf_cost
-            min_query = q_dnf
+        if hash(q_dnf) ∉ visited_queries
+            dnf_aq = AnnotatedQuery(q_dnf , ST, alias_counter)
+            dnf_plan, dnf_cost, cost_cache = high_level_optimize(faq_optimizer, dnf_aq, alias_hash, cost_cache, verbose)
+            if dnf_cost < min_cost
+                verbose >= 1 && println("USED FULL DNF")
+                logical_plan = dnf_plan
+                min_cost = dnf_cost
+                min_query = q_dnf
+            end
         end
         verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost) \n QUERY: $min_query")
     end

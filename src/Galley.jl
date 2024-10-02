@@ -130,12 +130,12 @@ function galley(input_queries::Vector{PlanNode};
 
     total_split_time, total_phys_opt_time, total_exec_time, total_count_time = 0,0,0,0
     split_queries = []
+    split_start = time()
     for l_query in logical_queries
-        split_start = time()
         s_queries = split_query(l_query, ST, max_kernel_size, alias_stats, verbose)
-        total_split_time  += time() - split_start
         append!(split_queries, s_queries)
     end
+    total_split_time  += time() - split_start
 
     phys_opt_start = time()
     alias_to_loop_order = Dict{IndexExpr, Vector{IndexExpr}}()
@@ -210,9 +210,6 @@ function galley(input_queries::Vector{PlanNode};
             fix_cardinality!(alias_stats[p_query.name.name], count_non_default(alias_result[p_query.name.name]))
             total_count_time += time() - count_start
         end
-        phys_opt_start = time()
-        condense_stats!(alias_stats[p_query.name.name]; cheap=false)
-        total_phys_opt_time += time() - phys_opt_start
     end
     total_overall_time = time()-overall_start
     verbose >= 2 && println("Time to FAQ Opt: ", faq_opt_time)

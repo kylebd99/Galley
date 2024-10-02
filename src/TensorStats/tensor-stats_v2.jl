@@ -95,7 +95,7 @@ get_index_formats(def::TensorDef) = def.level_formats
 get_index_protocol(def::TensorDef, idx::IndexExpr) = def.index_protocols[findfirst(x->x==idx, def.index_order)]
 get_index_protocols(def::TensorDef) = def.index_protocols
 
-function get_dim_space_size(def::TensorDef, indices::Set{IndexExpr})
+function get_dim_space_size(def::TensorDef, indices)
     dim_space_size::UInt128 = 1
     for idx in indices
         dim_space_size *= def.dim_sizes[idx]
@@ -181,7 +181,7 @@ copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.idx_2_int), co
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Dict(), Dict(), Set())
 get_def(stat::DCStats) = stat.def
 
-get_index_bitset(stat::DCStats) = SmallBitSet(stat.idx_2_int[x] for x in get_index_set(stat))
+get_index_bitset(stat::DCStats) = SmallBitSet(Int[stat.idx_2_int[x] for x in get_index_set(stat)])
 
 function fix_cardinality!(stat::DCStats, card)
     had_dc = false
@@ -204,7 +204,7 @@ DCKey = NamedTuple{(:X, :Y), Tuple{SmallBitSet, SmallBitSet}}
 
 function infer_dc(l, ld, r, rd, all_dcs, new_dcs)
     if l.Y ⊇ r.X
-        new_key = (X = l.X, Y = setdiff!(∪(l.Y, r.Y), l.X))
+        new_key = (X = l.X, Y = setdiff(∪(l.Y, r.Y), l.X))
         new_degree = ld*rd
         if get(all_dcs, new_key, Inf) > new_degree &&
                 get(new_dcs, new_key, Inf) > new_degree
@@ -264,7 +264,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
     end
     final_dcs = Set{DC}()
     for (dc_key, dc) in all_dcs
-        push!(final_dcs, DC(Set(dc_key.X), Set(dc_key.Y), dc))
+        push!(final_dcs, DC(dc_key.X, dc_key.Y, dc))
     end
     return final_dcs
 end
@@ -302,7 +302,7 @@ function condense_stats!(stat::DCStats; timeout=100000, cheap=false)
 end
 
 idxs_to_bitset(stat::DCStats, indices) = idxs_to_bitset(stat.idx_2_int, indices)
-idxs_to_bitset(idx_2_int::Dict{IndexExpr, Int}, indices) = SmallBitSet(idx_2_int[idx] for idx in indices)
+idxs_to_bitset(idx_2_int::Dict{IndexExpr, Int}, indices) = SmallBitSet(Int[idx_2_int[idx] for idx in indices])
 bitset_to_idxs(stat::DCStats, bitset) = bitset_to_idxs(stat.int_2_idx, bitset)
 bitset_to_idxs(int_2_idx::Dict{Int, IndexExpr}, bitset) = Set{IndexExpr}(int_2_idx[idx] for idx in bitset)
 
@@ -333,7 +333,7 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
         end
         frontier = new_frontier
     end
-    min_weight = Inf
+    min_weight = get_dim_space_size(stat, indices)
     for (x, weight) in current_weights
         if x ⊇ indices_bitset
             min_weight = min(min_weight, weight)

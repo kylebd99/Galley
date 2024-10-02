@@ -51,6 +51,41 @@ function unique_indices(scope_dict, n::PlanNode, counter)
     end
 end
 
+function _insert_statistics!(ST, expr::PlanNode; bindings = Dict(), replace=false)
+    if expr.kind === MapJoin
+        expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
+    elseif expr.kind === Aggregate
+        expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
+    elseif expr.kind === Materialize
+        expr.stats = copy_stats(expr.expr.stats)
+        def = get_def(expr.stats)
+        def.level_formats = [f.val for f in expr.formats]
+        def.index_order = [idx.name for idx in expr.idx_order]
+    elseif expr.kind === Alias
+        if haskey(bindings, expr.name)
+            expr.stats = bindings[expr.name]
+        end
+
+        if !isnothing(expr.stats)
+            idxs = [idx.name for idx in expr.idxs]
+            stats_order = get_index_order(expr.stats)
+            @assert length(idxs) == 0 || !isnothing(stats_order)
+            if !isempty(idxs) && stats_order != idxs
+                expr.stats = reindex_stats(expr.stats, idxs)
+            end
+        end
+    elseif expr.kind === Input
+        if isnothing(expr.stats) || replace
+            expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])
+        end
+    elseif expr.kind === Value
+        if expr.val isa Number
+            expr.stats = ST(expr.val)
+        end
+    end
+
+end
+
 # Often, we will only have changed a small part of the expression, e.g. by performing a
 # reduction, so we only update the stats objects which were involved with those indices.
 function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false, reduce_idx=nothing)
@@ -59,37 +94,7 @@ function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false
         if  check_reduce_idxs && !isnothing(expr.stats) && reduce_idx ∉ get_index_set(expr.stats)
             continue
         end
-        if expr.kind === MapJoin
-            expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
-        elseif expr.kind === Aggregate
-            expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
-        elseif expr.kind === Materialize
-            expr.stats = copy_stats(expr.expr.stats)
-            def = get_def(expr.stats)
-            def.level_formats = [f.val for f in expr.formats]
-            def.index_order = [idx.name for idx in expr.idx_order]
-        elseif expr.kind === Alias
-            if haskey(bindings, expr.name)
-                expr.stats = bindings[expr.name]
-            end
-
-            if !isnothing(expr.stats)
-                idxs = [idx.name for idx in expr.idxs]
-                stats_order = get_index_order(expr.stats)
-                @assert length(idxs) == 0 || !isnothing(stats_order)
-                if !isempty(idxs) && stats_order != idxs
-                    expr.stats = reindex_stats(expr.stats, idxs)
-                end
-            end
-        elseif expr.kind === Input
-            if isnothing(expr.stats) || replace
-                expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])
-            end
-        elseif expr.kind === Value
-            if expr.val isa Number
-                expr.stats = ST(expr.val)
-            end
-        end
+        _insert_statistics!(ST, expr; bindings=bindings, replace=replace)
     end
 end
 

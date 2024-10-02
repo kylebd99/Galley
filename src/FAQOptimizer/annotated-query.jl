@@ -443,7 +443,20 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-    insert_statistics!(aq.ST, new_point_expr, reduce_idx=reduce_idx)
+
+    # Here, we update the statistics for all nodes above the affected nodes
+    rel_child_nodes = Set{Int}(n for n in nodes_to_remove)
+    push!(rel_child_nodes, node_to_replace)
+    for n in PostOrderDFS(new_point_expr)
+        if n.node_id == node_to_replace
+            _insert_statistics!(aq.ST, n)
+        elseif istree(n) && any(c.node_id ∈ rel_child_nodes for c in n.children)
+            _insert_statistics!(aq.ST, n)
+            push!(rel_child_nodes, n.node_id)
+        end
+    end
+
+#    insert_statistics!(aq.ST, new_point_expr, reduce_idx = aq.original_idx[reduce_idx])
 #    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
 #    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
 #    @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)

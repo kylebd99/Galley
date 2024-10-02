@@ -5,13 +5,20 @@ function isassociative(f)
     if typeof(f) == PlanNode
         throw(error("Can't check associativity of plan nodes!"))
     end
+    if f == choose(false)
+        return true
+    end
     return Finch.isassociative(Finch.DefaultAlgebra(), f)
 end
+
 function iscommutative(f)
     if typeof(f) == PlanNode
         throw(error("Can't check commutativity of plan nodes!"))
     end
-     return Finch.iscommutative(Finch.DefaultAlgebra(), f)
+    if f == choose(false)
+        return true
+    end
+    return Finch.iscommutative(Finch.DefaultAlgebra(), f)
 end
 
 function isunarynull(f)

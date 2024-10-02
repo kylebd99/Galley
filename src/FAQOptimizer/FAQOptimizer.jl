@@ -104,7 +104,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
                 end
             end
         end
-        #=
+
         # We check the fully distributed option too just to see
         q_dnf = canonicalize(q, true)
         if cannonical_hash(q_dnf, alias_hash) ∉ visited_queries
@@ -116,7 +116,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
                 min_cost = dnf_cost
                 min_query = q_dnf
             end
-        end =#
+        end
         verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost) \n QUERY: $min_query")
     end
     return logical_plan

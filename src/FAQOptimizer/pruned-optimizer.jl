@@ -4,7 +4,7 @@ function order_to_queries(input_aq::AnnotatedQuery, elimination_order, alias_has
     queries = []
     while !isempty(elimination_order)
         idx_to_reduce = elimination_order[1]
-        reduce_query = reduce_idx!(idx_to_reduce, input_aq)
+        reduce_query = reduce_idx!(idx_to_reduce, input_aq, do_condense=true)
         alias_hash[reduce_query.name.name] = cannonical_hash(reduce_query.expr, alias_hash)
         filter!((x)-> (x ∈ input_aq.reduce_idxs), elimination_order)
         push!(queries, reduce_query)

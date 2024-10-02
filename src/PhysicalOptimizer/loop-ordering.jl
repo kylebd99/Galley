@@ -89,12 +89,6 @@ function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size)
     return pc_cost
 end
 
-function get_enumerate_set(all_stats, loop_prefix)
-    for stats in all_stats
-        indices = get_index_set(stats)
-
-    end
-end
 # We use a version of Selinger's algorithm to determine the join loop ordering.
 # For each subset of variables, we calculate their optimal ordering via dynamic programming.
 # This is singly exponential in the number of loop variables, and it uses the statistics to
@@ -110,6 +104,7 @@ end
 # size 1 if |C| = 1. In this case, we view both orders to be equal even though j,i is
 # potentially O(n) better.
 function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
+                                    transposable_stats::Vector{TensorStats},
                                     output_stats::TensorStats,
                                     output_order::Union{Nothing, Vector{IndexExpr}},
                                     cost_bound,
@@ -127,14 +122,14 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
 
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
-    reformat_costs = Dict(i => cost_of_reformat(all_stats[i]) for i in eachindex(all_stats))
+    reformat_costs = Dict(i => cost_of_reformat(transposable_stats[i]) for i in eachindex(transposable_stats))
     PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
     PLAN = Tuple{Vector{IndexExpr}, Float64}
     optimal_plans = Dict{PLAN_CLASS, PLAN}()
     for var in all_vars
         prefix = [var]
         v_set = Set(prefix)
-        rf_set = get_reformat_set(all_stats, prefix)
+        rf_set = get_reformat_set(transposable_stats, prefix)
         output_compat = get_output_compat(output_vars, prefix)
         class = (v_set, output_compat, rf_set)
         cost = get_prefix_cost(var, v_set, conjunct_stats, disjunct_stats)
@@ -165,7 +160,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 new_prefix_set = union(prefix_set, [new_var])
                 new_prefix = [prefix..., new_var]
 
-                rf_set = get_reformat_set(all_stats, new_prefix)
+                rf_set = get_reformat_set(transposable_stats, new_prefix)
                 output_compat = get_output_compat(output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
                 new_cost = get_prefix_cost(new_var, new_prefix_set, conjunct_stats, disjunct_stats) + cost
@@ -237,17 +232,17 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
 end
 
 GREEDY_PLAN_K = 1
-function get_join_loop_order(disjunct_and_conjunct_stats, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
+function get_join_loop_order(disjunct_and_conjunct_stats, transposable_stats::Vector{TensorStats}, output_stats::TensorStats, output_order::Union{Nothing, Vector{IndexExpr}})
     num_vars = length(union([get_index_set(s) for s in disjunct_and_conjunct_stats.disjuncts]...,
                     [get_index_set(s) for s in disjunct_and_conjunct_stats.conjuncts]...))
     if num_vars == 0
         return IndexExpr[]
     end
-    greedy_order, greedy_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
+    greedy_order, greedy_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, transposable_stats, output_stats, output_order, Inf, GREEDY_PLAN_K)
     if num_vars > 10
         return greedy_order
     end
-    exact_order, exact_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, output_stats, output_order,  greedy_cost * 1.01, Inf)
+    exact_order, exact_cost = get_join_loop_order_bounded(disjunct_and_conjunct_stats, transposable_stats, output_stats, output_order,  greedy_cost * 1.01, Inf)
 
     if exact_cost > greedy_cost
         println("Exact Cost: $exact_cost")

@@ -99,7 +99,8 @@ function Base.setdiff!(s1::SmallBitSet, s2::SmallBitSet)
     s1
 end
 
-@inline Base.in(n::Integer, s::SmallBitSet) = _is_convertible_Int(n) ? in(Int(n), s) : false
+@inline Base.in(n::Integer, s::SmallBitSet) = _is_convertible_Int(n) ? _bits_getindex(s.bits, Int(n)) : false
+
 function Base.iterate(s::SmallBitSet, idx = 0)
     word = 0
     while word == 0

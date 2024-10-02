@@ -413,11 +413,11 @@ end
 
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
-function reduce_idx!(reduce_idx, aq)
+function reduce_idx!(reduce_idx, aq; do_condense=false)
     query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
     # This plan_copy is structural important
     query = plan_copy(query)
-    condense_stats!(query.expr.stats)
+    do_condense && condense_stats!(query.expr.stats)
 
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
@@ -443,7 +443,7 @@ function reduce_idx!(reduce_idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-    insert_statistics!(aq.ST, new_point_expr)
+    insert_statistics!(aq.ST, new_point_expr, reduce_idx=reduce_idx)
 #    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
 #    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
 #    @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)

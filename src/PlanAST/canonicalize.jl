@@ -53,8 +53,12 @@ end
 
 # Often, we will only have changed a small part of the expression, e.g. by performing a
 # reduction, so we only update the stats objects which were involved with those indices.
-function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
+function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false, reduce_idx=nothing)
+    check_reduce_idxs = !isnothing(reduce_idx)
     for expr in PostOrderDFS(plan)
+        if  check_reduce_idxs && !isnothing(expr.stats) && reduce_idx ∉ get_index_set(expr.stats)
+            continue
+        end
         if expr.kind === MapJoin
             expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
         elseif expr.kind === Aggregate

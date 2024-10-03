@@ -93,14 +93,14 @@ h_2_galley = Materialize(t_dense, t_dense, :k2, :n2,
 h_3_galley = MapJoin(max, 0,
                 Aggregate(+, :n2, :k2,
                     MapJoin(*, Input(A, :n2, :n3),
-                                Input(h_2_galley, :k2, :n2),
+                                h_2_galley[:k2, :n2],
                                 Input(W, :k2, :k3))))
 
 two_hop_gnn_query = Query(:h_4, Materialize(t_dense, t_dense, :k3, :n3, h_3_galley))
 insert_statistics!(DCStats, two_hop_gnn_query)
 
-h_3_galley = galley([two_hop_gnn_query], ST=DCStats, verbose=3)
-h_3_galley = galley([two_hop_gnn_query], ST=DCStats, verbose=0)
+h_3_galley = galley([two_hop_gnn_query], ST=DCStats, faq_optimizer=pruned, verbose=3)
+h_3_galley = galley([two_hop_gnn_query], ST=DCStats, faq_optimizer=pruned, verbose=0)
 println("Finch == Galley: ", t_2.value == h_3_galley.value[1])
 println("Galley Opt & Execute: ", h_3_galley.opt_time, "   ", h_3_galley.execute_time)
 println("Finch Execute: ", t_2.time)

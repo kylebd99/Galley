@@ -82,7 +82,6 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     # If there's the possibility of distributivity, we attempt that pushdown and see
     # whether it benefits the computation.
     check_dnf = !allequal([n.op.val for n in PostOrderDFS(q) if n.kind === MapJoin])
-    insert_statistics!(ST, q)
     q_non_dnf = canonicalize(plan_copy(q), false)
     input_aq = AnnotatedQuery(q_non_dnf, ST)
     logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict(), verbose)

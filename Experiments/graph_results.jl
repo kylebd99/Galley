@@ -27,7 +27,7 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
         num_attempted = only(meta_df.Attempted)
         num_completed = only(meta_df.Completed)
         for i in 1:(num_attempted-num_completed)
-            push!(results_df, (string(experiment_params.workload), "", "", 600, sum(results_df.OptTime)/nrow(results_df), 0, String15(""), true), promote=true)
+            push!(results_df, (string(experiment_params.workload), "", "", 300, sum(results_df.OptTime)/nrow(results_df), 0, String15(""), true), promote=true)
         end
         # get the x_value and grouping (same for all results in this experiment param)
 
@@ -83,7 +83,7 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                                         grouping::GROUP=technique,
                                         x_label=nothing,
                                         y_label=nothing,
-                                        y_lims=[0, 10],
+                                        y_lims=[0.001, 10],
                                         group_order=nothing,
                                         filename=nothing)
     # for now let's just use the dataset as the x-values and the cycle size as the groups
@@ -101,6 +101,9 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
         elseif y_type == compile_time
             results_df = combine(results_df, :CompileTime=>sum, nrow, renamecols=false)
             results_df.CompileTime = results_df.CompileTime ./ n_results
+        elseif y_type == execute_time
+            results_df = combine(results_df, :Runtime=>sum, nrow, renamecols=false)
+            results_df.Runtime = results_df.Runtime ./ n_results
         end
         # keep track of the data points
         for i in 1:nrow(results_df)
@@ -135,9 +138,6 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
     # This seems to be necessary for using Plots.jl outside of the ipynb framework.
     # See this: https://discourse.julialang.org/t/deactivate-plot-display-to-avoid-need-for-x-server/19359/15
     ENV["GKSwstype"]="100"
-    println(x_values)
-    println(y_values)
-    println(groups)
     gbplot = StatsPlots.groupedbar(x_values,
                             y_values,
                             group = groups,

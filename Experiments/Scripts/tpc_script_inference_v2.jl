@@ -1,5 +1,5 @@
 using Finch
-using Galley: insert_statistics!, t_undef
+using Galley: insert_statistics!, t_undef, fill_table
 using Galley
 using DataFrames
 using CSV
@@ -8,6 +8,8 @@ using Statistics
 using Measures
 using CategoricalArrays
 using StatsFuns
+using StatsPlots
+using DuckDB
 include("../Experiments.jl")
 
 relu(x) = max(0, x)
@@ -65,6 +67,61 @@ function align_x_dims(X, x_start, x_dim)
     return Tensor(Dense(SparseList(Element(0.0))), new_X)
 end
 
+#=
+function duckdb_lr(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, θ)
+    dbconn = DBInterface.connect(DuckDB.DB, ":memory:")
+    fill_table(dbconn, li_tns, [:p, :s, :o, :i], "lineitem")
+    fill_table(dbconn, orders_x, [:j, :o], "orders")
+    fill_table(dbconn, order_cust, [:c, :o], "order_cust")
+    fill_table(dbconn, customer_x, [:j, :c], "customer")
+    fill_table(dbconn, supplier_x, [:j, :s], "supplier")
+    fill_table(dbconn, part_x, [:j, :p], "part")
+    fill_table(dbconn, θ, [:j, :p], "theta")
+    query_stmnt = "SELECT i, SUM(X.v*theta.v)
+    FROM (
+    (SELECT i, j, v
+     FROM lineitem
+     INNER JOIN orders on linitem.o=orders.o
+     GROUP BY lineitem.i, orders.j, orders.v)
+    UNION BY NAME
+    (SELECT i, j, v
+     FROM lineitem
+     INNER JOIN order_cust on linitem.o=order_cust.o
+     INNER JOIN customer on customer.c=order_cust.c
+     GROUP BY lineitem.i, customer.j, customer.v)
+    UNION BY NAME
+    (SELECT i, j, v
+     FROM lineitem
+     INNER JOIN supplier on lineitem.s=supplier.s
+     GROUP BY lineitem.i, supplier.j, supplier.v)
+    )
+    UNION BY NAME
+    (SELECT i, j, v
+     FROM lineitem
+     INNER JOIN part on lineitem.p=part.p
+     GROUP BY lineitem.i, part.j, part.v)
+    ) as X
+    INNER JOIN theta on X.j=theta.j
+    GROUP BY i
+    "
+    query_result = @timed DuckDB.execute(dbconn, query_stmnt)
+    println(query_result)
+end
+
+function fill_table(dbconn, tensor, idx_names, table_name)
+    create_table(dbconn, idx_names, table_name, typeof(default(tensor)))
+    appender = DuckDB.Appender(dbconn, "$table_name")
+    data = tensor_to_vec_of_tuples(tensor)
+    for row in data
+        for val in row
+            DuckDB.append(appender, val)
+        end
+        DuckDB.end_row(appender)
+    end
+    DuckDB.flush(appender)
+    DuckDB.close(appender)
+end
+ =#
 function finch_lr(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, θ; dense=false)
     X = dense ? Tensor(Dense(Dense(Element(0.0)))) : Tensor(Dense(Sparse(Element(0.0))))
     P = Tensor(Dense((Element(0.0))))
@@ -161,11 +218,13 @@ function finch_log(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x,
     return f_time, prediction
 end
 
-function finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, W1, W2; dense=false)
+function finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, W1, W2, W3; dense=false)
     X = dense ? Tensor(Dense(Dense(Element(0.0)))) : Tensor(Dense(Sparse(Element(0.0))))
     h1 = Tensor(Dense(Dense(Element(0.0))))
     h1_relu = Tensor(Dense(Dense(Element(0.0))))
-    h2 = Tensor(Dense(Element(0.0)))
+    h2 = Tensor(Dense(Dense(Element(0.0))))
+    h2_relu = Tensor(Dense(Dense(Element(0.0))))
+    h3 = Tensor(Dense(Element(0.0)))
     prediction = Tensor(Dense(Element(0.5)))
     f_time = @elapsed @finch begin
         X .= 0
@@ -222,7 +281,27 @@ function finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, 
         h2 .= 0
         for i=_
             for j=_
-                h2[i] += h1_relu[j, i] * W2[j]
+                for k=_
+                    h2[k, i] += h1_relu[j, i] * W2[k, j]
+                end
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        h2_relu .= 0
+        for i=_
+            for k=_
+                h2_relu[k, i] = relu(h2[k, i])
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        h3 .= 0
+        for i=_
+            for j=_
+                h3[i] += h2_relu[j, i] * W3[j]
             end
         end
     end
@@ -230,7 +309,7 @@ function finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, 
     f_time += @elapsed @finch begin
         prediction .= 0.5
         for i = _
-            prediction[i] = sigmoid(h2[i])
+            prediction[i] = sigmoid(h3[i])
         end
     end
     return f_time, prediction
@@ -284,8 +363,9 @@ function finch_cov(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x;
     return f_time, cov
 end
 
-function finch_sp_lr2(li_tns, supplier_x, part_x,  θ; dense=false)
-    X = dense ? Tensor(Dense(Sparse(Sparse(Element(0.0))))) : Tensor(Dense(Sparse(Sparse(Element(0.0)))))
+function finch_lr2(li_tns, supplier_x1, supplier_x2, part_x,  θ; dense=false)
+    println("li_tns: $(countstored(li_tns))")
+    X = dense ? Tensor(Dense(Sparse(Dense(Element(0.0))))) : Tensor(Dense(Sparse(Sparse(Element(0.0)))))
     P = Tensor(Dense(SparseList(Element(0.0))))
     f_time = @elapsed @finch begin
         X .= 0
@@ -295,22 +375,7 @@ function finch_sp_lr2(li_tns, supplier_x, part_x,  θ; dense=false)
                     for s1 =_
                         for s2 =_
                             for j =_
-                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] * (part_x[j, p] + supplier_x[j, s1])
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    f_time += @elapsed @finch begin
-        for p = _
-            for i1 =_
-                for i2 =_
-                    for s1 =_
-                        for s2 =_
-                            for j =_
-                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] * supplier_x[j, s2]
+                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] * (part_x[j, p] + supplier_x1[j, s1] + supplier_x2[j, s2])
                             end
                         end
                     end
@@ -329,11 +394,12 @@ function finch_sp_lr2(li_tns, supplier_x, part_x,  θ; dense=false)
             end
         end
     end
+    println("Made Predictions")
     return f_time, P
 end
 
-function finch_sp_log2(li_tns, supplier_x, part_x, θ)
-    X = Tensor(Dense(Sparse(Sparse(Element(0.0)))))
+function finch_log2(li_tns, supplier_x1, supplier_x2, part_x, θ; dense=false)
+    X = dense ? Tensor(Dense(Sparse(Dense(Element(0.0))))) : Tensor(Dense(Sparse(Sparse(Element(0.0)))))
     prediction_inter = Tensor(Dense(SparseList(Element(0.0))))
     prediction = Tensor(Dense(SparseList(Element(0.5))))
     f_time = @elapsed @finch begin
@@ -344,7 +410,7 @@ function finch_sp_log2(li_tns, supplier_x, part_x, θ)
                     for s1 =_
                         for s2 =_
                             for j =_
-                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] *(part_x[j, p] + supplier_x[j, s1] + supplier_x[j, s2])
+                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] * (part_x[j, p] + supplier_x1[j, s1] + supplier_x2[j, s2])
                             end
                         end
                     end
@@ -378,8 +444,8 @@ function finch_sp_log2(li_tns, supplier_x, part_x, θ)
     return f_time, prediction
 end
 
-function finch_sp_cov2(li_tns, supplier_x, part_x)
-    X = Tensor(Dense(Sparse(Sparse(Element(0.0)))))
+function finch_cov2(li_tns, supplier_x1, supplier_x2, part_x; dense=false)
+    X = dense ? Tensor(Dense(Sparse(Dense(Element(0.0))))) : Tensor(Dense(Sparse(Sparse(Element(0.0)))))
     cov = Tensor(Dense(Dense(Element(0.0))))
     f_time = @elapsed @finch begin
         X .= 0
@@ -389,7 +455,7 @@ function finch_sp_cov2(li_tns, supplier_x, part_x)
                     for s1 =_
                         for s2 =_
                             for j =_
-                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] *(part_x[j, p] + supplier_x[j, s1] + supplier_x[j, s2])
+                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] * (part_x[j, p] + supplier_x1[j, s1] + supplier_x2[j, s2])
                             end
                         end
                     end
@@ -412,6 +478,100 @@ function finch_sp_cov2(li_tns, supplier_x, part_x)
         end
     end
     return f_time, cov
+end
+
+function finch_nn2(li_tns, supplier_x1, supplier_x2, part_x, W1, W2, W3; dense=false)
+    X = dense ? Tensor(Dense(Dense(Element(0.0)))) : Tensor(Dense(Sparse(Sparse(Element(0.0)))))
+    h1 = Tensor(Dense(Sparse((Dense(Element(0.0))))))
+    h1_relu = Tensor(Dense(Sparse(Dense(Element(0.0)))))
+    h2 = Tensor(Dense(Sparse(Dense(Element(0.0)))))
+    h2_relu = Tensor(Dense(Sparse(Dense(Element(0.0)))))
+    h3 = Tensor(Dense(Sparse(Element(0.0))))
+    prediction = Tensor(Dense(Sparse(Element(0.5))))
+    f_time = @elapsed @finch begin
+        X .= 0
+        for p = _
+            for i1 =_
+                for i2 =_
+                    for s1 =_
+                        for s2 =_
+                            for j =_
+                                X[j, i2, i1] += li_tns[s1, i1, p] * li_tns[s2, i2, p] * (part_x[j, p] + supplier_x1[j, s1] + supplier_x2[j, s2])
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    f_time += @elapsed @finch begin
+        h1 .= 0
+        for i1=_
+            for i2=_
+                for j=_
+                    for k=_
+                        h1[k, i2, i1] += X[j, i2, i1] * W1[k, j]
+                    end
+                end
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        h1_relu .= 0
+        for i1=_
+            for i2=_
+                for k=_
+                    h1_relu[k, i2, i1] = relu(h1[k, i2, i1])
+                end
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        h2 .= 0
+        for i1=_
+            for i2=_
+                for j=_
+                    for k=_
+                        h2[k, i2, i1] += h1_relu[j, i2, i1] * W2[k, j]
+                    end
+                end
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        h2_relu .= 0
+        for i1=_
+            for i2=_
+                for k=_
+                    h2_relu[k, i2, i1] = relu(h2[k, i2, i1])
+                end
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        h3 .= 0
+        for i1=_
+            for i2=_
+                for j=_
+                    h3[i2, i1] += h2_relu[k, i2, i1] * W3[j]
+                end
+            end
+        end
+    end
+
+    f_time += @elapsed @finch begin
+        prediction .= 0.5
+        for i1 = _
+            for i2=_
+                prediction[i2, i1] = sigmoid(h3[i2, i1])
+            end
+        end
+    end
+    return f_time, prediction
 end
 
 function main()
@@ -450,14 +610,13 @@ function main()
     one_hot_encode_cols!(supplier, [:NationKey])
     part = part[!, [:PartKey, :MFGR, :Brand, :Size, :Container, :RetailPrice]]
     one_hot_encode_cols!(part, [:MFGR, :Brand, :Container])
-    lineitem_y = Vector(lineitem[!, :ExtendedPrice])
     li_tns = cols_to_join_tensor(lineitem, (:PartKey, :SuppKey, :OrderKey,  :LineItemKey), (maximum(values(partkey_idx)), maximum(values(suppkey_idx)), maximum(values(orderkey_idx)), nrow(lineitem)))
     li_tns2 = cols_to_join_tensor(lineitem, (:SuppKey, :LineItemKey, :PartKey), (maximum(values(suppkey_idx)), nrow(lineitem), maximum(values(partkey_idx))))
-    orders_x = Matrix(select(orders, Not([:OrderKey, :CustomerKey])))'
+    orders_x = floor.(Matrix(select(orders, Not([:OrderKey, :CustomerKey])))') .% 100
     order_cust = cols_to_join_tensor(orders, (:CustomerKey, :OrderKey), (maximum(values(customerkey_idx)), maximum(values(orderkey_idx))))
-    customer_x = Matrix(select(customer, Not([:CustomerKey])))'
-    supplier_x = Matrix(select(supplier, Not([:SuppKey])))'
-    part_x = Matrix(select(part, Not([:PartKey])))'
+    customer_x = floor.(Matrix(select(customer, Not([:CustomerKey])))') .% 100
+    supplier_x = floor.(Matrix(select(supplier, Not([:SuppKey])))') .% 100
+    part_x = floor.(Matrix(select(part, Not([:PartKey])))') .% 100
 
     x_starts = cumsum([0, size(orders_x)[1], size(customer_x)[1], size(supplier_x)[1], size(part_x)[1]])
     x_dim = x_starts[end]
@@ -465,8 +624,8 @@ function main()
     customer_x = align_x_dims(customer_x, x_starts[2], x_dim)
     supplier_x = align_x_dims(supplier_x, x_starts[3], x_dim)
     part_x = align_x_dims(part_x, x_starts[4], x_dim)
-
-    n_reps = 3
+    n_reps = 5
+    optimizer = pruned
     X_g = Mat(:i, :j, Σ(:o, :s, :p, MapJoin(*,  Input(li_tns, :p, :s, :o, :i, "li_tns"),
                                                 MapJoin(+, Input(orders_x, :j, :o, "orders_x"),
                                                             Σ(:c, MapJoin(*, Input(order_cust, :c, :o, "order_cust"),
@@ -474,16 +633,18 @@ function main()
                                                             Input(supplier_x, :j, :s, "supplier_x"),
                                                             Input(part_x, :j, :p, "part_x")))))
     insert_statistics!(DCStats, X_g)
-    θ = Tensor(Dense(Element(0.0)), ones(Int, size(supplier_x)[1]) .% 100)
+    θ = Tensor(Dense(Element(0)), ones(Int, size(supplier_x)[1]) .% 100)
+
+    # ---------------- Linear Regression On Star Join -------------------
     P_query = Query(:out, Mat(:i, Aggregate(+, :j, MapJoin(*, X_g[:i, :j], Input(θ, :j)))))
     g_times = []
     g_opt_times = []
-    result = galley(P_query, faq_optimizer=greedy, ST=DCStats, verbose=3)
     for _ in 1:n_reps
-        result_galley = galley(P_query, faq_optimizer=greedy, ST=DCStats,  verbose=0)
+        result_galley = galley(P_query, faq_optimizer=optimizer, ST=DCStats,  verbose=0)
         push!(g_times, result_galley.execute_time)
         push!(g_opt_times, result_galley.opt_time)
     end
+    result = galley(P_query, faq_optimizer=optimizer, ST=DCStats, verbose=3)
 
     f_times = []
     f_ls = []
@@ -500,15 +661,16 @@ function main()
         push!(f_sp_ls, p)
     end
 
+    # ---------------- Logistic Regression On Star Join -------------------
     p_query = Query(:out, Mat(:i, MapJoin(sigmoid, Σ(:k, MapJoin(*, X_g[:i, :k], Input(θ, :k))))))
     g_log_times = []
     g_log_opt_times = []
     for _ in 1:n_reps
-        result_galley = galley(p_query, faq_optimizer=greedy, ST=DCStats,  verbose=0)
+        result_galley = galley(p_query, faq_optimizer=optimizer, ST=DCStats, verbose=0)
         push!(g_log_times, result_galley.execute_time)
         push!(g_log_opt_times, result_galley.opt_time)
     end
-    result_log = galley(p_query, faq_optimizer=greedy, ST=DCStats, verbose=3)
+    result_log = galley(p_query, faq_optimizer=optimizer, ST=DCStats, verbose=3)
 
     f_log_times = []
     f_logs = []
@@ -526,26 +688,29 @@ function main()
         push!(f_sp_logs, prediction)
     end
 
-    hidden_layer_size = 10
+    # ---------------- Neural Network Inference On Star Join -------------------
+    hidden_layer_size = 25
     feature_size = size(part_x)[1]
-    W1 = Tensor(Dense(Dense(Element(0.0))), rand(hidden_layer_size, feature_size))
+    W1 = Tensor(Dense(Dense(Element(0))), rand(Int, hidden_layer_size, feature_size) .% 10)
     h1 = Mat(:i, :k1, MapJoin(relu, Σ(:j, MapJoin(*, X_g[:i, :j], Input(W1, :k1, :j)))))
-    W2 = Tensor(Dense(Element(0.0)), rand(hidden_layer_size))
-    h2 = Mat(:i, MapJoin(sigmoid, Σ(:k1, MapJoin(*, h1[:i, :k1], Input(W2, :k1)))))
-    P = Query(:out, h2)
+    W2 = Tensor(Dense(Dense(Element(0))), rand(Int, hidden_layer_size, hidden_layer_size) .% 10)
+    h2 = Mat(:i, :k2, MapJoin(relu, Σ(:k1, MapJoin(*, h1[:i, :k1], Input(W2, :k2, :k1)))))
+    W3 = Tensor(Dense(Element(0)), rand(Int, hidden_layer_size) .% 10)
+    h3 = Mat(:i, MapJoin(sigmoid, Σ(:k2, MapJoin(*, h2[:i, :k2], Input(W3, :k2)))))
+    P = Query(:out, h3)
     g_nn_times = []
     g_nn_opt_times = []
     for _ in 1:n_reps
-        result_galley = galley(P, faq_optimizer=greedy, ST=DCStats,  verbose=0)
+        result_galley = galley(P, faq_optimizer=optimizer, ST=DCStats,  verbose=0)
         push!(g_nn_times, result_galley.execute_time)
         push!(g_nn_opt_times, result_galley.opt_time)
     end
-    result_nn = galley(P, faq_optimizer=greedy, ST=DCStats, verbose=3)
+    result_nn = galley(P, faq_optimizer=optimizer, ST=DCStats, verbose=3)
 
     f_nn_times = []
     f_nns = []
     for _ in 1:n_reps
-        f_time, prediction = finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, W1, W2; dense=true)
+        f_time, prediction = finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, W1, W2, W3; dense=true)
         push!(f_nn_times, f_time)
         push!(f_nns, prediction)
     end
@@ -553,19 +718,21 @@ function main()
     f_sp_nn_times = []
     f_sp_nns = []
     for _ in 1:n_reps
-        f_time, prediction = finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, W1, W2; dense=false)
+        f_time, prediction = finch_nn(li_tns, orders_x, order_cust, customer_x, supplier_x, part_x, W1, W2, W3; dense=false)
         push!(f_sp_nn_times, f_time)
         push!(f_sp_nns, prediction)
     end
+
+    # ---------------- Covariance Matrix Computation On Star Join -------------------
     P = Query(:out, Mat(:j, :k, Σ(:i, MapJoin(*, X_g[:i, :j], X_g[:i, :k]))))
     g_cov_times = []
     g_cov_opt_times = []
     for _ in 1:n_reps
-        result_galley = galley(P, faq_optimizer=greedy, ST=DCStats,  verbose=3)
+        result_galley = galley(P, faq_optimizer=optimizer, ST=DCStats,  verbose=0)
         push!(g_cov_times, result_galley.execute_time)
         push!(g_cov_opt_times, result_galley.opt_time)
     end
-    result_cov = galley(P, faq_optimizer=greedy, ST=DCStats, verbose=3)
+    result_cov = galley(P, faq_optimizer=optimizer, ST=DCStats, verbose=3)
 
     f_cov_times = []
     f_covs = []
@@ -583,25 +750,26 @@ function main()
         push!(f_sp_covs, prediction)
     end
 
-     println("Galley Exec: $(minimum(g_times))")
-    println("Galley Opt: $(minimum(g_opt_times))")
-    println("Finch (Dense) Exec: $(minimum(f_times))")
-    println("Finch (Sparse) Exec: $(minimum(f_sp_times))")
+    # TODO: print out the median, minimum and max to get a sense of variance
+    println("Galley Exec: (Min: $(minimum(g_times[2:end])), Mean: $(mean(g_times[2:end])), Max: $(maximum(g_times[2:end]))]")
+    println("Galley Opt: (Min: $(minimum(g_opt_times[2:end])), Mean: $(mean(g_opt_times[2:end])), Max: $(maximum(g_opt_times[2:end]))]")
+    println("Finch (Dense) Exec: $(mean(f_times[2:end]))")
+    println("Finch (Sparse) Exec: $(mean(f_sp_times[2:end]))")
     println("∑|F_i - G_i|: $(sum(abs.(f_ls[1] - result.value)))")
-    println("Galley Log Exec: $(minimum(g_log_times))")
-    println("Galley Log Opt: $(minimum(g_log_opt_times))")
-    println("Finch (Dense) Log Exec: $(minimum(f_log_times))")
-    println("Finch (Sparse) Log Exec: $(minimum(f_sp_log_times))")
+    println("Galley Log Exec: (Min: $(minimum(g_log_times[2:end])), Mean: $(mean(g_log_times[2:end])), Max: $(maximum(g_log_times[2:end]))]")
+    println("Galley Log Opt: (Min: $(minimum(g_log_opt_times[2:end])), Mean: $(mean(g_log_opt_times[2:end])), Max: $(maximum(g_log_opt_times[2:end]))]")
+    println("Finch (Dense) Log Exec: $(mean(f_log_times[2:end]))")
+    println("Finch (Sparse) Log Exec: $(mean(f_sp_log_times[2:end]))")
     println("∑|F_i - G_i|: $(sum(abs.(f_logs[1] - result_log.value)))")
-    println("Galley NN Exec: $(minimum(g_nn_times))")
-    println("Galley NN Opt: $(minimum(g_nn_opt_times))")
-    println("Finch (Dense) NN Exec: $(minimum(f_nn_times))")
-    println("Finch (Sparse) NN Exec: $(minimum(f_sp_nn_times))")
+    println("Galley NN Exec: (Min: $(minimum(g_nn_times[2:end])), Mean: $(mean(g_nn_times[2:end])), Max: $(maximum(g_nn_times[2:end]))]")
+    println("Galley NN Opt: (Min: $(minimum(g_nn_opt_times[2:end])), Mean: $(mean(g_nn_opt_times[2:end])), Max: $(maximum(g_nn_opt_times[2:end]))]")
+    println("Finch (Dense) NN Exec: $(mean(f_nn_times[2:end]))")
+    println("Finch (Sparse) NN Exec: $(mean(f_sp_nn_times[2:end]))")
     println("∑|F_i - G_i|: $(sum(abs.(f_nns[1] - result_nn.value)))")
-    println("Galley Cov Exec: $(minimum(g_cov_times))")
-    println("Galley Cov Opt: $(minimum(g_cov_opt_times))")
-    println("Finch (Dense) Cov Exec: $(minimum(f_cov_times))")
-    println("Finch (Sparse) Cov Exec: $(minimum(f_sp_cov_times))")
+    println("Galley Cov Exec: (Min: $(minimum(g_cov_times[2:end])), Mean: $(mean(g_cov_times[2:end])), Max: $(maximum(g_cov_times[2:end]))]")
+    println("Galley Cov Opt: (Min: $(minimum(g_cov_opt_times[2:end])), Mean: $(mean(g_cov_opt_times[2:end])), Max: $(maximum(g_cov_opt_times[2:end]))]")
+    println("Finch (Dense) Cov Exec: $(mean(f_cov_times[2:end]))")
+    println("Finch (Sparse) Cov Exec: $(mean(f_sp_cov_times[2:end]))")
     println("∑|F_i - G_i|: $(sum(abs.(f_covs[1] - result_cov.value)))")
 
     f_ls = []
@@ -610,133 +778,224 @@ function main()
     f_sp_logs = []
     f_nns = []
     results = [("Algorithm", "Method", "ExecuteTime", "OptTime")]
-    push!(results, ("Linear Regression (SQ)", "Galley", string(minimum(g_times)), string(minimum(g_opt_times))))
-    push!(results, ("Linear Regression (SQ)", "Finch (Dense)", string(minimum(f_times)), string(0)))
-    push!(results, ("Linear Regression (SQ)", "Finch (Sparse)", string(minimum(f_sp_times)), string(0)))
-    push!(results, ("Logistic Regression (SQ)", "Galley", string(minimum(g_log_times)), string(minimum(g_log_opt_times))))
-    push!(results, ("Logistic Regression (SQ)", "Finch (Dense)", string(minimum(f_log_times)), string(0)))
-    push!(results, ("Logistic Regression (SQ)", "Finch (Sparse)", string(minimum(f_sp_log_times)), string(0)))
-    push!(results, ("Neural Network (SQ)", "Galley", string(minimum(g_nn_times)), string(minimum(g_nn_opt_times))))
-    push!(results, ("Neural Network (SQ)", "Finch (Dense)", string(minimum(f_nn_times)), string(0)))
-    push!(results, ("Neural Network (SQ)", "Finch (Sparse)", string(minimum(f_sp_nn_times)), string(0)))
-    push!(results, ("Covariance (SQ)", "Galley", string(minimum(g_cov_times)), string(minimum(g_cov_opt_times))))
-    push!(results, ("Covariance (SQ)", "Finch (Dense)", string(minimum(f_cov_times)), string(0)))
-    push!(results, ("Covariance (SQ)", "Finch (Sparse)", string(minimum(f_sp_cov_times)), string(0)))
+    push!(results, ("Linear Regression (SQ)", "Galley", string(mean(g_times[2:end])), string(mean(g_opt_times[2:end]))))
+    push!(results, ("Linear Regression (SQ)", "Finch (Dense)", string(mean(f_times[2:end])), string(0)))
+    push!(results, ("Linear Regression (SQ)", "Finch (Sparse)", string(mean(f_sp_times[2:end])), string(0)))
+    push!(results, ("Logistic Regression (SQ)", "Galley", string(mean(g_log_times[2:end])), string(mean(g_log_opt_times[2:end]))))
+    push!(results, ("Logistic Regression (SQ)", "Finch (Dense)", string(mean(f_log_times[2:end])), string(0)))
+    push!(results, ("Logistic Regression (SQ)", "Finch (Sparse)", string(mean(f_sp_log_times[2:end])), string(0)))
+    push!(results, ("Neural Network (SQ)", "Galley", string(mean(g_nn_times[2:end])), string(mean(g_nn_opt_times[2:end]))))
+    push!(results, ("Neural Network (SQ)", "Finch (Dense)", string(mean(f_nn_times[2:end])), string(0)))
+    push!(results, ("Neural Network (SQ)", "Finch (Sparse)", string(mean(f_sp_nn_times[2:end])), string(0)))
+    push!(results, ("Covariance (SQ)", "Galley", string(mean(g_cov_times[2:end])), string(mean(g_cov_opt_times[2:end]))))
+    push!(results, ("Covariance (SQ)", "Finch (Dense)", string(mean(f_cov_times[2:end])), string(0)))
+    push!(results, ("Covariance (SQ)", "Finch (Sparse)", string(mean(f_sp_cov_times[2:end])), string(0)))
 
     # This formulation makes each row of the output a pair of line items for the same part
     # and includes information about their suppliers li_tns[s1, i1, p]
+    supplier_x = floor.(Matrix(select(supplier, Not([:SuppKey])))') .% 100
+    part_x = floor.(Matrix(select(part, Not([:PartKey])))') .% 100
+    x_starts = cumsum([0, size(supplier_x)[1], size(supplier_x)[1], size(part_x)[1]])
+    x_dim = x_starts[end]
+    supplier_x1 = align_x_dims(supplier_x, x_starts[1], x_dim)
+    supplier_x2 = align_x_dims(supplier_x, x_starts[2], x_dim)
+    part_x = align_x_dims(part_x, x_starts[3], x_dim)
+
     X_g = Mat(:i1, :i2, :j,
-              Σ(:p, :s1, :s2, MapJoin(*, Input(li_tns2, :s1, :i1, :p, "li_part"),
+              Σ(:p, :s1, :s2, MapJoin(*,Input(li_tns2, :s1, :i1, :p, "li_part"),
                                         Input(li_tns2, :s2, :i2, :p, "li_part"),
                                         MapJoin(+,
                                                     Input(part_x, :j, :p, "part_x"),
-                                                    Input(supplier_x, :j, :s1, "supplier_x"),
-                                                    Input(supplier_x, :j, :s2, "supplier_x")))))
+                                                    Input(supplier_x1, :j, :s1, "supplier_x1"),
+                                                    Input(supplier_x2, :j, :s2, "supplier_x2")))))
     insert_statistics!(DCStats, X_g)
-    θ = Tensor(Dense(Element(0.0)), ones(Int, size(supplier_x)[1]) .% 100)
+    θ = Tensor(Dense(Element(0.0)), ones(Int, size(supplier_x1)[1]) .% 100)
+
+    # ---------------- Linear Regression On Many-Many Join -------------------
     p_query = Query(:out, Materialize(t_undef, t_undef, :i1, :i2,  Σ(:k, MapJoin(*, X_g[:i1, :i2, :k], Input(θ, :k)))))
     g_times = []
     g_opt_times = []
     for _ in 1:n_reps
-        result_galley = galley(p_query, ST=DCStats, faq_optimizer=greedy,  verbose=0)
+        result_galley = galley(p_query, ST=DCStats, faq_optimizer=optimizer,  verbose=0)
         push!(g_times, result_galley.execute_time)
         push!(g_opt_times, result_galley.opt_time)
     end
-    result = galley(p_query, ST=DCStats, faq_optimizer=greedy, verbose=3)
+    result = galley(p_query, ST=DCStats, faq_optimizer=optimizer, verbose=3)
+
+    f_sp_times = []
+    f_l = nothing
+    for _ in 1:n_reps
+        f_time, P = finch_lr2(li_tns2, supplier_x1, supplier_x2, part_x, θ)
+        push!(f_sp_times, f_time)
+        f_l = P
+    end
 
     f_times = []
     f_l = nothing
     for _ in 1:n_reps
-        f_time, P = finch_sp_lr2(li_tns2, supplier_x, part_x, θ)
+        f_time, P = finch_lr2(li_tns2, supplier_x1, supplier_x2, part_x, θ; dense=true)
         push!(f_times, f_time)
         f_l = P
     end
 
-    # Logistic Regression On Many-Many Join
+    # ---------------- Logistic Regression On Many-Many Join -------------------
     p_g = Query(:P, Materialize(t_undef, t_undef, :i1, :i2, MapJoin(sigmoid, Σ(:k, MapJoin(*, X_g[:i1, :i2, :k], Input(θ, :k))))))
     g_log_times = []
     g_log_opt_times = []
     for _ in 1:n_reps
-        result_galley = galley(p_g, ST=DCStats, faq_optimizer=greedy, verbose=0)
+        result_galley = galley(p_g, ST=DCStats, faq_optimizer=optimizer, verbose=0)
         push!(g_log_times, result_galley.execute_time)
         push!(g_log_opt_times, result_galley.opt_time)
     end
-    result_log = galley(p_g, ST=DCStats, faq_optimizer=greedy, verbose=3)
+    result_log = galley(p_g, ST=DCStats, faq_optimizer=optimizer, verbose=3)
+
+    f_sp_log_times = []
+    f_log = nothing
+    for _ in 1:n_reps
+        f_time, P = finch_log2(li_tns2, supplier_x1, supplier_x2, part_x, θ)
+        push!(f_sp_log_times, f_time)
+        f_log = P
+    end
 
     f_log_times = []
     f_log = nothing
     for _ in 1:n_reps
-        f_time, P = finch_sp_log2(li_tns2, supplier_x, part_x, θ)
+        f_time, P = finch_log2(li_tns2, supplier_x1, supplier_x2, part_x, θ; dense=true)
         push!(f_log_times, f_time)
         f_log = P
     end
 
-    # Logistic Regression On Many-Many Join
-    p_g = Query(:P, Materialize(t_undef, t_undef, :j, :k, Σ(:i1, :i2, MapJoin(*, X_g[:i1, :i2, :k], X_g[:i1, :i2, :j]))))
-    g_log_times = []
-    g_log_opt_times = []
+    # ---------------- Covariance Matrix Computation On Many-Many Join -------------------
+    cov_g = Query(:P, Materialize(t_undef, t_undef, :j, :k, Σ(:i1, :i2, MapJoin(*, X_g[:i1, :i2, :k], X_g[:i1, :i2, :j]))))
+    g_cov_times = []
+    g_cov_opt_times = []
     for _ in 1:n_reps
-        result_galley = galley(p_g, ST=DCStats, faq_optimizer=greedy, verbose=0)
-        push!(g_log_times, result_galley.execute_time)
-        push!(g_log_opt_times, result_galley.opt_time)
+        result_galley = galley(cov_g, ST=DCStats, faq_optimizer=optimizer, verbose=0)
+        push!(g_cov_times, result_galley.execute_time)
+        push!(g_cov_opt_times, result_galley.opt_time)
     end
-    result_log = galley(p_g, ST=DCStats, faq_optimizer=greedy, verbose=3)
+    result_cov = galley(cov_g, ST=DCStats, faq_optimizer=optimizer, verbose=3)
+
+    f_sp_cov_times = []
+    f_cov = nothing
+    for _ in 1:n_reps
+        f_time, P = finch_cov2(li_tns2, supplier_x1, supplier_x2, part_x)
+        push!(f_sp_cov_times, f_time)
+        f_cov = P
+    end
 
     f_cov_times = []
     f_cov = nothing
     for _ in 1:n_reps
-        f_time, P = finch_sp_cov2(li_tns2, supplier_x, part_x)
+        f_time, P = finch_cov2(li_tns2, supplier_x1, supplier_x2, part_x; dense=true)
         push!(f_cov_times, f_time)
         f_cov = P
     end
-    println("Galley Exec: $(minimum(g_times))")
-    println("Galley Opt: $(minimum(g_opt_times))")
-    println("Finch Exec: $(minimum(f_times))")
-    println("F = G: $(sum(abs.(f_l .- result.value)))")
-    println("Galley Log Exec: $(minimum(g_log_times))")
-    println("Galley Log Opt: $(minimum(g_log_opt_times))")
-    println("Finch Log Exec: $(minimum(f_log_times))")
-    println("F = G: $(sum(abs.(f_log .- result_log.value)))")
-    println("Galley Cov Exec: $(minimum(g_cov_times))")
-    println("Galley Cov Opt: $(minimum(g_cov_opt_times))")
-    println("Finch Cov Exec: $(minimum(f_cov_times))")
-    println("F = G: $(sum(abs.(f_cov .- result_cov.value)))")
+ #=
 
-    push!(results, ("Linear Regression (SJ)", "Galley", string(minimum(g_times)), string(minimum(g_opt_times))))
-    push!(results, ("Linear Regression (SJ)", "Finch (Sparse)", string(minimum(f_times)), string(0)))
-    push!(results, ("Logistic Regression (SJ)", "Galley", string(minimum(g_log_times)), string(minimum(g_log_opt_times))))
-    push!(results, ("Logistic Regression (SJ)", "Finch (Sparse)", string(minimum(f_log_times)), string(0)))
-    push!(results, ("Covariance (SJ)", "Galley", string(minimum(g_cov_times)), string(minimum(g_cov_opt_times))))
-    push!(results, ("Covariance (SJ)", "Finch (Sparse)", string(minimum(f_cov_times)), string(0)))
+    # ---------------- Neural Network Inference On Self Join -------------------
+    hidden_layer_size = 25
+    feature_size = size(part_x)[1]
+    W1 = Tensor(Dense(Dense(Element(0))), rand(Int, hidden_layer_size, feature_size) .% 10)
+    h1 = Mat(:i1, :i2, :k1, MapJoin(relu, Σ(:j, MapJoin(*, X_g[:i1, :i2, :j], Input(W1, :k1, :j)))))
+    W2 = Tensor(Dense(Dense(Element(0))), rand(Int, hidden_layer_size, hidden_layer_size) .% 10)
+    h2 = Mat(:i1, :i2, :k2, MapJoin(relu, Σ(:k1, MapJoin(*, h1[:i1, :i2, :k1], Input(W2, :k2, :k1)))))
+    W3 = Tensor(Dense(Element(0)), rand(Int, hidden_layer_size) .% 10)
+    h3 = Mat(:i1, :i2, MapJoin(sigmoid, Σ(:k2, MapJoin(*, h2[:i1, :i2, :k2], Input(W3, :k2)))))
+    P = Query(:out, h3)
+    g_nn_times = []
+    g_nn_opt_times = []
+    for _ in 1:n_reps
+        result_galley = galley(P, faq_optimizer=optimizer, ST=DCStats,  verbose=3)
+        push!(g_nn_times, result_galley.execute_time)
+        push!(g_nn_opt_times, result_galley.opt_time)
+    end
+    result_nn = galley(P, faq_optimizer=optimizer, ST=DCStats, verbose=3)
+
+    f_sp_nn_times = []
+    f_nn = nothing
+    for _ in 1:n_reps
+        f_time, P = finch_nn2(li_tns2, supplier_x1, supplier_x2, part_x, W1, W2, W3)
+        push!(f_sp_nn_times, f_time)
+        f_nn = P
+    end
+
+    f_nn_times = []
+    f_nn = nothing
+    for _ in 1:n_reps
+        f_time, P = finch_nn2(li_tns2, supplier_x1, supplier_x2, part_x, W1, W2, W3; dense=true)
+        push!(f_nn_times, f_time)
+        f_nn = P
+    end
+ =#
+
+    println("Galley Exec: (Min: $(minimum(g_times[2:end])), Mean: $(mean(g_times[2:end])), Max: $(maximum(g_times[2:end]))]")
+    println("Galley Opt: (Min: $(minimum(g_opt_times[2:end])), Mean: $(mean(g_opt_times[2:end])), Max: $(maximum(g_opt_times[2:end]))]")
+    println("Finch (Sparse) Exec: $(mean(f_sp_times[2:end]))")
+    println("Finch (Dense) Exec: $(mean(f_times[2:end]))")
+    println("F = G: $(sum(abs.(f_l .- result.value)))")
+    println("Galley Log Exec: (Min: $(minimum(g_log_times[2:end])), Mean: $(mean(g_log_times[2:end])), Max: $(maximum(g_log_times[2:end]))]")
+    println("Galley Log Opt: (Min: $(minimum(g_log_opt_times[2:end])), Mean: $(mean(g_log_opt_times[2:end])), Max: $(maximum(g_log_opt_times[2:end]))]")
+    println("Finch (Sparse) Log Exec: $(mean(f_sp_log_times[2:end]))")
+    println("Finch (Dense) Log Exec: $(mean(f_log_times[2:end]))")
+    println("F = G: $(sum(abs.(f_log .- result_log.value)))")
+    println("Galley Cov Exec: (Min: $(minimum(g_cov_times[2:end])), Mean: $(mean(g_cov_times[2:end])), Max: $(maximum(g_cov_times[2:end]))]")
+    println("Galley Cov Opt: (Min: $(minimum(g_cov_opt_times[2:end])), Mean: $(mean(g_cov_opt_times[2:end])), Max: $(maximum(g_cov_opt_times[2:end]))]")
+    println("Finch (Sparse) Cov Exec: $(mean(f_sp_cov_times[2:end]))")
+    println("Finch (Dense) Cov Exec: $(mean(f_cov_times[2:end]))")
+    println("F = G: $(sum(abs.(f_cov .- result_cov.value)))")
+#    println("Galley NN Exec: (Min: $(minimum(g_nn_times[2:end])), Mean: $(mean(g_nn_times[2:end])), Max: $(maximum(g_nn_times[2:end]))]")
+#    println("Galley NN Opt: (Min: $(minimum(g_nn_opt_times[2:end])), Mean: $(mean(g_nn_opt_times[2:end])), Max: $(maximum(g_nn_opt_times[2:end]))]")
+#    println("Finch (Sparse) NN Exec: $(mean(f_sp_nn_times[2:end]))")
+#    println("Finch (Dense) NN Exec: $(mean(f_nn_times[2:end]))")
+#    println("F = G: $(sum(abs.(f_n .- result_nn.value)))")
+
+    push!(results, ("Linear Regression (SJ)", "Galley", string(mean(g_times[2:end])), string(mean(g_opt_times[2:end]))))
+    push!(results, ("Linear Regression (SJ)", "Finch (Sparse)", string(mean(f_sp_times[2:end])), string(0)))
+    push!(results, ("Linear Regression (SJ)", "Finch (Dense)", string(mean(f_times[2:end])), string(0)))
+    push!(results, ("Logistic Regression (SJ)", "Galley", string(mean(g_log_times[2:end])), string(mean(g_log_opt_times[2:end]))))
+    push!(results, ("Logistic Regression (SJ)", "Finch (Sparse)", string(mean(f_sp_log_times[2:end])), string(0)))
+    push!(results, ("Logistic Regression (SJ)", "Finch (Dense)", string(mean(f_log_times[2:end])), string(0)))
+    push!(results, ("Covariance (SJ)", "Galley", string(mean(g_cov_times[2:end])), string(mean(g_cov_opt_times[2:end]))))
+    push!(results, ("Covariance (SJ)", "Finch (Sparse)", string(mean(f_sp_cov_times[2:end])), string(0)))
+    push!(results, ("Covariance (SJ)", "Finch (Dense)", string(mean(f_cov_times[2:end])), string(0)))
+#    push!(results, ("Neural Network (SJ)", "Galley", string(mean(g_nn_times[2:end])), string(mean(g_nn_opt_times[2:end]))))
+#    push!(results, ("Neural Network (SJ)", "Finch (Sparse)", string(mean(f_sp_nn_times[2:end])), string(0)))
+#    push!(results, ("Neural Network (SJ)", "Finch (Dense)", string(mean(f_nn_times[2:end])), string(0)))
 
     writedlm("Experiments/Results/tpch_inference.csv", results, ',')
-    data = CSV.read("Experiments/Results/tpch_inference.csv", DataFrame)
-    data[!, :Speedup] = copy(data[!, :ExecuteTime])
+    data = vcat(CSV.read("Experiments/Results/tpch_inference.csv", DataFrame), CSV.read("Experiments/Results/tpch_inference_python.csv", DataFrame))
+    data = data[(data.Method .!= "Pandas"), :]
+    data = data[(data.Method .!= "Pandas+BLAS"), :]
+    data = data[(data.Algorithm .!= "Neural Network (SJ)"), :]
+    data[!, :RelativeExecTime] = copy(data[!, :ExecuteTime])
     for alg in unique(data.Algorithm)
         if length(data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime]) > 0
-            data[data.Algorithm .== alg, :Speedup] = data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime] ./ data[data.Algorithm .== alg, :Speedup]
+            data[data.Algorithm .== alg, :RelativeExecTime] = data[data.Algorithm .== alg, :RelativeExecTime] ./ data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime]
         else
-            data[data.Algorithm .== alg, :Speedup] = data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Dense)"), :ExecuteTime] ./ data[data.Algorithm .== alg, :Speedup]
+            data[data.Algorithm .== alg, :RelativeExecTime] = data[data.Algorithm .== alg, :RelativeExecTime] ./ data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Dense)"), :ExecuteTime]
         end
     end
-    data[!, :Speedup] = log10.(data.Speedup)
+    data[!, :RelativeExecTime] = log10.(data.RelativeExecTime)
     ordered_methods = CategoricalArray(data.Method)
-    levels!(ordered_methods, ["Galley", "Finch (Dense)", "Finch (Sparse)"])
+#    levels!(ordered_methods, ["Galley", "Finch (Dense)", "Finch (Sparse)", "Pandas", "Pandas+Numpy", "Pandas+BLAS"])
+    levels!(ordered_methods, ["Galley", "Finch (Dense)", "Finch (Sparse)", "Pandas+Numpy"])
     gbplot = StatsPlots.groupedbar(data.Algorithm,
-                                    data.Speedup,
+                                    data.RelativeExecTime,
                                     group = ordered_methods,
-                                    legend = :topright,
-                                    size = (1800, 700),
-                                    ylabel = "Speedup (10^x)",
-                                    ylims=[-.5, 2.5],
-                                    xtickfontsize=15,
-                                    ytickfontsize=15,
-                                    xguidefontsize=16,
-                                    yguidefontsize=16,
-                                    legendfontsize=16,
-                                    left_margin=15mm,
-                                    bottom_margin=10mm,
-                                    fillrange=-1)
+                                    legend = :topleft,
+                                    size = (2600, 700),
+                                    ylabel = "Relative RelativeExecTime",
+                                    ylims=[-3.2, 1.0],
+                                    yticks=([-3, -2, -1, 0, 1], [".001", ".01", ".1", "1", "10"]),
+                                    xtickfontsize=18,
+                                    ytickfontsize=18,
+                                    xguidefontsize=20,
+                                    yguidefontsize=20,
+                                    legendfontsize=20,
+                                    left_margin=15Measures.mm,
+                                    bottom_margin=10Measures.mm,
+                                    fillrange=-4)
     savefig(gbplot, "Experiments/Figures/tpch_inference.png")
 end
 

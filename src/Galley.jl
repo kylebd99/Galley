@@ -141,7 +141,7 @@ function galley(input_queries::Vector{PlanNode};
     alias_to_loop_order = Dict{IndexExpr, Vector{IndexExpr}}()
     physical_queries = []
     for s_query in split_queries
-        p_queries = logical_query_to_physical_queries(s_query, ST, alias_stats; include_alias_transpose=false)
+        p_queries = logical_query_to_physical_queries(s_query, ST, alias_stats; only_add_loop_order=false, transpose_aliases=false)
         for p_query in p_queries
             alias_stats[p_query.name.name] = p_query.expr.stats
             for n in PostOrderDFS(p_query.expr)
@@ -175,6 +175,7 @@ function galley(input_queries::Vector{PlanNode};
     for query in physical_queries
         insert_node_ids!(query)
         insert_statistics!(ST, query, bindings=alias_stats)
+        # Choose access protocols
         modify_protocols!(query.expr)
         alias_stats[query.name.name] = query.expr.stats
         @assert !isnothing(get_index_order(alias_stats[query.name.name])) "$(query.name.name)"
@@ -191,23 +192,23 @@ function galley(input_queries::Vector{PlanNode};
     #      Finch.
     #   4. Touch Up: We check the actual output cardinality and fix our stats accordingly.
     plan_hash_result, alias_result = Dict(), Dict{IndexExpr, Any}()
-    for p_query in physical_queries
-        verbose > 2 && println("--------------- Computing: $(p_query.name) ---------------")
-        verbose > 2 && println(p_query)
-        verbose > 3 && validate_physical_query(p_query)
+    for query in physical_queries
+        verbose > 2 && println("--------------- Computing: $(query.name) ---------------")
+        verbose > 2 && println(query)
+        verbose > 3 && validate_physical_query(query)
         exec_start = time()
-        p_query_hash = cannonical_hash(p_query.expr, alias_hash)
-        alias_hash[p_query.name.name] = p_query_hash
-        if simple_cse && haskey(plan_hash_result, p_query_hash)
-            alias_result[p_query.name.name] = plan_hash_result[p_query_hash]
+        query_hash = cannonical_hash(query.expr, alias_hash)
+        alias_hash[query.name.name] = query_hash
+        if simple_cse && haskey(plan_hash_result, query_hash)
+            alias_result[query.name.name] = plan_hash_result[query_hash]
         else
-            execute_query(alias_result, p_query, verbose)
-            plan_hash_result[p_query_hash] = alias_result[p_query.name.name]
+            execute_query(alias_result, query, verbose)
+            plan_hash_result[query_hash] = alias_result[query.name.name]
         end
         total_exec_time += time() - exec_start
-        if update_cards && alias_result[p_query.name.name] isa Tensor
+        if update_cards && alias_result[query.name.name] isa Tensor
             count_start = time()
-            fix_cardinality!(alias_stats[p_query.name.name], count_non_default(alias_result[p_query.name.name]))
+            fix_cardinality!(alias_stats[query.name.name], count_non_default(alias_result[query.name.name]))
             total_count_time += time() - count_start
         end
     end

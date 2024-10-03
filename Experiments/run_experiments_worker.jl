@@ -31,9 +31,6 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, false))
     for query in queries[starting_query:end]
         println("Query Path: ", query.query_path)
-        if false && !occursin("Graph_12/uf_Q_0_1", query.query_path)
-            continue
-        end
         num_attempted +=1
         try
             if experiment.use_duckdb

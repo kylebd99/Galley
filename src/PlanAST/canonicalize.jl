@@ -65,7 +65,6 @@ function _insert_statistics!(ST, expr::PlanNode; bindings = Dict(), replace=fals
         if haskey(bindings, expr.name)
             expr.stats = bindings[expr.name]
         end
-
         if !isnothing(expr.stats)
             idxs = [idx.name for idx in expr.idxs]
             stats_order = get_index_order(expr.stats)

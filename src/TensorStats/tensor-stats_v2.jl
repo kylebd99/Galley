@@ -473,11 +473,15 @@ function reindex_stats(stats::DCStats, indices::Vector{IndexExpr})
     rename_dict = Dict(get_index_order(stats)[i]=> indices[i] for i in eachindex(indices))
     new_idx_to_int = Dict{IndexExpr, Int}()
     for (idx, int) in stats.idx_2_int
-        new_idx_to_int[rename_dict[idx]] = int
+        if haskey(rename_dict, idx)
+            new_idx_to_int[rename_dict[idx]] = int
+        else
+            new_idx_to_int[idx] = int
+        end
     end
     new_int_to_idx = Dict{Int, IndexExpr}()
-    for (int, idx) in stats.int_2_idx
-        new_int_to_idx[int] = rename_dict[idx]
+    for (idx, int) in new_idx_to_int
+        new_int_to_idx[int] = idx
     end
     return DCStats(new_def, new_idx_to_int, new_int_to_idx, copy(stats.dcs))
 end

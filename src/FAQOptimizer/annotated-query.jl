@@ -6,7 +6,7 @@ mutable struct AnnotatedQuery
     reduce_idxs::Vector{IndexExpr}
     point_expr::PlanNode
     idx_lowest_root::Dict{IndexExpr, Int}
-    idx_op::Dict{IndexExpr, Function}
+    idx_op::Dict{IndexExpr, Any}
     id_to_node::Dict{Int, PlanNode}
     parent_idxs::Dict{IndexExpr, Vector{IndexExpr}} # Index orders that must be respected
     original_idx::Dict{IndexExpr, IndexExpr} # When an index is split into many, we track their relationship.
@@ -218,6 +218,7 @@ function AnnotatedQuery(q::PlanNode, ST)
             if intree(idx2_bottom_root, idx1_bottom_root)
                 push!(connected_idxs[idx1], idx2)
             end
+
             mergeable_agg_op = (idx1_op == idx2_op && isassociative(idx1_op) && iscommutative(idx1_op))
             # If idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
             if isdescendant(idx2_top_root, idx1_bottom_root)
@@ -374,9 +375,6 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
         comp_factor = length(get_index_set(comp_stats)) * ComputeCost
         cost = estimate_nnz(comp_stats) * comp_factor + mat_size * mat_factor
         forced_transpose_cost = get_forced_transpose_cost(query.expr)
-        if count_index_occurences([query.expr.arg]) > 10
-            cost += count_index_occurences([query.expr]) * cost # We really would rather not split.
-        end
         if cost == Inf
             println("INFINITE QUERY FOR: $reduce_idx")
             println(query)
@@ -413,7 +411,7 @@ end
 
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
-function reduce_idx!(reduce_idx, aq; do_condense=false)
+function reduce_idx!(reduce_idx, aq; do_condense=true)
     query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
     # This plan_copy is structural important
     query = plan_copy(query)

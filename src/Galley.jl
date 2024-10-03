@@ -191,7 +191,7 @@ function galley(input_queries::Vector{PlanNode};
     #   3. Execution: No more decisions are made, we simply build the kernel and hand it to
     #      Finch.
     #   4. Touch Up: We check the actual output cardinality and fix our stats accordingly.
-    plan_hash_result, alias_result = Dict(), Dict{IndexExpr, Any}()
+    plan_hash_result, alias_result = Dict{UInt64, Any}(), Dict{IndexExpr, Any}()
     for query in physical_queries
         verbose > 2 && println("--------------- Computing: $(query.name) ---------------")
         verbose > 2 && println(query)

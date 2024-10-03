@@ -51,7 +51,7 @@ end
 # TODO: use loop_order to label indexes
 function execute_query(alias_dict, q::PlanNode, verbose)
     tensor_counter = [0]
-    index_sym_dict = Dict()
+    index_sym_dict = Dict{IndexExpr, IndexExpr}()
     name = q.name.name
     mat_expr = q.expr
     loop_order = [idx.name for idx in q.loop_order]

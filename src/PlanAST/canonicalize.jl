@@ -21,7 +21,7 @@ end
 
 # In cannonical form, two aggregates in the plan shouldn't reduce out the same variable.
 # E.g. MapJoin(*, Aggregate(+, Input(tns, i, j)))
-function unique_indices(scope_dict, n::PlanNode, counter)
+function unique_indices(scope_dict::Dict{IndexExpr, IndexExpr}, n::PlanNode, counter)
     if n.kind === Plan
         return Plan([unique_indices(scope_dict, query, counter) for query in n.queries]..., n.outputs)
     elseif n.kind === Query
@@ -51,7 +51,7 @@ function unique_indices(scope_dict, n::PlanNode, counter)
     end
 end
 
-function _insert_statistics!(ST, expr::PlanNode; bindings = Dict(), replace=false)
+function _insert_statistics!(ST, expr::PlanNode; bindings = Dict{IndexExpr, TensorStats}(), replace=false)
     if expr.kind === MapJoin
         expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
     elseif expr.kind === Aggregate
@@ -87,7 +87,7 @@ end
 
 # Often, we will only have changed a small part of the expression, e.g. by performing a
 # reduction, so we only update the stats objects which were involved with those indices.
-function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false, reduce_idx=nothing)
+function insert_statistics!(ST, plan::PlanNode; bindings = Dict{IndexExpr, TensorStats}(), replace=false, reduce_idx=nothing)
     check_reduce_idxs = !isnothing(reduce_idx)
     for expr in PostOrderDFS(plan)
         if  check_reduce_idxs && !isnothing(expr.stats) && reduce_idx ∉ get_index_set(expr.stats)
@@ -140,7 +140,7 @@ end
 
 function canonicalize(plan::PlanNode, use_dnf)
     counter = [1]
-    plan = unique_indices(Dict(), plan, counter)
+    plan = unique_indices(Dict{IndexExpr, IndexExpr}(), plan, counter)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan, use_dnf)
     plan = remove_extraneous_mapjoins(plan)
@@ -148,7 +148,7 @@ function canonicalize(plan::PlanNode, use_dnf)
     plan = distribute_mapjoins(plan, use_dnf)
     plan = merge_mapjoins(plan)
     # Each aggregate should correspond to a unique variable, which we ensure here.
-    plan = unique_indices(Dict(), plan, counter)
+    plan = unique_indices(Dict{IndexExpr, IndexExpr}(), plan, counter)
     # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting
     # later on.
     plan = plan_copy(plan)
@@ -161,7 +161,7 @@ gen_idx_name(count::Int) = Symbol("i_$count")
 
 function cannonical_hash(plan::PlanNode, alias_hash)
     plan = plan_copy(plan; copy_statistics=false)
-    idx_translate_dict = Dict()
+    idx_translate_dict = Dict{IndexExpr, IndexExpr}()
     for n in PostOrderDFS(plan)
         if n.kind === Index
             if !haskey(idx_translate_dict, n.name)

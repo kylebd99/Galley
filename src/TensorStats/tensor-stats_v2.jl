@@ -5,15 +5,15 @@
 @auto_hash_equals mutable struct TensorDef
     index_set::Set{IndexExpr}
     dim_sizes::Dict{IndexExpr, UInt128}
-    default_value
+    default_value::Any
     level_formats::Union{Nothing, Vector{LevelFormat}}
     index_order::Union{Nothing, Vector{IndexExpr}}
     index_protocols::Union{Nothing, Vector{AccessProtocol}}
 end
-TensorDef(x::Number) = TensorDef(Set(), Dict(), x, nothing, nothing, nothing)
+TensorDef(x::Number) = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, UInt128}(), x, nothing, nothing, nothing)
 
-copy_def(def::TensorDef) = TensorDef(Set(x for x in def.index_set),
-                                        Dict(x for x in def.dim_sizes),
+copy_def(def::TensorDef) = TensorDef(Set{IndexExpr}(x for x in def.index_set),
+                                        Dict{IndexExpr, UInt128}(x for x in def.dim_sizes),
                                         def.default_value,
                                 isnothing(def.level_formats) ? nothing : [x for x in def.level_formats],
                                 isnothing(def.index_order) ? nothing : [x for x in def.index_order],
@@ -35,7 +35,7 @@ end
 
 function TensorDef(tensor::Tensor, indices::Vector{IndexExpr})
     shape_tuple = size(tensor)
-    dim_size = Dict()
+    dim_size = Dict{IndexExpr, UInt128}()
     level_formats = LevelFormat[]
     current_lvl = tensor.lvl
     for i in 1:length(indices)
@@ -51,7 +51,7 @@ end
 
 function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
     @assert length(indices) == length(def.index_order)
-    rename_dict = Dict()
+    rename_dict = Dict{IndexExpr, IndexExpr}()
     for i in eachindex(indices)
         rename_dict[def.index_order[i]] = indices[i]
     end
@@ -60,7 +60,7 @@ function reindex_def(indices::Vector{IndexExpr}, def::TensorDef)
         push!(new_index_set, rename_dict[idx])
     end
 
-    new_dim_sizes = Dict()
+    new_dim_sizes = Dict{IndexExpr, UInt128}()
     for (idx, size) in def.dim_sizes
         new_dim_sizes[rename_dict[idx]] = size
     end
@@ -178,7 +178,7 @@ end
 
 copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.idx_2_int), copy(stat.int_2_idx),  Set{DC}(dc for dc in stat.dcs))
 
-DCStats(x::Number) = DCStats(TensorDef(x::Number), Dict(), Dict(), Set())
+DCStats(x::Number) = DCStats(TensorDef(x::Number), Dictt{IndexExpr, Int}(), Dict{Int, IndexExpr}(), Set{DC}())
 get_def(stat::DCStats) = stat.def
 
 get_index_bitset(stat::DCStats) = SmallBitSet(Int[stat.idx_2_int[x] for x in get_index_set(stat)])
@@ -252,7 +252,7 @@ function _infer_dcs(dcs::Set{DC}; timeout=Inf, strength=0)
             time > timeout && break
         end
 
-        prev_new_dcs = Dict()
+        prev_new_dcs = Dict{DCKey, UInt128}()
         for (dc_key, dc) in new_dcs
             strength <= 0 && length(dc_key.Y) < max_dc_size && continue
             all_dcs[dc_key] = dc

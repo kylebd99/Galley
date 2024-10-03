@@ -364,7 +364,7 @@ function is_dense(mat_stats, mat_size)
 end
 
 # Returns the cost of reducing out an index
-function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
+function cost_of_reduce(reduce_idx, aq, cache::Dict{UInt64, Float64}=Dict{UInt64, Float64}(), alias_hash=Dict{IndexExpr, UInt64}())
     query, _, _,reduced_idxs = get_reduce_query(reduce_idx, aq)
     cache_key = cannonical_hash(query.expr, alias_hash)
     if !haskey(cache, cache_key)
@@ -421,14 +421,14 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
     alias_expr.node_id = node_to_replace
     alias_expr.stats = copy_stats(query.expr.stats)
     new_point_expr = replace_and_remove_nodes!(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
-    new_id_to_node = Dict()
+    new_id_to_node = Dict{Int, PlanNode}()
     for node in PreOrderDFS(new_point_expr)
         new_id_to_node[node.node_id] = node
     end
     new_reduce_idxs = filter((x) -> !(x in reduced_idxs), aq.reduce_idxs)
-    new_idx_lowest_root = Dict()
-    new_idx_op = Dict()
-    new_parent_idxs = Dict()
+    new_idx_lowest_root = Dict{IndexExpr, Int}()
+    new_idx_op = Dict{IndexExpr, Any}()
+    new_parent_idxs = Dict{IndexExpr, Vector{IndexExpr}}()
     for idx in keys(aq.idx_lowest_root)
         if idx in reduced_idxs
             continue

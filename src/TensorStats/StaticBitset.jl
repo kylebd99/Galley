@@ -23,7 +23,7 @@ function SmallBitSet(ints::Vector{Int})
     end
     return s
 end
-
+#=
 # Special implementation for BitSet, which lacks a fast `length` method.
 function Base.union(s::SmallBitSet, itr)
     for i in itr
@@ -31,7 +31,7 @@ function Base.union(s::SmallBitSet, itr)
     end
     return s
 end
-
+ =#
 Base.eltype(::Type{SmallBitSet}) = Int
 
 Base.empty(s::SmallBitSet, ::Type{Int}=Int) = SmallBitSet()

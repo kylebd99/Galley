@@ -420,11 +420,153 @@ function _matrix_structure_to_dcs(indices::Vector{Int}, s::Tensor)
                     ])
 end
 
+function _3d_structure_to_dcs(indices::Vector{Int}, s::Tensor)
+    X = Tensor(Dense(Element(0)))
+    Y = Tensor(Dense(Element(0)))
+    Z = Tensor(Dense(Element(0)))
+    d_i = Scalar(0)
+    d_j = Scalar(0)
+    d_k = Scalar(0)
+    d_i_jk = Scalar(0)
+    d_j_ik = Scalar(0)
+    d_k_ij = Scalar(0)
+    d_ijk = Scalar(0)
+    @finch begin
+        X .= 0
+        Y .= 0
+        Z .= 0
+        for i =_
+            for j =_
+                for k=_
+                    X[i] += s[k, j, i]
+                    Y[j] += s[k, j, i]
+                    Z[k] += s[k, j, i]
+                end
+            end
+        end
+        d_i .= 0
+        d_i_jk .= 0
+        d_ijk .= 0
+        for i=_
+            d_i[] += X[i] > 0
+            d_i_jk[] <<max>>= X[i]
+            d_ijk[] += X[i]
+        end
+
+        d_j .= 0
+        d_j_ik .= 0
+        for j=_
+            d_j[] += Y[j] > 0
+            d_j_ik[] <<max>>= Y[j]
+        end
+
+        d_k .= 0
+        d_k_ij .= 0
+        for k=_
+            d_k[] += Z[k] > 0
+            d_k_ij[] <<max>>= Z[k]
+        end
+    end
+    i = indices[3]
+    j = indices[2]
+    k = indices[1]
+    return Set{DC}([DC(SmallBitSet(), SmallBitSet([i]), d_i[]),
+                    DC(SmallBitSet(), SmallBitSet([j]), d_j[]),
+                    DC(SmallBitSet(), SmallBitSet([k]), d_k[]),
+                    DC(SmallBitSet([i]), SmallBitSet([j,k]), d_i_jk[]),
+                    DC(SmallBitSet([j]), SmallBitSet([i,k]), d_j_ik[]),
+                    DC(SmallBitSet([k]), SmallBitSet([i,j]), d_k_ij[]),
+                    DC(SmallBitSet(), SmallBitSet([i,j,k]), d_ijk[]),
+                    ])
+end
+
+
+function _4d_structure_to_dcs(indices::Vector{Int}, s::Tensor)
+    X = Tensor(Dense(Element(0)))
+    Y = Tensor(Dense(Element(0)))
+    Z = Tensor(Dense(Element(0)))
+    U = Tensor(Dense(Element(0)))
+    d_i = Scalar(0)
+    d_j = Scalar(0)
+    d_k = Scalar(0)
+    d_l = Scalar(0)
+    d_i_jkl = Scalar(0)
+    d_j_ikl = Scalar(0)
+    d_k_ijl = Scalar(0)
+    d_l_ijk = Scalar(0)
+    d_ijkl = Scalar(0)
+    @finch begin
+        X .= 0
+        Y .= 0
+        Z .= 0
+        U .= 0
+        for i =_
+            for j =_
+                for k=_
+                    for l=_
+                        X[i] += s[l, k, j, i]
+                        Y[j] += s[l, k, j, i]
+                        Z[k] += s[l, k, j, i]
+                        U[l] += s[l, k, j, i]
+                    end
+                end
+            end
+        end
+        d_i .= 0
+        d_i_jkl .= 0
+        d_ijkl .= 0
+        for i=_
+            d_i[] += X[i] > 0
+            d_i_jkl[] <<max>>= X[i]
+            d_ijkl[] += X[i]
+        end
+
+        d_j .= 0
+        d_j_ikl .= 0
+        for j=_
+            d_j[] += Y[j] > 0
+            d_j_ikl[] <<max>>= Y[j]
+        end
+
+        d_k .= 0
+        d_k_ijl .= 0
+        for k=_
+            d_k[] += Z[k] > 0
+            d_k_ijl[] <<max>>= Z[k]
+        end
+
+        d_l .= 0
+        d_l_ijk .= 0
+        for l=_
+            d_l[] += U[l] > 0
+            d_l_ijk[] <<max>>= U[l]
+        end
+    end
+    i = indices[4]
+    j = indices[3]
+    k = indices[2]
+    l = indices[1]
+    return Set{DC}([DC(SmallBitSet(), SmallBitSet([i]), d_i[]),
+                    DC(SmallBitSet(), SmallBitSet([j]), d_j[]),
+                    DC(SmallBitSet(), SmallBitSet([k]), d_k[]),
+                    DC(SmallBitSet(), SmallBitSet([l]), d_l[]),
+                    DC(SmallBitSet([i]), SmallBitSet([j,k,l]), d_i_jkl[]),
+                    DC(SmallBitSet([j]), SmallBitSet([i,k,l]), d_j_ikl[]),
+                    DC(SmallBitSet([k]), SmallBitSet([i,j,l]), d_k_ijl[]),
+                    DC(SmallBitSet([l]), SmallBitSet([i,j,k]), d_l_ijk[]),
+                    DC(SmallBitSet(), SmallBitSet([i,j,k,l]), d_ijkl[]),
+                    ])
+end
+
 function _structure_to_dcs(int_2_idx, indices::Vector{Int}, s::Tensor)
     if length(indices) == 1
         return _vector_structure_to_dcs(indices, s)
     elseif length(indices) == 2
         return _matrix_structure_to_dcs(indices, s)
+    elseif length(indices) == 3
+        return _3d_structure_to_dcs(indices, s)
+    elseif length(indices) == 4
+        return _4d_structure_to_dcs(indices, s)
     end
     dcs = Set{DC}()
     # Calculate DCs for all combinations of X and Y

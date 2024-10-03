@@ -967,26 +967,30 @@ function main()
     data = vcat(CSV.read("Experiments/Results/tpch_inference.csv", DataFrame), CSV.read("Experiments/Results/tpch_inference_python.csv", DataFrame))
     data = data[(data.Method .!= "Pandas"), :]
     data = data[(data.Method .!= "Pandas+BLAS"), :]
+    data[(data.Method .== "Galley"), :Method] .= "Galley (Opt)"
     data = data[(data.Algorithm .!= "Neural Network (SJ)"), :]
+    data[!, :RelativeOptTime] = copy(data[!, :ExecuteTime]) .+ copy(data[!, :OptTime])
     data[!, :RelativeExecTime] = copy(data[!, :ExecuteTime])
     for alg in unique(data.Algorithm)
-        if length(data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime]) > 0
-            data[data.Algorithm .== alg, :RelativeExecTime] = data[data.Algorithm .== alg, :RelativeExecTime] ./ data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime]
-        else
-            data[data.Algorithm .== alg, :RelativeExecTime] = data[data.Algorithm .== alg, :RelativeExecTime] ./ data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Dense)"), :ExecuteTime]
-        end
+        data[data.Algorithm .== alg, :RelativeExecTime] = data[data.Algorithm .== alg, :RelativeExecTime] ./ data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime]
+        data[data.Algorithm .== alg, :RelativeOptTime] = data[data.Algorithm .== alg, :RelativeOptTime] ./ data[(data.Algorithm .== alg) .& (data.Method .== "Finch (Sparse)"), :ExecuteTime]
     end
     data[!, :RelativeExecTime] = log10.(data.RelativeExecTime)
+    data[!, :RelativeOptTime] = log10.(data.RelativeOptTime)
+    ordered_algorithms = CategoricalArray(data.Algorithm)
     ordered_methods = CategoricalArray(data.Method)
-#    levels!(ordered_methods, ["Galley", "Finch (Dense)", "Finch (Sparse)", "Pandas", "Pandas+Numpy", "Pandas+BLAS"])
-    levels!(ordered_methods, ["Galley", "Finch (Dense)", "Finch (Sparse)", "Pandas+Numpy"])
-    gbplot = StatsPlots.groupedbar(data.Algorithm,
-                                    data.RelativeExecTime,
+    #    levels!(ordered_methods, ["Galley", "Finch (Dense)", "Finch (Sparse)", "Pandas", "Pandas+Numpy", "Pandas+BLAS"])
+    alg_order = ["Covariance (SJ)", "Covariance (SQ)", "Logistic Regression (SJ)", "Logistic Regression (SQ)", "Linear Regression (SJ)", "Linear Regression (SQ)", "Neural Network (SQ)"]
+    levels!(ordered_algorithms, alg_order)
+    method_order = ["Galley (Opt)", "Finch (Dense)", "Finch (Sparse)", "Pandas+Numpy"]
+    levels!(ordered_methods, method_order)
+    gbplot = StatsPlots.groupedbar(ordered_algorithms,
+                                    data.RelativeOptTime,
                                     group = ordered_methods,
                                     legend = :topleft,
-                                    size = (2600, 700),
-                                    ylabel = "Relative RelativeExecTime",
-                                    ylims=[-3.2, 1.0],
+                                    size = (2600, 1000),
+                                    ylabel = "Relative Runtime",
+                                    ylims=[-3.2, 2.0],
                                     yticks=([-3, -2, -1, 0, 1], [".001", ".01", ".1", "1", "10"]),
                                     xtickfontsize=18,
                                     ytickfontsize=18,
@@ -995,7 +999,17 @@ function main()
                                     legendfontsize=20,
                                     left_margin=15Measures.mm,
                                     bottom_margin=10Measures.mm,
-                                    fillrange=-4)
+                                    fillrange=-4,
+                                    color=[palette(:tab10)[10] palette(:tab10)[2] palette(:tab10)[3] palette(:tab10)[4]])
+    n_groups = length(unique(data.Algorithm))
+    n_methods = length(unique(ordered_methods))
+    left_edges = [i for i in 0:n_groups-1]
+    first_pos = left_edges .+ .8/n_methods
+    galley_data = data[data.Method .== "Galley (Opt)", :]
+    galley_data = collect(zip(galley_data.Algorithm, galley_data.RelativeExecTime))
+    sort!(galley_data, by = (x)->[i for (i, alg) in enumerate(alg_order) if alg == x[1]][1])
+    exec_time = [x[2] for x in galley_data]
+    bar!(gbplot, first_pos, exec_time, bar_width=0.8/n_methods, fillrange=-4, label="Galley (Exec)", color=palette(:tab10)[1])
     savefig(gbplot, "Experiments/Figures/tpch_inference.png")
 end
 

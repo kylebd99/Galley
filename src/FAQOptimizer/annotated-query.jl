@@ -411,7 +411,7 @@ end
 
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
-function reduce_idx!(reduce_idx, aq; do_condense=true)
+function reduce_idx!(reduce_idx, aq; do_condense=false)
     query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
     # This plan_copy is structural important
     query = plan_copy(query)

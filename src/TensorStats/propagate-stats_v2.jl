@@ -136,12 +136,21 @@ end
 
 ################# DCStats Propagation ##################################################
 
-function unify_dc_ints(all_stats)
+function unify_dc_ints(all_stats, new_def)
     final_idx_2_int = Dict{IndexExpr, Int}()
     final_int_2_idx = Dict{Int, IndexExpr}()
+    max_int = 1
     for (i, idx) in enumerate(union([keys(stat.idx_2_int) for stat in all_stats]...))
-        final_idx_2_int[idx] = i
+        final_idx_2_int[idx] = max_int
         final_int_2_idx[i] = idx
+        max_int += 1
+    end
+    for idx in get_index_set(new_def)
+        if !haskey(final_idx_2_int, idx)
+            final_idx_2_int[idx] = max_int
+            final_int_2_idx[max_int] = idx
+            max_int += 1
+        end
     end
     final_idx_2_int, final_int_2_idx
 end
@@ -152,7 +161,7 @@ function merge_tensor_stats_join(op, new_def::TensorDef, all_stats::Vararg{DCSta
     if length(all_stats) == 1
         return DCStats(new_def, copy(all_stats[1].idx_2_int), copy(all_stats[1].int_2_idx), copy(all_stats[1].dcs))
     end
-    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats)
+    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats, new_def)
     new_dc_dict = Dict{DCKey, Float64}()
     for stats in all_stats
         for dc in stats.dcs
@@ -172,7 +181,7 @@ function merge_tensor_stats_union(op, new_def::TensorDef, all_stats::Vararg{DCSt
     if length(all_stats) == 1
         return DCStats(new_def, copy(all_stats[1].idx_2_int), copy(all_stats[1].int_2_idx), copy(all_stats[1].dcs))
     end
-    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats)
+    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats, new_def)
     dc_keys = counter(DCKey)
     stats_dcs = []
     # We start by extending all arguments' dcs to the new dimensions and infer dcs as needed
@@ -205,6 +214,7 @@ function merge_tensor_stats_union(op, new_def::TensorDef, all_stats::Vararg{DCSt
             end
         end
     end
+
 #=
     for Y in subsets(collect(get_index_set(new_def)))
         proj_dc_key = (X=SmallBitSet(), Y=idxs_to_bitset(final_idx_2_int, Y))

@@ -102,11 +102,7 @@ function Base.iterate(s::SmallBitSet, idx = 0)
 end
 
 function Base.length(s::SmallBitSet)
-    n = 0
-    for x in s
-        n += 1
-    end
-    n
+    count_ones(s.bits)
 end
 
 @noinline _throw_bitset_notempty_error() =

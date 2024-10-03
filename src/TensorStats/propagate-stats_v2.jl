@@ -22,7 +22,7 @@ end
 function merge_tensor_def(op, all_defs::Vararg{TensorDef})
     new_default_value = op([def.default_value for def in all_defs]...)
     new_index_set = union([def.index_set for def in all_defs]...)
-    new_dim_sizes = Dict()
+    new_dim_sizes = Dict{IndexExpr, UInt128}()
     for index in new_index_set
         for def in all_defs
             if index in def.index_set
@@ -51,7 +51,7 @@ function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
         new_default_value = op([def.default_value for _ in prod([def.dim_sizes[x] for x in reduce_indices])]...)
     end
     new_index_set = setdiff(def.index_set, reduce_indices)
-    new_dim_sizes = Dict()
+    new_dim_sizes = Dict{IndexExpr, UInt128}()
     for index in new_index_set
         new_dim_sizes[index] = def.dim_sizes[index]
     end

@@ -72,7 +72,7 @@ function enumerate_distributed_plans(q::PlanNode, visited_plans, alias_hash, max
     return plans
 end
 
-function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, alias_stats, alias_hash, verbose)
+function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, alias_stats::Dict{IndexExpr, TensorStats}, alias_hash::Dict{IndexExpr, UInt64}, verbose)
     insert_statistics!(ST, q; bindings = alias_stats)
     if faq_optimizer === naive
         insert_node_ids!(q)
@@ -84,7 +84,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     check_dnf = !allequal([n.op.val for n in PostOrderDFS(q) if n.kind === MapJoin])
     q_non_dnf = canonicalize(plan_copy(q), false)
     input_aq = AnnotatedQuery(q_non_dnf, ST)
-    logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict(), verbose)
+    logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict{UInt64, Float64}(), verbose)
     if check_dnf
         min_cost = cnf_cost
         min_query = canonicalize(plan_copy(q), false)
@@ -121,7 +121,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     return logical_plan
 end
 
-function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, aq::AnnotatedQuery, alias_hash, cost_cache, verbose)
+function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, aq::AnnotatedQuery, alias_hash::Dict{IndexExpr, UInt64}, cost_cache::Dict{UInt64, Float64}, verbose)
     if faq_optimizer == greedy
         return greedy_query_to_plan(aq, cost_cache, alias_hash)
     elseif faq_optimizer == exact

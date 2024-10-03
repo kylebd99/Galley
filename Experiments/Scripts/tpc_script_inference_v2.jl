@@ -632,7 +632,6 @@ function main()
                                                                              Input(customer_x, :j, :c, "customer_x"))),
                                                             Input(supplier_x, :j, :s, "supplier_x"),
                                                             Input(part_x, :j, :p, "part_x")))))
-    insert_statistics!(DCStats, X_g)
     θ = Tensor(Dense(Element(0)), ones(Int, size(supplier_x)[1]) .% 100)
 
     # ---------------- Linear Regression On Star Join -------------------
@@ -808,7 +807,6 @@ function main()
                                                     Input(part_x, :j, :p, "part_x"),
                                                     Input(supplier_x1, :j, :s1, "supplier_x1"),
                                                     Input(supplier_x2, :j, :s2, "supplier_x2")))))
-    insert_statistics!(DCStats, X_g)
     θ = Tensor(Dense(Element(0.0)), ones(Int, size(supplier_x1)[1]) .% 100)
 
     # ---------------- Linear Regression On Many-Many Join -------------------

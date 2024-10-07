@@ -170,7 +170,6 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 if haskey(new_plans, new_plan_class)
                     alt_cost = new_plans[new_plan_class][2]
                 end
-
                 if new_cost <= alt_cost
                     new_plans[new_plan_class] = new_plan
                 end

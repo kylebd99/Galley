@@ -45,7 +45,10 @@ function get_prefix_cost(new_var, vars::Set{IndexExpr},  conjunct_stats, disjunc
             continue
         end
         if isnothing(get_index_formats(stat))
-            lookup_factor += SeqReadCost
+            rel_vars = get_index_set(stat) ∩ vars
+            approx_sparsity = estimate_nnz(stat; indices=rel_vars, conditional_indices=setdiff(rel_vars, [new_var])) / get_dim_size(stat, new_var)
+            is_dense = approx_sparsity > .01
+            lookup_factor += is_dense ? SeqReadCost / 5 : SeqReadCost
             continue
         end
         format = get_index_format(stat, new_var)

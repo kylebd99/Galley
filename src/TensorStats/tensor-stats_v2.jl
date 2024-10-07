@@ -178,7 +178,7 @@ end
 
 copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.idx_2_int), copy(stat.int_2_idx),  Set{DC}(dc for dc in stat.dcs))
 
-DCStats(x::Number) = DCStats(TensorDef(x::Number), Dictt{IndexExpr, Int}(), Dict{Int, IndexExpr}(), Set{DC}())
+DCStats(x::Number) = DCStats(TensorDef(x::Number), Dict{IndexExpr, Int}(), Dict{Int, IndexExpr}(), Set{DC}())
 get_def(stat::DCStats) = stat.def
 
 get_index_bitset(stat::DCStats) = SmallBitSet(Int[stat.idx_2_int[x] for x in get_index_set(stat)])
@@ -306,15 +306,17 @@ idxs_to_bitset(idx_2_int::Dict{IndexExpr, Int}, indices) = SmallBitSet(Int[idx_2
 bitset_to_idxs(stat::DCStats, bitset) = bitset_to_idxs(stat.int_2_idx, bitset)
 bitset_to_idxs(int_2_idx::Dict{Int, IndexExpr}, bitset) = Set{IndexExpr}(int_2_idx[idx] for idx in bitset)
 
-function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
+function estimate_nnz(stat::DCStats; indices = get_index_set(stat), conditional_indices=Set{IndexExpr}())
     if length(indices) == 0
         return 1
     end
     indices_bitset = idxs_to_bitset(stat, indices)
-    current_weights = Dict{SmallBitSet, UInt128}(SmallBitSet()=>1)
-    frontier = Set{SmallBitSet}([SmallBitSet()])
+    conditional_indices_bitset = idxs_to_bitset(stat, conditional_indices)
+    current_weights = Dict{SmallBitSet, UInt128}(conditional_indices_bitset=>1, SmallBitSet()=>1)
+    frontier = Set{SmallBitSet}([SmallBitSet(), conditional_indices_bitset])
     finished = false
     while !finished
+        current_bound::UInt128 =  get(current_weights, indices_bitset, typemax(UInt128))
         new_frontier = Set{SmallBitSet}()
         finished = true
         for x in frontier
@@ -322,7 +324,7 @@ function estimate_nnz(stat::DCStats; indices = get_index_set(stat))
             for dc in stat.dcs
                 if x ⊇ dc.X
                     y = ∪(x, dc.Y)
-                    if get(current_weights, y, Inf) >  weight * dc.d
+                    if min(current_bound, get(current_weights, y, typemax(UInt128))) >  weight * dc.d && !(((weight > (2^62)) || (dc.d > (2^62))))
                         # We need to be careful about overflow here. Turns out UInts overflow as 0 >:(
                         current_weights[y] = ((weight > (2^62)) || (dc.d > (2^62))) ? UInt128(2)^64 : (weight * dc.d)
                         finished = false

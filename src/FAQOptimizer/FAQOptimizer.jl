@@ -123,7 +123,7 @@ end
 
 function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, aq::AnnotatedQuery, alias_hash::Dict{IndexExpr, UInt64}, cost_cache::Dict{UInt64, Float64}, verbose)
     if faq_optimizer == greedy
-        return greedy_query_to_plan(aq, cost_cache, alias_hash)
+        return pruned_query_to_plan(aq, cost_cache, alias_hash; use_greedy=true)
     elseif faq_optimizer == exact
         return exact_query_to_plan(aq, cost_cache, alias_hash)
     elseif faq_optimizer == pruned

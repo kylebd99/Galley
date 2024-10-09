@@ -127,11 +127,16 @@ copy_stats(stat::Nothing) = nothing
 end
 
 get_def(stat::NaiveStats) = stat.def
-estimate_nnz(stat::NaiveStats; indices = get_index_set(stat)) = stat.cardinality
+
+function estimate_nnz(stat::NaiveStats; indices = get_index_set(stat), conditional_indices=Set{IndexExpr}())
+    return stat.cardinality / get_dim_space_size(stat, conditional_indices)
+end
+
 condense_stats!(::NaiveStats; timeout=100000, cheap=true) = nothing
 function fix_cardinality!(stat::NaiveStats, card)
     stat.cardinality = card
 end
+
 copy_stats(stat::NaiveStats) = NaiveStats(copy_def(stat.def), stat.cardinality)
 
 NaiveStats(index_set, dim_sizes, cardinality, default_value) = NaiveStats(TensorDef(index_set, dim_sizes, default_value, nothing), cardinality)

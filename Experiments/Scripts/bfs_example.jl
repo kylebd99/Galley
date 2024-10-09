@@ -262,7 +262,7 @@ function run_exps(matrices)
             verbose = (i == 1) ? 3 : 0
             while (rounds == 0 || sum(q_g.expr.tns.val) > 0) && rounds < n_rounds
                 query = get_bfs_query(A_g, q_g, p_g)
-                result_galley = galley(query, simple_cse=false, faq_optimizer=greedy, ST=DCStats, verbose=verbose)
+                result_galley = galley(query, simple_cse=false, faq_optimizer=pruned, ST=DCStats, verbose=verbose)
                 execute_time += result_galley.execute_time
                 opt_time += result_galley.opt_time
                 q_g = Materialize(t_undef, :n1, Input(result_galley.value[1], :n1))
@@ -286,7 +286,7 @@ function run_exps(matrices)
             verbose = (i == 1) ? 3 : 0
             while (rounds == 0 || sum(q_g.expr.tns.val) > 0) && rounds < n_rounds * 3
                 query = get_bfs_one_iter_query(A_g, q_g, p_g)
-                result_galley_one_iter = galley(query, simple_cse=false, faq_optimizer=greedy, ST=DCStats, verbose=verbose)
+                result_galley_one_iter = galley(query, simple_cse=false, faq_optimizer=pruned, ST=DCStats, verbose=verbose)
                 execute_time += result_galley_one_iter.execute_time
                 opt_time += result_galley_one_iter.opt_time
                 q_g = Materialize(t_undef, :n1, Input(result_galley_one_iter.value[1], :n1))
@@ -310,7 +310,7 @@ function run_exps(matrices)
             verbose = (i == 1) ? 3 : 0
             while (rounds == 0 || sum(q_g.expr.tns.val) > 0) && rounds < n_rounds
                 query = get_bfs_query(A_g, q_g, p_g)
-                result_galley_cse = galley(query, simple_cse=true, faq_optimizer=greedy, ST=DCStats, verbose=verbose)
+                result_galley_cse = galley(query, simple_cse=true, faq_optimizer=pruned, ST=DCStats, verbose=verbose)
                 execute_time += result_galley_cse.execute_time
                 opt_time += result_galley_cse.opt_time
                 q_g = Materialize(t_undef, :n1, Input(result_galley_cse.value[1], :n1))
@@ -361,11 +361,21 @@ run_exps(matrices)
 using CSV
 using DataFrames
 using CategoricalArrays
+using Measurements
 data = CSV.read("Experiments/Results/bfs.csv", DataFrame)
-data = data[any.(zip(data.Method .== "Galley (CSE)", data.Method .== "Sparse", data.Method .== "Dense", data.Method .== "HandOpt")) , :]
-data.Method[data.Method .== "Galley (CSE)"]  .= "Galley"
+#data = data[any.(zip(data.Method .== "Galley (One Iter)", data.Method .== "Sparse", data.Method .== "Dense", data.Method .== "HandOpt")) , :]
+data.Method[data.Method .== "Galley (One Iter)"]  .= "Galley"
+galley_opt_data = data[data.Method .== "Galley", :]
+galley_opt_data.Method .= "Galley (Opt Time)"
+galley_opt_data.Runtime .= galley_opt_data.OptTime
+galley_exec_data = data[data.Method .== "Galley", :]
+galley_exec_data.Method .= "Galley (Exec Time)"
+data[data.Method .== "Galley", :Runtime] .= data[data.Method .== "Galley", :].OptTime .+ data[data.Method .== "Galley", :].Runtime
+data = data[any.(zip(data.Method .== "Galley", data.Method .== "Galley (Opt Time)", data.Method .== "Galley (Exec Time)", data.Method .== "Sparse", data.Method .== "Dense")) , :]
+append!(data, galley_opt_data)
+append!(data, galley_exec_data)
 ordered_methods = CategoricalArray(data.Method)
-levels!(ordered_methods, ["Galley", "Galley (No-CSE)","Galley (One Iter)", "Sparse", "Dense", "HandOpt"])
+levels!(ordered_methods, ["Galley", "Galley (Exec Time)", "Galley (Opt Time)", "Galley (No-CSE)", "Galley (CSE)", "Galley (One Iter)", "Sparse", "Dense", "HandOpt"])
 gbplot = StatsPlots.groupedbar(data.Dataset,
                                 data.Runtime,
                                 group = ordered_methods,
@@ -373,13 +383,13 @@ gbplot = StatsPlots.groupedbar(data.Dataset,
                                 yscale=:log,
                                 legend = :topleft,
                                 size = (1800, 700),
-                                ylabel = "Execution Time (s)",
+                                ylabel = "Execute Time (s)",
                                 xtickfontsize=15,
                                 ytickfontsize=15,
                                 xguidefontsize=16,
                                 yguidefontsize=16,
                                 legendfontsize=16,
-                                left_margin=10mm,
-                                bottom_margin=10mm,
-                                top_margin=10mm)
+                                left_margin=10Plots.mm,
+                                bottom_margin=10Plots.mm,
+                                top_margin=10Plots.mm)
 savefig(gbplot, "Experiments/Figures/bfs.png")

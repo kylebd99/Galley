@@ -5,9 +5,11 @@ using Distributed
 using CSV, DataFrames
 using DelimitedFiles: writedlm
 using StatsPlots
+using StatsFuns
 using Plots
 using Measures
 using DuckDB
+using CategoricalArrays
 using Galley
 using Galley: FAQ_OPTIMIZERS, relabel_input, reindex_stats, fill_table
 

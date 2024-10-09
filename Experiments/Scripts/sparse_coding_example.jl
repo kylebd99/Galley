@@ -184,7 +184,7 @@ for i in 1:5
     push!(g_opt_times, result_galley.opt_time)
 end
 result = galley([Query(:out, d_g)], ST=DCStats, verbose=3)
-println(result)
+#println(result)
 println("Galley Exec: $(minimum(g_times))")
 println("Galley Opt: $(minimum(g_opt_times))")
 println("Finch Exec: $(minimum(f_times))")

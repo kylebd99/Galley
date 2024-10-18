@@ -76,10 +76,11 @@ function galley(input_queries::Vector{PlanNode};
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,
                     simple_cse=true,
-                    max_kernel_size=10,
+                    max_kernel_size=8,
                     output_logical_plan=false,
                     output_physical_plan=false,
                     verbose=0)
+    counter_start = Galley.name_counter
     overall_start = time()
     # To avoid input corruption, we start by copying the input queries (except for the data)
     input_queries = map(plan_copy, input_queries)
@@ -220,6 +221,7 @@ function galley(input_queries::Vector{PlanNode};
     verbose >= 1 && println("Time to Execute: ", total_exec_time)
     verbose >= 1 && println("Time to count: ", total_count_time)
     verbose >= 1 && println("Overall Time: ", total_overall_time)
+    global name_counter = counter_start
     return (value=[alias_result[alias.name] for alias in output_aliases],
             opt_time=(faq_opt_time + total_split_time + total_phys_opt_time + total_count_time),
             execute_time= total_exec_time,
@@ -232,7 +234,7 @@ function galley(input_query::PlanNode;
                     dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,
                     simple_cse=true,
-                    max_kernel_size=10,
+                    max_kernel_size=8,
                     verbose=0)
     result = galley(PlanNode[input_query];faq_optimizer=faq_optimizer,
                                 ST=ST,

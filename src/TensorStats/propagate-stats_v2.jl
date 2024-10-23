@@ -22,7 +22,7 @@ end
 function merge_tensor_def(op, all_defs::Vararg{TensorDef})
     new_default_value = op([def.default_value for def in all_defs]...)
     new_index_set = union([def.index_set for def in all_defs]...)
-    new_dim_sizes = Dict()
+    new_dim_sizes = Dict{IndexExpr, UInt128}()
     for index in new_index_set
         for def in all_defs
             if index in def.index_set
@@ -51,7 +51,7 @@ function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
         new_default_value = op([def.default_value for _ in prod([def.dim_sizes[x] for x in reduce_indices])]...)
     end
     new_index_set = setdiff(def.index_set, reduce_indices)
-    new_dim_sizes = Dict()
+    new_dim_sizes = Dict{IndexExpr, UInt128}()
     for index in new_index_set
         new_dim_sizes[index] = def.dim_sizes[index]
     end
@@ -61,9 +61,9 @@ end
 # This function determines whether a binary operation is union-like or join-like and creates
 # new statistics objects accordingly.
 function merge_tensor_stats(op, all_stats::Vararg{ST}) where ST <: TensorStats
-    new_def = merge_tensor_def(op, [get_def(stats) for stats in all_stats]...)
-    join_like_args = []
-    union_like_args = []
+    new_def::TensorDef = merge_tensor_def(op, [get_def(stats) for stats in all_stats]...)
+    join_like_args = ST[]
+    union_like_args = ST[]
     for stats in all_stats
         if length(get_index_set(stats)) == 0
             continue
@@ -101,14 +101,14 @@ end
 
 ################# NaiveStats Propagation ##################################################
  # We do everything in log for numerical stability
-function merge_tensor_stats_join(op, new_def, all_stats::Vararg{NaiveStats})
+function merge_tensor_stats_join(op, new_def::TensorDef, all_stats::Vararg{NaiveStats})
     new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
     prob_non_default = sum([log2(stats.cardinality) - sum([log2(get_dim_size(stats, idx)) for idx in get_index_set(stats)]) for stats in all_stats])
     new_cardinality = 2^(prob_non_default + new_dim_space_size)
     return NaiveStats(new_def, new_cardinality)
 end
 
-function merge_tensor_stats_union(op, new_def, all_stats::Vararg{NaiveStats})
+function merge_tensor_stats_union(op, new_def::TensorDef, all_stats::Vararg{NaiveStats})
     new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
     prob_default = sum([log2(1 - 2^(log2(stats.cardinality) - sum([log2(get_dim_size(stats, idx)) for idx in get_index_set(stats)]))) for stats in all_stats])
     new_cardinality = 2^(log2(1 - 2^prob_default) + new_dim_space_size)
@@ -136,25 +136,37 @@ end
 
 ################# DCStats Propagation ##################################################
 
-function unify_dc_ints(all_stats)
+function unify_dc_ints(all_stats, new_def)
     final_idx_2_int = Dict{IndexExpr, Int}()
     final_int_2_idx = Dict{Int, IndexExpr}()
+    max_int = 1
     for (i, idx) in enumerate(union([keys(stat.idx_2_int) for stat in all_stats]...))
-        final_idx_2_int[idx] = i
-        final_int_2_idx[i] = idx
+        final_idx_2_int[idx] = max_int
+        final_int_2_idx[max_int] = idx
+        max_int += 1
+    end
+    for idx in get_index_set(new_def)
+        if !haskey(final_idx_2_int, idx)
+            final_idx_2_int[idx] = max_int
+            final_int_2_idx[max_int] = idx
+            max_int += 1
+        end
     end
     final_idx_2_int, final_int_2_idx
 end
 
 convert_bitset(int_to_int, b) = SmallBitSet([int_to_int[x] for x in b])
 
-function merge_tensor_stats_join(op, new_def, all_stats::Vararg{DCStats})
-    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats)
+function merge_tensor_stats_join(op, new_def::TensorDef, all_stats::Vararg{DCStats})
+    if length(all_stats) == 1
+        return DCStats(new_def, copy(all_stats[1].idx_2_int), copy(all_stats[1].int_2_idx), copy(all_stats[1].dcs))
+    end
+    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats, new_def)
     new_dc_dict = Dict{DCKey, Float64}()
     for stats in all_stats
         for dc in stats.dcs
-            dc_key = (X= SmallBitSet(final_idx_2_int[stats.int_2_idx[x]] for x in dc.X),
-                        Y= SmallBitSet(final_idx_2_int[stats.int_2_idx[y]] for y in dc.Y))
+            dc_key = (X= SmallBitSet(Int[final_idx_2_int[stats.int_2_idx[x]] for x in dc.X]),
+                        Y= SmallBitSet(Int[final_idx_2_int[stats.int_2_idx[y]] for y in dc.Y]))
             current_dc = get(new_dc_dict, dc_key, Inf)
             if dc.d < current_dc
                 new_dc_dict[dc_key] = dc.d
@@ -165,8 +177,11 @@ function merge_tensor_stats_join(op, new_def, all_stats::Vararg{DCStats})
     return new_stats
 end
 
-function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
-    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats)
+function merge_tensor_stats_union(op, new_def::TensorDef, all_stats::Vararg{DCStats})
+    if length(all_stats) == 1
+        return DCStats(new_def, copy(all_stats[1].idx_2_int), copy(all_stats[1].int_2_idx), copy(all_stats[1].dcs))
+    end
+    final_idx_2_int, final_int_2_idx = unify_dc_ints(all_stats, new_def)
     dc_keys = counter(DCKey)
     stats_dcs = []
     # We start by extending all arguments' dcs to the new dimensions and infer dcs as needed
@@ -175,8 +190,8 @@ function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
         Z = setdiff(get_index_set(new_def), get_index_set(stats))
         Z_dimension_space_size = get_dim_space_size(new_def, Z)
         for dc in stats.dcs
-            new_key = (X= SmallBitSet(final_idx_2_int[stats.int_2_idx[x]] for x in dc.X),
-                            Y= SmallBitSet(final_idx_2_int[stats.int_2_idx[y]] for y in dc.Y))
+            new_key::DCKey = (X= SmallBitSet(Int[final_idx_2_int[stats.int_2_idx[x]] for x in dc.X]),
+                            Y= SmallBitSet(Int[final_idx_2_int[stats.int_2_idx[y]] for y in dc.Y]))
             dcs[new_key] = dc.d
             inc!(dc_keys, new_key)
             ext_dc_key = (X=new_key.X, Y=∪(new_key.Y, idxs_to_bitset(final_idx_2_int, Z)))
@@ -200,11 +215,12 @@ function merge_tensor_stats_union(op, new_def, all_stats::Vararg{DCStats})
         end
     end
 
+#=
     for Y in subsets(collect(get_index_set(new_def)))
         proj_dc_key = (X=SmallBitSet(), Y=idxs_to_bitset(final_idx_2_int, Y))
         new_dcs[proj_dc_key] = min(get(new_dcs, proj_dc_key, typemax(UInt64)/2), get_dim_space_size(new_def, Set(Y)))
     end
-
+ =#
     return DCStats(new_def, final_idx_2_int, final_int_2_idx, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dcs))
 end
 

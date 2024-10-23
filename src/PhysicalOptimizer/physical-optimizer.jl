@@ -39,7 +39,7 @@ end
 # where formats can't be t_undef.
 # `alias_stats` is a dictionary which holds stats objects for the results of any previous
 # queries. This is needed to get the stats for `Alias` inputs.
-function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dict{IndexExpr, TensorStats}; include_alias_transpose=true, verbose = 0)
+function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dict{IndexExpr, TensorStats}; only_add_loop_order=true, transpose_aliases=false, verbose = 0)
     if !(@capture query Query(~name, Materialize(~args...))) &&
             !(@capture query Query(~name, Aggregate(~args...))) &&
             !(@capture query Query(~name, MapJoin(~args...)))
@@ -71,7 +71,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     end
 
     # Determine the optimal loop order for the query
-    transposable_stats = get_input_stats(expr; include_aliases=include_alias_transpose)
+    transposable_stats = get_input_stats(expr; include_aliases=transpose_aliases)
     for (id, stats) in transposable_stats
         @assert !isnothing(get_index_order(stats)) "query: $query stats: $stats"
     end
@@ -84,7 +84,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     loop_order = get_join_loop_order(disjunct_and_conjunct_stats, collect(values(transposable_stats)), output_stats, output_order)
     queries = []
     for (id, stats) in transposable_stats
-        if !is_sorted_wrt_index_order(get_index_order(stats), loop_order; loop_order=true)
+        if !only_add_loop_order && !is_sorted_wrt_index_order(get_index_order(stats), loop_order; loop_order=true)
             reorder_queries, expr = reorder_input(id_to_node[id], expr, loop_order)
             append!(queries, reorder_queries)
         end

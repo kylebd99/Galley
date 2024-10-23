@@ -68,6 +68,7 @@ function modify_protocols!(expr)
                 end
                 # The choice of `min` below is arbitrary because the actual agg_op doesn't affect
                 # the nnz (barring things like prod reductions which might be a TODO).
+                # TODO: Replace this with conditional estimates
                 if length(indices_before_var) > 0
                     size_before_var = estimate_nnz(reduce_tensor_stats(min, setdiff(get_index_set(input), indices_before_var),  input))
                 end

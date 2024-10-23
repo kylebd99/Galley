@@ -24,6 +24,7 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
     println("Starting Worker Experiment")
     dbconn = experiment.use_duckdb ? DBInterface.connect(DuckDB.DB, ":memory:") : nothing
     queries = load_workload(experiment.workload, experiment.stats_type, dbconn)
+#    queries = [q for q in queries if occursin("sparse_8_120", q.query_path)]
     num_attempted, num_completed, num_correct, num_with_values, _  = (0, 0, 0, 0, false)
     if isready(status_channel)
         num_attempted, num_completed, num_correct, num_with_values, _ = take!(status_channel)
@@ -31,9 +32,6 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, false))
     for query in queries[starting_query:end]
         println("Query Path: ", query.query_path)
-        if false && !occursin("Graph_12/uf_Q_0_1", query.query_path)
-            continue
-        end
         num_attempted +=1
         try
             if experiment.use_duckdb

@@ -15,21 +15,24 @@ end
 const results_channel = RemoteChannel(()->Channel{Any}(10000), 1)
 const status_channel = RemoteChannel(()->Channel{Any}(10000), 1)
 
-function run_experiments(experiment_params::Vector{ExperimentParams})
+function run_experiments(experiment_params::Vector{ExperimentParams}; use_new_processes=true)
     for experiment in experiment_params
         clear_channel(results_channel)
         clear_channel(status_channel)
         results = [("Workload", "QueryType", "QueryPath", "Runtime", "OptTime", "CompileTime", "Result", "Failed")]
         num_attempted, num_completed, num_correct, num_with_values, exp_finished = (0, 0, 0, 0, false)
         put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, exp_finished))
-        worker_pid = load_worker()
+        worker_pid = -1
         cur_query = 1
         while !exp_finished
-            if worker_pid == -1
-                worker_pid = load_worker()
+            if use_new_processes
+                if worker_pid == -1
+                    worker_pid = load_worker()
+                end
+                f = @spawnat worker_pid attempt_experiment(experiment, cur_query, results_channel, status_channel)
+            else
+                f = attempt_experiment(experiment, cur_query, results_channel, status_channel)
             end
-            f = @spawnat worker_pid attempt_experiment(experiment, cur_query, results_channel, status_channel)
-#            f = attempt_experiment(experiment, cur_query, results_channel, status_channel)
             load_start = time()
             finished = false
             last_result = time()

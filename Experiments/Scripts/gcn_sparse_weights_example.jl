@@ -6,7 +6,7 @@ using SparseArrays
 n = 100000
 k = 1000
 A = Tensor(Dense(SparseList(Element(0))), fsprand(Int, n, n, 500000) .% 2)
-W = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, k, 10000)  .% 10)
+W = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, k, Int(k*k*.01))  .% 10)
 h_0 = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, n, 1000000) .% 10)
 # nodes_of_interest = Tensor(SparseList(Element(0)), fsprand(Int, n, .001).% 2)
 
@@ -20,9 +20,9 @@ h_0 = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, n, 1000000) .% 10)
     @finch begin
         i_1 .= 0
         for n1=_
-            for k2 =_
-                for k1 =_
-                    i_1[k2, n1] += h_0[k1, n1] * W[k1, k2]
+            for k1 =_
+                for k2 =_
+                    i_1[k2, n1] += h_0[k1, n1] * W[k2, k1]
                 end
             end
         end
@@ -51,9 +51,9 @@ h_0 = Tensor(Dense(SparseList(Element(0))), fsprand(Int, k, n, 1000000) .% 10)
     @finch begin
         i_2 .= 0
         for n2=_
-            for k3 =_
-                for k2 =_
-                    i_2[k3, n2] += h_2[k2, n2] * W[k2, k3]
+            for k2 =_
+                for k3 =_
+                    i_2[k3, n2] += h_2[k2, n2] * W[k3, k2]
                 end
             end
         end
@@ -89,18 +89,18 @@ h_2_galley = Materialize(t_dense, t_dense, :k2, :n2,
                     Aggregate(+, :n1, :k1,
                         MapJoin(*,  Input(A, :n1, :n2),
                                     Input(h_0, :k1, :n1),
-                                    Input(W, :k1, :k2)))))
+                                    Input(W, :k2, :k1)))))
 h_3_galley = MapJoin(max, 0,
                 Aggregate(+, :n2, :k2,
                     MapJoin(*, Input(A, :n2, :n3),
-                                Input(h_2_galley, :k2, :n2),
-                                Input(W, :k2, :k3))))
+                                h_2_galley[:k2, :n2],
+                                Input(W, :k3, :k2))))
 
 two_hop_gnn_query = Query(:h_4, Materialize(t_dense, t_dense, :k3, :n3, h_3_galley))
 insert_statistics!(DCStats, two_hop_gnn_query)
 
-h_3_galley = galley([two_hop_gnn_query], ST=DCStats, verbose=3)
-h_3_galley = galley([two_hop_gnn_query], ST=DCStats, verbose=0)
+h_3_galley = galley([two_hop_gnn_query], ST=DCStats, faq_optimizer=pruned, verbose=3)
+h_3_galley = galley([two_hop_gnn_query], ST=DCStats, faq_optimizer=pruned, verbose=0)
 println("Finch == Galley: ", t_2.value == h_3_galley.value[1])
 println("Galley Opt & Execute: ", h_3_galley.opt_time, "   ", h_3_galley.execute_time)
 println("Finch Execute: ", t_2.time)

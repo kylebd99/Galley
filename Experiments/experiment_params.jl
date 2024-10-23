@@ -24,7 +24,7 @@ struct ExperimentParams
     timeout::Float64
     description::String
 
-    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, update_cards=true, simple_cse=true, max_kernel_size=4, timeout=60*5, description="")
+    function ExperimentParams(;workload=human, warm_start=false, faq_optimizer=naive, stats_type = DCStats, use_duckdb=false, update_cards=true, simple_cse=true, max_kernel_size=8, timeout=60*5, description="")
         return new(workload, warm_start, faq_optimizer, stats_type, use_duckdb, update_cards, simple_cse, max_kernel_size, timeout, description)
     end
 end

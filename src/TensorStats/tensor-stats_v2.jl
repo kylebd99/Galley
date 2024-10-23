@@ -160,6 +160,50 @@ function relabel_index!(stats::NaiveStats, i::IndexExpr, j::IndexExpr)
     relabel_index!(stats.def, i, j)
 end
 
+
+#################  DSStats Definition ######################################################
+
+struct DegreeSequenceConstraint
+    X::Set{IndexExpr}
+    Y::Set{IndexExpr}
+    f::Vector{UInt128}
+    F::Vector{UInt128}
+    r::Vector{UInt128}
+end
+DS = DegreeSequenceConstraint
+
+function get_ds_key(ds::DegreeSequenceConstraint)
+    return (X=ds.X, Y=ds.Y)
+end
+
+@auto_hash_equals mutable struct DSStats <: TensorStats
+    def::TensorDef
+    dss::Set{DS}
+end
+
+copy_stats(stat::DSStats) = DSStats(copy_def(stat.def),  Set{DS}(dc for dc in stat.dcs))
+DSStats(x::Number) = DSStats(TensorDef(x::Number), Set{DS}())
+get_def(stat::DSStats) = stat.def
+
+function fix_cardinality!(stat::DSStats, card)
+    return stat # TODO
+end
+
+function infer_ds(l_AB::DS, l_BA::DS, r_BC::DS, all_dss, new_dss)
+    if l_BA.X ⊇ r_BC.X && l_AB.X == l_BA.Y && l_AB.X == l_BA.Y
+        new_key = (X = l.X, Y = setdiff(∪(l.Y, r.Y), l.X))
+        new_degree = ld*rd
+        if get(all_dcs, new_key, Inf) > new_degree &&
+                get(new_dcs, new_key, Inf) > new_degree
+            new_dcs[new_key] = new_degree
+        end
+    end
+end
+
+function estimate_nnz(stat::DSStats; indices = get_index_set(stat), conditional_indices=Set{IndexExpr}())
+
+end
+
 #################  DCStats Definition ######################################################
 
 struct DegreeConstraint
@@ -182,10 +226,8 @@ end
 
 
 copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.idx_2_int), copy(stat.int_2_idx),  Set{DC}(dc for dc in stat.dcs))
-
 DCStats(x::Number) = DCStats(TensorDef(x::Number), Dict{IndexExpr, Int}(), Dict{Int, IndexExpr}(), Set{DC}())
 get_def(stat::DCStats) = stat.def
-
 get_index_bitset(stat::DCStats) = SmallBitSet(Int[stat.idx_2_int[x] for x in get_index_set(stat)])
 
 function fix_cardinality!(stat::DCStats, card)

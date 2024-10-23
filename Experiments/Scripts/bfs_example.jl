@@ -5,6 +5,7 @@ using Galley: t_dense, t_undef, insert_statistics!
 using MatrixDepot
 using SparseArrays
 using DelimitedFiles
+using Statistics: mean
 
 
 function run_exps(matrices)
@@ -17,7 +18,7 @@ function run_exps(matrices)
         p = Tensor(SparseList(Element(false)), SparseVector(fsprand(Bool, n, 10)) .!= 0)
         q = Tensor(SparseList(Element(false)), p)
 
-        n_reps = 3
+        n_reps = 5
         n_rounds = Inf
         println("Running Sparse Version: $matrix")
         sparse_p4 = nothing
@@ -74,7 +75,6 @@ function run_exps(matrices)
                 f_time += @elapsed p1 = Tensor(SparseList(Element(false)), p4)
                 f_time += @elapsed q1 = Tensor(SparseList(Element(false)), q4)
                 rounds += 1
-                println(sum(q4))
             end
             push!(f_times, f_time)
             sparse_p4 = p4
@@ -259,7 +259,7 @@ function run_exps(matrices)
             p_g = Materialize(t_undef, :n1, Input(p, :n1))
             opt_time = 0
             execute_time = 0
-            verbose = (i == 1) ? 3 : 0
+            verbose = (i == 1) ? 0 : 0
             while (rounds == 0 || sum(q_g.expr.tns.val) > 0) && rounds < n_rounds
                 query = get_bfs_query(A_g, q_g, p_g)
                 result_galley = galley(query, simple_cse=false, faq_optimizer=pruned, ST=DCStats, verbose=verbose)
@@ -283,7 +283,7 @@ function run_exps(matrices)
             p_g = Materialize(t_undef, :n1, Input(p, :n1))
             opt_time = 0
             execute_time = 0
-            verbose = (i == 1) ? 3 : 0
+            verbose = (i == 1) ? 0 : 0
             while (rounds == 0 || sum(q_g.expr.tns.val) > 0) && rounds < n_rounds * 3
                 query = get_bfs_one_iter_query(A_g, q_g, p_g)
                 result_galley_one_iter = galley(query, simple_cse=false, faq_optimizer=pruned, ST=DCStats, verbose=verbose)
@@ -307,7 +307,7 @@ function run_exps(matrices)
             p_g = Materialize(t_undef, :n1, Input(p, :n1))
             opt_time = 0
             execute_time = 0
-            verbose = (i == 1) ? 3 : 0
+            verbose = (i == 1) ? 0 : 0
             while (rounds == 0 || sum(q_g.expr.tns.val) > 0) && rounds < n_rounds
                 query = get_bfs_query(A_g, q_g, p_g)
                 result_galley_cse = galley(query, simple_cse=true, faq_optimizer=pruned, ST=DCStats, verbose=verbose)
@@ -320,26 +320,26 @@ function run_exps(matrices)
             push!(opt_times_cse, opt_time)
             push!(execute_times_cse, execute_time)
         end
-        println("Galley (Non-CSE) Exec: $(minimum(execute_times))")
-        println("Galley (Non-CSE) Opt: $(minimum(opt_times))")
-        println("Galley (One Iter) Exec: $(minimum(execute_times_one_iter))")
-        println("Galley (One Iter) Opt: $(minimum(opt_times_one_iter))")
-        println("Galley (CSE) Exec: $(minimum(execute_times_cse))")
-        println("Galley (CSE) Opt: $(minimum(opt_times_cse))")
-        println("Finch Sparse Exec: $(minimum(f_times))")
+        println("Galley (Non-CSE) Exec: $(minimum(execute_times[2:end])), $(mean(execute_times[2:end])), $(maximum(execute_times[2:end]))")
+        println("Galley (Non-CSE) Opt: $(mean(opt_times[2:end]))")
+        println("Galley (One Iter) Exec: $(minimum(execute_times_one_iter[2:end])), $(mean(execute_times_one_iter[2:end])), $(maximum(execute_times_one_iter[2:end]))")
+        println("Galley (One Iter) Opt: $(mean(opt_times_one_iter[2:end]))")
+        println("Galley (CSE) Exec: $(minimum(execute_times_cse[2:end])), $(mean(execute_times_cse[2:end])), $(maximum(execute_times_cse[2:end]))")
+        println("Galley (CSE) Opt: $(mean(opt_times_cse[2:end]))")
+        println("Finch Sparse Exec: $(mean(f_times[2:end]))")
         #println("Finch SparseByteMap Exec: $(minimum(f_sparsebytemap_times))")
-        println("Finch Dense Exec: $(minimum(f_dense_times))")
-        println("Finch HandOpt Exec: $(minimum(f_handopt_times))")
+        println("Finch Dense Exec: $(mean(f_dense_times[2:end]))")
+        println("Finch HandOpt Exec: $(mean(f_handopt_times[2:end]))")
         println("F = G: $(sum(sparse_p4) == sum(result_galley.value[2]))")
         #println("F = G: $(sum(sparsebytemap_p4) == sum(result_galley.value[2]))")
         println("F = G: $(sum(handopt_p4) == sum(result_galley.value[2]))")
         println("F = G: $(sum(dense_p4) == sum(result_galley_cse.value[2]))")
-        push!(results, ("Sparse", matrix, string(minimum(f_times)), string(0), string(n_rounds*3)))
-        push!(results, ("Dense", matrix, string(minimum(f_dense_times)), string(0), string(n_rounds*3)),)
-        push!(results, ("HandOpt", matrix, string(minimum(f_handopt_times)), string(0), string(n_rounds*3)))
-        push!(results, ("Galley (No-CSE)", matrix, string(minimum(execute_times)), string(minimum(opt_times)), string(n_rounds*3)))
-        push!(results, ("Galley (One Iter)", matrix, string(minimum(execute_times_one_iter)), string(minimum(opt_times_one_iter)), string(n_rounds*3)))
-        push!(results, ("Galley (CSE)", matrix, string(minimum(execute_times_cse)), string(minimum(opt_times_cse)), string(n_rounds*3)))
+        push!(results, ("Sparse", matrix, string(mean(f_times[2:end])), string(0), string(n_rounds*3)))
+        push!(results, ("Dense", matrix, string(mean(f_dense_times[2:end])), string(0), string(n_rounds*3)),)
+        push!(results, ("HandOpt", matrix, string(mean(f_handopt_times[2:end])), string(0), string(n_rounds*3)))
+        push!(results, ("Galley (No-CSE)", matrix, string(mean(execute_times[2:end])), string(mean(opt_times[2:end])), string(n_rounds*3)))
+        push!(results, ("Galley (One Iter)", matrix, string(mean(execute_times_one_iter[2:end])), string(mean(opt_times_one_iter[2:end])), string(n_rounds*3)))
+        push!(results, ("Galley (CSE)", matrix, string(mean(execute_times_cse[2:end])), string(mean(opt_times_cse[2:end])), string(n_rounds*3)))
     end
     writedlm("Experiments/Results/bfs.csv", results, ',')
 end
@@ -362,34 +362,40 @@ using CSV
 using DataFrames
 using CategoricalArrays
 using Measurements
+using StatsPlots
+using Plots
 data = CSV.read("Experiments/Results/bfs.csv", DataFrame)
+matrix_names = Dict("DIMACS10/kron_g500-logn16"=>"Kron", "SNAP/roadNet-CA"=>"RoadNet", "SNAP/com-LiveJournal"=>"LiveJournal", "SNAP/soc-Epinions1"=>"Epinions", "SNAP/com-Orkut"=>"Orkut")
 #data = data[any.(zip(data.Method .== "Galley (One Iter)", data.Method .== "Sparse", data.Method .== "Dense", data.Method .== "HandOpt")) , :]
+data.Dataset .= [matrix_names[x] for x in data.Dataset]
 data.Method[data.Method .== "Galley (One Iter)"]  .= "Galley"
 galley_opt_data = data[data.Method .== "Galley", :]
 galley_opt_data.Method .= "Galley (Opt Time)"
 galley_opt_data.Runtime .= galley_opt_data.OptTime
 galley_exec_data = data[data.Method .== "Galley", :]
 galley_exec_data.Method .= "Galley (Exec Time)"
-data[data.Method .== "Galley", :Runtime] .= data[data.Method .== "Galley", :].OptTime .+ data[data.Method .== "Galley", :].Runtime
+#data[data.Method .== "Galley", :Runtime] .= data[data.Method .== "Galley", :].OptTime .+ data[data.Method .== "Galley", :].Runtime
 data = data[any.(zip(data.Method .== "Galley", data.Method .== "Galley (Opt Time)", data.Method .== "Galley (Exec Time)", data.Method .== "Sparse", data.Method .== "Dense")) , :]
-append!(data, galley_opt_data)
-append!(data, galley_exec_data)
+#append!(data, galley_opt_data)
+#append!(data, galley_exec_data)
 ordered_methods = CategoricalArray(data.Method)
-levels!(ordered_methods, ["Galley", "Galley (Exec Time)", "Galley (Opt Time)", "Galley (No-CSE)", "Galley (CSE)", "Galley (One Iter)", "Sparse", "Dense", "HandOpt"])
+levels!(ordered_methods, ["Galley", "Galley (Exec Time)", "Galley (Opt Time)", "Galley (No-CSE)", "Galley (CSE)", "Galley (One Iter)",  "Dense", "Sparse", "HandOpt"])
 gbplot = StatsPlots.groupedbar(data.Dataset,
                                 data.Runtime,
                                 group = ordered_methods,
                                 ylims=[10^-2, 10^2],
                                 yscale=:log,
                                 legend = :topleft,
-                                size = (1800, 700),
+                                size = (1000, 600),
                                 ylabel = "Execute Time (s)",
-                                xtickfontsize=15,
-                                ytickfontsize=15,
-                                xguidefontsize=16,
-                                yguidefontsize=16,
-                                legendfontsize=16,
+                                xtickfontsize=16,
+                                ytickfontsize=16,
+                                xguidefontsize=18,
+                                yguidefontsize=18,
+                                legendfontsize=18,
+                                xrotation = 25,
                                 left_margin=10Plots.mm,
-                                bottom_margin=10Plots.mm,
-                                top_margin=10Plots.mm)
+                                bottom_margin=15Plots.mm,
+                                top_margin=10Plots.mm
+                                )
 savefig(gbplot, "Experiments/Figures/bfs.png")

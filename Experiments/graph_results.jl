@@ -12,7 +12,8 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
                                         group_order = nothing,
                                         x_label=nothing,
                                         y_label=nothing,
-                                        filename=nothing)
+                                        filename=nothing,
+                                        kwargs...)
     # for now let's just use the dataset as the x-values and the cycle size as the groups
     x_values = []
     y_values = []
@@ -62,15 +63,20 @@ function graph_grouped_box_plot(experiment_params_list::Vector{ExperimentParams}
     # This seems to be necessary for using Plots.jl outside of the ipynb framework.
     # See this: https://discourse.julialang.org/t/deactivate-plot-display-to-avoid-need-for-x-server/19359/15
     ENV["GKSwstype"]="100"
-    gbplot = groupedboxplot(x_values, y_values, group = groups, yscale =:log10,
-                            ylims=y_lims, yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
-                            legend = :topleft, size = (1000, 600),
+    gbplot = groupedboxplot(x_values, y_values;
+                            group = groups,
+                            yscale =:log10,
+                            ylims=y_lims,
+                            yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
+                            legend = :topleft,
+                            size = (1000, 600),
                             xtickfontsize=15,
                             ytickfontsize=15,
                             xguidefontsize=16,
                             yguidefontsize=16,
                             legendfontsize=16,
-                            left_margin=10mm)
+                            left_margin=10Measures.mm,
+                            kwargs...)
     x_label !== nothing && xlabel!(gbplot, x_label)
     y_label !== nothing && ylabel!(gbplot, y_label)
     plotname = (isnothing(filename)) ? results_filename * ".png" : filename * ".png"
@@ -85,7 +91,9 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                                         y_label=nothing,
                                         y_lims=[0.001, 10],
                                         group_order=nothing,
-                                        filename=nothing)
+                                        filename=nothing,
+                                        kwargs...)
+
     # for now let's just use the dataset as the x-values and the cycle size as the groups
     x_values = []
     y_values = Float64[]
@@ -139,7 +147,7 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
     # See this: https://discourse.julialang.org/t/deactivate-plot-display-to-avoid-need-for-x-server/19359/15
     ENV["GKSwstype"]="100"
     gbplot = StatsPlots.groupedbar(x_values,
-                            y_values,
+                            y_values;
                             group = groups,
                             yscale =:log10,
                             yticks=[10^-4, 10^-3, 10^-2, .1, 1, 10^1, 10^2, 10^3],
@@ -151,19 +159,12 @@ function graph_grouped_bar_plot(experiment_params_list::Vector{ExperimentParams}
                             xguidefontsize=16,
                             yguidefontsize=16,
                             legendfontsize=16,
-                            left_margin=10mm,
-                            bottom_margin=10mm,
-                            top_margin=10mm)
-    if x_label !== nothing
-        xlabel!(gbplot, x_label)
-    else
-        xlabel!(gbplot, string(x_type))
-    end
-    if y_label !== nothing
-        ylabel!(gbplot, y_label)
-    else
-        ylabel!(gbplot, string(y_type))
-    end
+                            left_margin=10Measures.mm,
+                            bottom_margin=10Measures.mm,
+                            top_margin=10Measures.mm,
+                            kwargs...)
+    x_label !== nothing && xlabel!(gbplot, x_label)
+    y_label !== nothing && ylabel!(gbplot, y_label)
     plotname = (isnothing(filename)) ? results_filename * ".png" : filename * ".png"
     savefig(gbplot, "Experiments/Figures/" * plotname)
 end

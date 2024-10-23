@@ -142,7 +142,7 @@ function unify_dc_ints(all_stats, new_def)
     max_int = 1
     for (i, idx) in enumerate(union([keys(stat.idx_2_int) for stat in all_stats]...))
         final_idx_2_int[idx] = max_int
-        final_int_2_idx[i] = idx
+        final_int_2_idx[max_int] = idx
         max_int += 1
     end
     for idx in get_index_set(new_def)

@@ -6,7 +6,7 @@ mutable struct AnnotatedQuery
     reduce_idxs::Vector{IndexExpr}
     point_expr::PlanNode
     idx_lowest_root::Dict{IndexExpr, Int}
-    idx_op::Dict{IndexExpr, Function}
+    idx_op::Dict{IndexExpr, Any}
     id_to_node::Dict{Int, PlanNode}
     parent_idxs::Dict{IndexExpr, Vector{IndexExpr}} # Index orders that must be respected
     original_idx::Dict{IndexExpr, IndexExpr} # When an index is split into many, we track their relationship.
@@ -218,6 +218,7 @@ function AnnotatedQuery(q::PlanNode, ST)
             if intree(idx2_bottom_root, idx1_bottom_root)
                 push!(connected_idxs[idx1], idx2)
             end
+
             mergeable_agg_op = (idx1_op == idx2_op && isassociative(idx1_op) && iscommutative(idx1_op))
             # If idx1 isn't a parent of idx2, then idx2 can't restrict the summation of idx1
             if isdescendant(idx2_top_root, idx1_bottom_root)
@@ -363,7 +364,7 @@ function is_dense(mat_stats, mat_size)
 end
 
 # Returns the cost of reducing out an index
-function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
+function cost_of_reduce(reduce_idx, aq, cache::Dict{UInt64, Float64}=Dict{UInt64, Float64}(), alias_hash=Dict{IndexExpr, UInt64}())
     query, _, _,reduced_idxs = get_reduce_query(reduce_idx, aq)
     cache_key = cannonical_hash(query.expr, alias_hash)
     if !haskey(cache, cache_key)
@@ -374,9 +375,6 @@ function cost_of_reduce(reduce_idx, aq, cache=Dict(), alias_hash=Dict())
         comp_factor = length(get_index_set(comp_stats)) * ComputeCost
         cost = estimate_nnz(comp_stats) * comp_factor + mat_size * mat_factor
         forced_transpose_cost = get_forced_transpose_cost(query.expr)
-        if count_index_occurences([query.expr.arg]) > 10
-            cost += count_index_occurences([query.expr]) * cost # We really would rather not split.
-        end
         if cost == Inf
             println("INFINITE QUERY FOR: $reduce_idx")
             println(query)
@@ -413,24 +411,24 @@ end
 
 # Returns a new AQ where `idx` has been reduced out of the expression
 # along with the properly formed query which performs that reduction.
-function reduce_idx!(reduce_idx, aq)
+function reduce_idx!(reduce_idx, aq; do_condense=false)
     query, node_to_replace, nodes_to_remove, reduced_idxs = get_reduce_query(reduce_idx, aq)
     # This plan_copy is structural important
     query = plan_copy(query)
-    condense_stats!(query.expr.stats)
+    do_condense && condense_stats!(query.expr.stats)
 
     alias_expr = Alias(query.name.name)
     alias_expr.node_id = node_to_replace
     alias_expr.stats = copy_stats(query.expr.stats)
     new_point_expr = replace_and_remove_nodes!(aq.point_expr, node_to_replace, alias_expr, nodes_to_remove)
-    new_id_to_node = Dict()
+    new_id_to_node = Dict{Int, PlanNode}()
     for node in PreOrderDFS(new_point_expr)
         new_id_to_node[node.node_id] = node
     end
     new_reduce_idxs = filter((x) -> !(x in reduced_idxs), aq.reduce_idxs)
-    new_idx_lowest_root = Dict()
-    new_idx_op = Dict()
-    new_parent_idxs = Dict()
+    new_idx_lowest_root = Dict{IndexExpr, Int}()
+    new_idx_op = Dict{IndexExpr, Any}()
+    new_parent_idxs = Dict{IndexExpr, Vector{IndexExpr}}()
     for idx in keys(aq.idx_lowest_root)
         if idx in reduced_idxs
             continue
@@ -443,7 +441,20 @@ function reduce_idx!(reduce_idx, aq)
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
     end
-    insert_statistics!(aq.ST, new_point_expr)
+
+    # Here, we update the statistics for all nodes above the affected nodes
+    rel_child_nodes = Set{Int}(n for n in nodes_to_remove)
+    push!(rel_child_nodes, node_to_replace)
+    for n in PostOrderDFS(new_point_expr)
+        if n.node_id == node_to_replace
+            _insert_statistics!(aq.ST, n)
+        elseif istree(n) && any(c.node_id ∈ rel_child_nodes for c in n.children)
+            _insert_statistics!(aq.ST, n)
+            push!(rel_child_nodes, n.node_id)
+        end
+    end
+
+#    insert_statistics!(aq.ST, new_point_expr, reduce_idx = aq.original_idx[reduce_idx])
 #    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
 #    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
 #    @assert length(unique(new_reduce_idxs)) == length(new_reduce_idxs)

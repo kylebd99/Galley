@@ -21,7 +21,7 @@ end
 
 # In cannonical form, two aggregates in the plan shouldn't reduce out the same variable.
 # E.g. MapJoin(*, Aggregate(+, Input(tns, i, j)))
-function unique_indices(scope_dict, n::PlanNode, counter)
+function unique_indices(scope_dict::Dict{IndexExpr, IndexExpr}, n::PlanNode, counter)
     if n.kind === Plan
         return Plan([unique_indices(scope_dict, query, counter) for query in n.queries]..., n.outputs)
     elseif n.kind === Query
@@ -51,41 +51,49 @@ function unique_indices(scope_dict, n::PlanNode, counter)
     end
 end
 
-# Often, we will only have changed a small part of the expression, e.g. by performing a
-# reduction, so we only update the stats objects which were involved with those indices.
-function insert_statistics!(ST, plan::PlanNode; bindings = Dict(), replace=false)
-    for expr in PostOrderDFS(plan)
-        if expr.kind === MapJoin
-            expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
-        elseif expr.kind === Aggregate
-            expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
-        elseif expr.kind === Materialize
-            expr.stats = copy_stats(expr.expr.stats)
-            def = get_def(expr.stats)
-            def.level_formats = [f.val for f in expr.formats]
-            def.index_order = [idx.name for idx in expr.idx_order]
-        elseif expr.kind === Alias
-            if haskey(bindings, expr.name)
-                expr.stats = get(bindings, expr.name, nothing)
-            end
-
-            if !isnothing(expr.stats)
-                idxs = [idx.name for idx in expr.idxs]
-                stats_order = get_index_order(expr.stats)
-                @assert length(idxs) == 0 || !isnothing(stats_order)
-                if !isempty(idxs) && stats_order != idxs
-                    expr.stats = reindex_stats(expr.stats, idxs)
-                end
-            end
-        elseif expr.kind === Input
-            if isnothing(expr.stats) || replace
-                expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])
-            end
-        elseif expr.kind === Value
-            if expr.val isa Number
-                expr.stats = ST(expr.val)
+function _insert_statistics!(ST, expr::PlanNode; bindings = Dict{IndexExpr, TensorStats}(), replace=false)
+    if expr.kind === MapJoin
+        expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
+    elseif expr.kind === Aggregate
+        expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
+    elseif expr.kind === Materialize
+        expr.stats = copy_stats(expr.expr.stats)
+        def = get_def(expr.stats)
+        def.level_formats = [f.val for f in expr.formats]
+        def.index_order = [idx.name for idx in expr.idx_order]
+    elseif expr.kind === Alias
+        if haskey(bindings, expr.name)
+            expr.stats = bindings[expr.name]
+        end
+        if !isnothing(expr.stats)
+            idxs = [idx.name for idx in expr.idxs]
+            stats_order = get_index_order(expr.stats)
+            @assert length(idxs) == 0 || !isnothing(stats_order)
+            if !isempty(idxs) && stats_order != idxs
+                expr.stats = reindex_stats(expr.stats, idxs)
             end
         end
+    elseif expr.kind === Input
+        if isnothing(expr.stats) || replace
+            expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])
+        end
+    elseif expr.kind === Value
+        if expr.val isa Number
+            expr.stats = ST(expr.val)
+        end
+    end
+
+end
+
+# Often, we will only have changed a small part of the expression, e.g. by performing a
+# reduction, so we only update the stats objects which were involved with those indices.
+function insert_statistics!(ST, plan::PlanNode; bindings = Dict{IndexExpr, TensorStats}(), replace=false, reduce_idx=nothing)
+    check_reduce_idxs = !isnothing(reduce_idx)
+    for expr in PostOrderDFS(plan)
+        if  check_reduce_idxs && !isnothing(expr.stats) && reduce_idx ∉ get_index_set(expr.stats)
+            continue
+        end
+        _insert_statistics!(ST, expr; bindings=bindings, replace=replace)
     end
 end
 
@@ -132,7 +140,7 @@ end
 
 function canonicalize(plan::PlanNode, use_dnf)
     counter = [1]
-    plan = unique_indices(Dict(), plan, counter)
+    plan = unique_indices(Dict{IndexExpr, IndexExpr}(), plan, counter)
     plan = merge_mapjoins(plan)
     plan = distribute_mapjoins(plan, use_dnf)
     plan = remove_extraneous_mapjoins(plan)
@@ -140,7 +148,7 @@ function canonicalize(plan::PlanNode, use_dnf)
     plan = distribute_mapjoins(plan, use_dnf)
     plan = merge_mapjoins(plan)
     # Each aggregate should correspond to a unique variable, which we ensure here.
-    plan = unique_indices(Dict(), plan, counter)
+    plan = unique_indices(Dict{IndexExpr, IndexExpr}(), plan, counter)
     # Sometimes rewrites will cause an implicit DAG, so we recopy the plan to avoid overwriting
     # later on.
     plan = plan_copy(plan)
@@ -153,7 +161,7 @@ gen_idx_name(count::Int) = Symbol("i_$count")
 
 function cannonical_hash(plan::PlanNode, alias_hash)
     plan = plan_copy(plan; copy_statistics=false)
-    idx_translate_dict = Dict()
+    idx_translate_dict = Dict{IndexExpr, IndexExpr}()
     for n in PostOrderDFS(plan)
         if n.kind === Index
             if !haskey(idx_translate_dict, n.name)

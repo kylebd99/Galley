@@ -72,7 +72,7 @@ function enumerate_distributed_plans(q::PlanNode, visited_plans, alias_hash, max
     return plans
 end
 
-function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, alias_stats, alias_hash, verbose)
+function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, alias_stats::Dict{IndexExpr, TensorStats}, alias_hash::Dict{IndexExpr, UInt64}, verbose)
     insert_statistics!(ST, q; bindings = alias_stats)
     if faq_optimizer === naive
         insert_node_ids!(q)
@@ -82,10 +82,9 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
     # If there's the possibility of distributivity, we attempt that pushdown and see
     # whether it benefits the computation.
     check_dnf = !allequal([n.op.val for n in PostOrderDFS(q) if n.kind === MapJoin])
-    insert_statistics!(ST, q)
     q_non_dnf = canonicalize(plan_copy(q), false)
     input_aq = AnnotatedQuery(q_non_dnf, ST)
-    logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict(), verbose)
+    logical_plan, cnf_cost, cost_cache = high_level_optimize(faq_optimizer, input_aq, alias_hash, Dict{UInt64, Float64}(), verbose)
     if check_dnf
         min_cost = cnf_cost
         min_query = canonicalize(plan_copy(q), false)
@@ -104,7 +103,7 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
                 end
             end
         end
-        #=
+
         # We check the fully distributed option too just to see
         q_dnf = canonicalize(q, true)
         if cannonical_hash(q_dnf, alias_hash) ∉ visited_queries
@@ -116,15 +115,15 @@ function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, q::PlanNode, ST, ali
                 min_cost = dnf_cost
                 min_query = q_dnf
             end
-        end =#
+        end
         verbose >= 1 && println("Used DNF: $(min_cost < cnf_cost) \n QUERY: $min_query")
     end
     return logical_plan
 end
 
-function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, aq::AnnotatedQuery, alias_hash, cost_cache, verbose)
+function high_level_optimize(faq_optimizer::FAQ_OPTIMIZERS, aq::AnnotatedQuery, alias_hash::Dict{IndexExpr, UInt64}, cost_cache::Dict{UInt64, Float64}, verbose)
     if faq_optimizer == greedy
-        return greedy_query_to_plan(aq, cost_cache, alias_hash)
+        return pruned_query_to_plan(aq, cost_cache, alias_hash; use_greedy=true)
     elseif faq_optimizer == exact
         return exact_query_to_plan(aq, cost_cache, alias_hash)
     elseif faq_optimizer == pruned

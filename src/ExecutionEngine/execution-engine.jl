@@ -51,7 +51,7 @@ end
 # TODO: use loop_order to label indexes
 function execute_query(alias_dict, q::PlanNode, verbose)
     tensor_counter = [0]
-    index_sym_dict = Dict()
+    index_sym_dict = Dict{IndexExpr, IndexExpr}()
     name = q.name.name
     mat_expr = q.expr
     loop_order = [idx.name for idx in q.loop_order]
@@ -111,7 +111,7 @@ function execute_query(alias_dict, q::PlanNode, verbose)
         if (stored > (1.2 * non_default)) || (non_default > 5 * estimated_size) ||(non_default < estimated_size / 5)
             fix_cardinality!(mat_expr.stats, non_default)
             best_formats = select_output_format(mat_expr.stats, reverse(get_index_order(mat_expr.stats)), get_index_order(mat_expr.stats))
-            if !all([f == t_dense for f in best_formats])
+            if output_formats != best_formats
                 output_tensor = initialize_tensor(best_formats,
                                             output_dimensions,
                                             output_default,

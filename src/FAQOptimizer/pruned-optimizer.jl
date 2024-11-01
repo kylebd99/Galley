@@ -114,7 +114,7 @@ function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache::Dict{UInt64,
     # The final query should produce the result, so we ensure that it has the result's name
     last_query.name = cur_aq.output_name
     last_query.expr = Materialize(cur_aq.output_format..., cur_aq.output_order..., last_query.expr)
-    last_query.expr.stats = last_query.expr.expr.stats
+    last_query.expr.stats = copy_stats(last_query.expr.expr.stats)
     get_def(last_query.expr.stats).index_order = [idx for idx in cur_aq.output_order]
     get_def(last_query.expr.stats).level_formats = [f for f in cur_aq.output_format]
     alias_hash[last_query.name.name] = cannonical_hash(last_query.expr, alias_hash)

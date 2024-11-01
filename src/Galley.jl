@@ -20,6 +20,7 @@ using Finch.FinchNotation: index_instance, variable_instance, tag_instance, lite
                         block_instance, define_instance, call_instance, freeze_instance,
                         thaw_instance,
                         Updater, Reader, Dimensionless
+using Finch.FinchLogic
 using DuckDB
 using PrettyPrinting
 
@@ -56,6 +57,7 @@ include("TensorStats/TensorStats.jl")
 include("FAQOptimizer/FAQOptimizer.jl")
 include("PhysicalOptimizer/PhysicalOptimizer.jl")
 include("ExecutionEngine/ExecutionEngine.jl")
+include("FinchCompat/FinchCompat.jl")
 
 # TODO:
 #   - Convert a Finch HL query to a galley query

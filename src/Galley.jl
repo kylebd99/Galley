@@ -32,6 +32,7 @@ export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, hypertree_width, greedy, pruned, exact
 export expr_to_kernel, execute_tensor_kernel
 export load_to_duckdb, DuckDBTensor, fill_table
+export GalleyExecutor
 
 IndexExpr = Symbol
 TensorId = String

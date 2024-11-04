@@ -50,7 +50,22 @@ function push_down_relabel(prgm::LogicNode, bindings=Dict())
 end
 
 function pull_up_reorders(prgm::LogicNode)
-    
+    Rewrite(Postwalk(Chain([@rule aggregate(~op, ~init, reorder(~arg, ~ro_idxs...), ~agg_idxs...)=>
+                                  reorder(aggregate(op, init, arg, agg_idxs...), setdiff(ro_idxs, agg_idxs)...)])))(prgm)
+end
+
+function remove_extraneous_reorders(prgm::LogicNode)
+    new_children = LogicNode[]
+    for q in prgm.children
+        if q.rhs.kind == reorder 
+            q.children[2] = reorder(Rewrite(Postwalk(Chain([@rule reorder(~arg, ~ro_idxs...) => arg where arg.kind != table])))(q.rhs.arg), q.rhs.idxs...)
+        else
+            q.children[2] = Rewrite(Postwalk(Chain([@rule reorder(~arg, ~ro_idxs...) => arg where arg.kind != table])))(q.rhs)
+        end
+        push!(new_children, q)
+    end
+    prgm.children = new_children
+    prgm
 end
 
 function unwrap_subqueries(prgm::LogicNode)
@@ -63,6 +78,8 @@ function normalize_hl(prgm::LogicNode)
     prgm = flatten_plans(prgm)
     prgm = propagate_fields(prgm)
     prgm = push_down_relabel(prgm)
+    prgm = pull_up_reorders(prgm)
+    prmg = remove_extraneous_reorders(prgm)
 #    prgm = push_fields(prgm)
 #    prgm = lift_fields(prgm)
 #    prgm = push_fields(prgm)
@@ -85,7 +102,6 @@ end
 # table := symbol, field...
 # aggregate := op, init, expr, field...
 function finch_hl_to_galley(prgm::LogicNode)
-    println(prgm)
     if prgm.kind == plan
         query_nodes = [q for q in prgm.bodies if q.kind == query]
         return PlanNode[finch_hl_to_galley(q) for q in query_nodes]
@@ -105,14 +121,13 @@ function finch_hl_to_galley(prgm::LogicNode)
         idxs = [IndexExpr(i.val) for i in reorder_arg.idxs]
         return Mat(formats..., idxs..., finch_hl_to_galley(reorder_arg.arg))
     elseif prgm.kind == reorder
-        println("HERE")
         if prgm.arg.kind == relabel || prgm.arg.kind == table
-            if prgm.idxs == prgm.arg.idxs
+            if prgm.idxs ⊇ prgm.arg.idxs && prgm.idxs[1:length(prgm.arg.idxs)] == prgm.arg.idxs
                 return finch_hl_to_galley(prgm.arg)
             end
             println(prgm.idxs)
             println(prgm.arg.idxs)
-            throw(error("Broadcasting not yet implemented in Galley!"))
+            throw(error("Removing dim 1 indices w/broadcast is not yet implemented in Galley!"))
         end
         idxs = [IndexExpr(i.val) for i in prgm.idxs]
         return Mat(idxs..., finch_hl_to_galley(prgm.arg))

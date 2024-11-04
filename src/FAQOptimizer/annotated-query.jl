@@ -11,7 +11,7 @@ mutable struct AnnotatedQuery
     parent_idxs::Dict{IndexExpr, Vector{IndexExpr}} # Index orders that must be respected
     original_idx::Dict{IndexExpr, IndexExpr} # When an index is split into many, we track their relationship.
     connected_components::Vector{Vector{IndexExpr}}
-    connected_idxs::Dict{IndexExpr, Vector{IndexExpr}}
+    connected_idxs::Dict{IndexExpr, Set{IndexExpr}}
 end
 
 function copy_aq(aq::AnnotatedQuery)
@@ -43,7 +43,7 @@ function get_idx_connected_components(parent_idxs, connected_idxs)
         finished = true
         for (idx1, connected_idxs) in connected_idxs
             for idx2 in connected_idxs
-                if idx2 ∈ parent_idxs[idx1]
+                if idx2 ∈ parent_idxs[idx1] || idx1 ∈ parent_idxs[idx2]
                     continue
                 end
                 if component_ids[idx2] != component_ids[idx1]
@@ -207,7 +207,7 @@ function AnnotatedQuery(q::PlanNode, ST)
     end
 
     parent_idxs = Dict(i=>[] for i in reduce_idxs)
-    connected_idxs = Dict(i=>[] for i in reduce_idxs)
+    connected_idxs = Dict(i=>Set{IndexExpr}() for i in reduce_idxs)
     for idx1 in reduce_idxs
         idx1_op = idx_op[idx1]
         idx1_bottom_root = id_to_node[idx_lowest_root[idx1]]
@@ -226,7 +226,7 @@ function AnnotatedQuery(q::PlanNode, ST)
             # If they can both be pushed past each other, then we check whether they
             # commute. If not, we check which one was lower in the topological order.
             elseif (!(mergeable_agg_op) &&
-                        idx_top_order[idx2] < idx_top_order[idx1])
+                        idx_top_order[original_idx[idx2]] < idx_top_order[original_idx[idx1]])
                 push!(parent_idxs[idx1], idx2)
             end
         end
@@ -302,17 +302,12 @@ function get_reduce_query(reduce_idx, aq)
             end
             if (idx ∈ aq.connected_idxs[reduce_idx])
                 push!(idxs_to_be_reduced, idx)
+            elseif aq.idx_lowest_root[idx] == node_to_replace
+                push!(idxs_to_be_reduced, idx)
             end
         end
     end
-    final_idxs_to_be_reduced = Set()
-    for idx in idxs_to_be_reduced
-        if aq.original_idx[idx] != idxs_to_be_reduced
-            push!(final_idxs_to_be_reduced, Index(aq.original_idx[idx]))
-        else
-            push!(final_idxs_to_be_reduced, idx)
-        end
-    end
+    final_idxs_to_be_reduced = Set(Index(aq.original_idx[idx]) for idx in idxs_to_be_reduced)
 
     reduced_idxs = idxs_to_be_reduced
     query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
@@ -429,6 +424,7 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
     new_idx_lowest_root = Dict{IndexExpr, Int}()
     new_idx_op = Dict{IndexExpr, Any}()
     new_parent_idxs = Dict{IndexExpr, Vector{IndexExpr}}()
+    new_connected_idxs = Dict{IndexExpr, Set{IndexExpr}}()
     for idx in keys(aq.idx_lowest_root)
         if idx in reduced_idxs
             continue
@@ -440,7 +436,18 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
         new_idx_lowest_root[idx] = root
         new_idx_op[idx] = aq.idx_op[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
+        new_connected_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.connected_idxs[idx])
     end
+    
+    for idx in keys(new_idx_lowest_root)
+        for idx2 in keys(new_idx_lowest_root)
+            if new_idx_lowest_root[idx] == new_idx_lowest_root[idx2]
+                push!(new_connected_idxs[idx], idx2)
+                push!(new_connected_idxs[idx2], idx)
+            end
+        end
+    end
+    new_components = get_idx_connected_components(new_parent_idxs, new_connected_idxs)
 
     # Here, we update the statistics for all nodes above the affected nodes
     rel_child_nodes = Set{Int}(n for n in nodes_to_remove)
@@ -454,6 +461,7 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
         end
     end
 
+
 #    insert_statistics!(aq.ST, new_point_expr, reduce_idx = aq.original_idx[reduce_idx])
 #    @assert all([idx ∉ get_index_set(new_point_expr.stats) for idx in reduced_idx_exprs])
 #    @assert length(unique(aq.reduce_idxs)) == length(aq.reduce_idxs)
@@ -465,6 +473,8 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
     aq.idx_op = new_idx_op
     aq.id_to_node = new_id_to_node
     aq.parent_idxs = new_parent_idxs
+    aq.connected_idxs = new_connected_idxs
+    aq.connected_components = new_components
     return query
 end
 

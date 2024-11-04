@@ -72,7 +72,12 @@ function pruned_query_to_plan(input_aq::AnnotatedQuery, cost_cache::Dict{UInt64,
     elimination_order = IndexExpr[]
     queries = PlanNode[]
     cur_aq = copy_aq(input_aq)
-    for component in input_aq.connected_components
+    while !isempty(get_reducible_idxs(cur_aq))
+        component = cur_aq.connected_components[1]
+        if isempty(component ∩ get_reducible_idxs(cur_aq))
+            continue
+        end
+        
         (greedy_order, greedy_queries, greedy_aq, greedy_cost), greedy_subquery_costs, cost_cache = branch_and_bound(cur_aq, component, 1, Dict(), alias_hash, cost_cache)
         if length(component) >=10 || use_greedy
             append!(elimination_order, greedy_order)

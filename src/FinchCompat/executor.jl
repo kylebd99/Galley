@@ -11,15 +11,14 @@ end
 
 function Finch.compute_parse(ctx::GalleyExecutor, args::Tuple)
     args = collect(args)
-    println("args: $args")
     vars = map(arg -> alias(gensym(:A)), args)
     bodies = map((arg, var) -> query(var, arg.data), args, vars)
-    println("Finch Prgm: \n $(plan(bodies...))")
-    println("Normalised Prgm: \n $(normalize_hl(plan(bodies...)))")
+#    println(plan(bodies...))
+#    println(normalize_hl(plan(bodies...)))
     galley_prgm = finch_hl_to_galley(normalize_hl(plan(bodies...)))
     if length(galley_prgm) == 1
-        return galley(galley_prgm; verbose=3).value
+        return galley(galley_prgm; verbose=4).value
     else
-        return tuple(galley(galley_prgm; verbose=3).value...)
+        return tuple(galley(galley_prgm; verbose=4).value...)
     end
 end

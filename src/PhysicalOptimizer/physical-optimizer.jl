@@ -11,7 +11,7 @@ end
 function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     input_order = get_index_order(input.stats)
     fixed_order = relative_sort(input_order, loop_order, rev=true)
-    agg_expr = Aggregate(initwrite(get_default_value(input.stats)), input)
+    agg_expr = Aggregate(initwrite(get_default_value(input.stats)), get_default_value(input.stats), input)
     agg_expr.stats = input.stats
     formats = select_output_format(agg_expr.stats, reverse(input_order), fixed_order)
     reorder_query = Query(Alias(galley_gensym("A")), Materialize(formats..., fixed_order..., agg_expr), reverse(input_order)...)
@@ -31,7 +31,7 @@ end
 # The input query should take the form:
 #       Query(name, Materialize(formats..., index_order..., expr))
 #       or
-#       Query(name, Aggregate(op, idxs..., map_expr))
+#       Query(name, Aggregate(op, init, idxs..., map_expr))
 #       or
 #       Query(name, map_expr)
 # The output queries should all be of the form:
@@ -63,9 +63,11 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     end
 
     agg_op = nothing
+    agg_init = nothing
     reduce_idxs = Set{IndexExpr}()
     if expr.kind == Aggregate
         agg_op = expr.op
+        agg_init = expr.init
         reduce_idxs = Set{IndexExpr}([i.name for i in expr.idxs])
         expr = expr.arg
     end
@@ -80,7 +82,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
                                     disjuncts=[s.stats for s in disjuncts_and_conjuncts.disjuncts])
     agg_op = isnothing(agg_op) ? initwrite(get_default_value(expr.stats)) : agg_op
 
-    output_stats = reduce_tensor_stats(agg_op, reduce_idxs, expr.stats)
+    output_stats = reduce_tensor_stats(agg_op, agg_init, reduce_idxs, expr.stats)
     loop_order = get_join_loop_order(disjunct_and_conjunct_stats, collect(values(transposable_stats)), output_stats, output_order)
     queries = []
     for (id, stats) in transposable_stats
@@ -90,7 +92,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
         end
     end
 
-    expr = Aggregate(agg_op, reduce_idxs..., expr)
+    expr = Aggregate(agg_op, agg_init, reduce_idxs..., expr)
     expr.stats = output_stats
 
     # Determine the optimal output format & add a further query to reformat if necessary.
@@ -108,7 +110,7 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
             best_formats = !isnothing(output_formats) ? output_formats : select_output_format(output_stats, reverse(output_order), output_order)
             alias_expr = Alias(intermediate_query.name.name)
             alias_expr.stats = reorder_stats
-            result_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), alias_expr)
+            result_expr = Aggregate(initwrite(get_default_value(alias_expr.stats)), get_default_value(alias_expr.stats), alias_expr)
             result_expr.stats = reorder_stats
             result_query = Query(query.name, Materialize(best_formats... , output_order..., result_expr), reverse(output_order)...)
             result_stats = copy_stats(reorder_stats)

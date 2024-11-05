@@ -70,9 +70,9 @@ function modify_protocols!(expr)
                 # the nnz (barring things like prod reductions which might be a TODO).
                 # TODO: Replace this with conditional estimates
                 if length(indices_before_var) > 0
-                    size_before_var = estimate_nnz(reduce_tensor_stats(min, setdiff(get_index_set(input), indices_before_var),  input))
+                    size_before_var = estimate_nnz(reduce_tensor_stats(min, typemax(get_default_value(input)), setdiff(get_index_set(input), indices_before_var),  input))
                 end
-                size_after_var = estimate_nnz(reduce_tensor_stats(min, setdiff(get_index_set(input), [indices_before_var..., var]),  input))
+                size_after_var = estimate_nnz(reduce_tensor_stats(min, typemax(get_default_value(input)), setdiff(get_index_set(input), [indices_before_var..., var]),  input))
                 push!(costs, max(1, size_after_var/size_before_var))
             end
             min_cost = minimum(costs)

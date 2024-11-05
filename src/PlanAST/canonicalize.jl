@@ -4,7 +4,7 @@ function merge_mapjoins(plan::PlanNode)
         (@rule MapJoin(~f, ~a..., MapJoin(~f, ~b...), ~c...) => MapJoin(f, a..., b..., c...) where isassociative(f.val)),
         (@rule MapJoin(~f, ~a..., MapJoin(~f, ~b...)) => MapJoin(f, a..., b...) where isassociative(f.val)),
         (@rule MapJoin(~f, MapJoin(~f, ~a...), ~b...) => MapJoin(f, a..., b...) where isassociative(f.val)),
-        (@rule Aggregate(~f, ~idxs1..., Aggregate(~f, ~idxs2..., ~a)) => Aggregate(f, idxs1..., idxs2..., a)),
+        (@rule Aggregate(~f, ~init, ~idxs1..., Aggregate(~f, ~init, ~idxs2..., ~a)) => Aggregate(f, init, idxs1..., idxs2..., a)),
     ])))(plan)
 end
 
@@ -43,7 +43,7 @@ function unique_indices(scope_dict::Dict{IndexExpr, IndexExpr}, n::PlanNode, cou
             push!(new_idxs, new_idx)
             scope_dict[old_idx] = new_idx
         end
-        return Aggregate(n.op, new_idxs..., unique_indices(scope_dict, n.arg, counter))
+        return Aggregate(n.op, n.init, new_idxs..., unique_indices(scope_dict, n.arg, counter))
     elseif n.kind === Index
         return Index(get(scope_dict, n.name, n.name))
     else
@@ -55,7 +55,7 @@ function _insert_statistics!(ST, expr::PlanNode; bindings = Dict{IndexExpr, Tens
     if expr.kind === MapJoin
         expr.stats = merge_tensor_stats(expr.op.val, ST[arg.stats for arg in expr.args]...)
     elseif expr.kind === Aggregate
-        expr.stats = reduce_tensor_stats(expr.op.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
+        expr.stats = reduce_tensor_stats(expr.op.val, expr.init.val, Set{IndexExpr}([idx.name for idx in expr.idxs]), expr.arg.stats)
     elseif expr.kind === Materialize
         expr.stats = copy_stats(expr.expr.stats)
         def = get_def(expr.stats)
@@ -107,26 +107,20 @@ function insert_node_ids!(plan::PlanNode)
     end
 end
 
-function lift_aggregates(plan::PlanNode)
-    Rewrite(Postwalk(Chain([
-    ])))(plan)
-end
-
-
 function distribute_mapjoins(plan::PlanNode, use_dnf)
     if use_dnf
         Rewrite(Fixpoint(Postwalk(Chain([
-            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg), ~c...) => Aggregate(g, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
-            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg)) => Aggregate(g, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
-            (@rule MapJoin(~f, Aggregate(~g, ~idxs..., ~arg), ~b...) => Aggregate(g, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~init, ~idxs..., ~arg), ~c...) => Aggregate(g, init, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~init, ~idxs..., ~arg)) => Aggregate(g, init, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, Aggregate(~g, ~init, ~idxs..., ~arg), ~b...) => Aggregate(g, init, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val)),
             (@rule MapJoin(~f, ~x..., MapJoin(~g, ~args...)) => MapJoin(g, [MapJoin(f, x..., arg) for arg in args]...) where isdistributive(f.val, g.val)),
             (@rule MapJoin(~f, MapJoin(~g, ~args...), ~x...) => MapJoin(g, [MapJoin(f, arg, x...) for arg in args]...) where isdistributive(f.val, g.val)),
             (@rule MapJoin(~f,  ~x..., MapJoin(~g, ~args...), ~y...) => MapJoin(g, [MapJoin(f, x..., arg, y...) for arg in args]...) where isdistributive(f.val, g.val))]))))(plan)
     else
         Rewrite(Fixpoint(Postwalk(Chain([
-            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg), ~c...) => Aggregate(g, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
-            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~idxs..., ~arg)) => Aggregate(g, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
-            (@rule MapJoin(~f, Aggregate(~g, ~idxs..., ~arg), ~b...) => Aggregate(g, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val))]))))(plan)
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~init, ~idxs..., ~arg), ~c...) => Aggregate(g, init, idxs..., MapJoin(f, a..., arg, c...)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, ~a..., Aggregate(~g, ~init, ~idxs..., ~arg)) => Aggregate(g, init, idxs..., MapJoin(f, a..., arg)) where isdistributive(f.val, g.val)),
+            (@rule MapJoin(~f, Aggregate(~g, ~init, ~idxs..., ~arg), ~b...) => Aggregate(g, init, idxs..., MapJoin(f, arg, b...)) where isdistributive(f.val, g.val))]))))(plan)
     end
 end
 

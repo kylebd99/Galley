@@ -1,4 +1,5 @@
 using Test
+using ArgParse
 using Finch
 using SparseArrays
 using DuckDB
@@ -11,4 +12,5 @@ include("plan-tests.jl")
 include("annotated-query-tests.jl")
 include("basic-tests.jl")
 include("stats-tests.jl")
+include("finch-tests.jl")
 #include("decomposition-tests.jl")

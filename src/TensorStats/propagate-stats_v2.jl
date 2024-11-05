@@ -9,7 +9,7 @@ function merge_tensor_stats_union(op,  all_stats::Vararg{TensorStats})
     throw(error("merge_tensor_stats_union not implemented for: ", typeof(all_stats[1])))
 end
 
-function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::TensorStats)
+function reduce_tensor_stats(op, init, reduce_indices::Set{IndexExpr}, stats::TensorStats)
     throw(error("reduce_tensor_stats not implemented for: ", typeof(stats)))
 end
 
@@ -34,22 +34,9 @@ function merge_tensor_def(op, all_defs::Vararg{TensorDef})
     return TensorDef(new_index_set, new_dim_sizes, new_default_value, nothing, nothing, nothing)
 end
 
-function reduce_tensor_def(op, reduce_indices::Set{IndexExpr}, def::TensorDef)
+function reduce_tensor_def(op, init, reduce_indices::Set{IndexExpr}, def::TensorDef)
     op = op isa PlanNode ? op.val : op
-    new_default_value = nothing
-    if isidentity(op, def.default_value) || isidempotent(op)
-        new_default_value = op(def.default_value, def.default_value)
-    elseif op == +
-        new_default_value = def.default_value * prod([def.dim_sizes[x] for x in reduce_indices])
-    elseif op == *
-        new_default_value = def.default_value ^ prod([def.dim_sizes[x] for x in reduce_indices])
-    else
-        # This is going to be VERY SLOW. Should raise a warning about reductions over non-identity default values.
-        # Depending on the semantics of reductions, we might be able to do this faster.
-        println("Warning: A reduction can take place over a tensor whose default value is not the reduction operator's identity. \\
-                         This can result in a large slowdown as the new default is calculated.")
-        new_default_value = op([def.default_value for _ in prod([def.dim_sizes[x] for x in reduce_indices])]...)
-    end
+    new_default_value = init
     new_index_set = setdiff(def.index_set, reduce_indices)
     new_dim_sizes = Dict{IndexExpr, UInt128}()
     for index in new_index_set
@@ -90,8 +77,8 @@ function merge_tensor_stats(op::PlanNode, all_stats::Vararg{ST}) where ST <:Tens
     return merge_tensor_stats(op.val, all_stats...)
 end
 
-function reduce_tensor_stats(op, reduce_indices::Union{Vector{PlanNode}, Set{PlanNode}}, stats::ST) where ST <:TensorStats
-    return reduce_tensor_stats(op, Set{IndexExpr}([idx.name for idx in reduce_indices]), stats)
+function reduce_tensor_stats(op, init, reduce_indices::Union{Vector{PlanNode}, Set{PlanNode}}, stats::ST) where ST <:TensorStats
+    return reduce_tensor_stats(op, init, Set{IndexExpr}([idx.name for idx in reduce_indices]), stats)
 end
 
 function transpose_tensor_def(index_order::Vector{IndexExpr}, def::TensorDef)
@@ -115,11 +102,11 @@ function merge_tensor_stats_union(op, new_def::TensorDef, all_stats::Vararg{Naiv
     return NaiveStats(new_def, new_cardinality)
 end
 
-function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::NaiveStats)
+function reduce_tensor_stats(op, init, reduce_indices::Set{IndexExpr}, stats::NaiveStats)
     if length(reduce_indices) == 0
         return copy_stats(stats)
     end
-    new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
+    new_def = reduce_tensor_def(op, init, reduce_indices, get_def(stats))
     new_dim_space_size = sum([log2(get_dim_size(new_def, idx)) for idx in new_def.index_set])
     old_dim_space_size = sum([log2(get_dim_size(stats, idx)) for idx in get_index_set(stats)])
     prob_default_value = 1 - 2^(log2(stats.cardinality)-old_dim_space_size)
@@ -224,11 +211,11 @@ function merge_tensor_stats_union(op, new_def::TensorDef, all_stats::Vararg{DCSt
     return DCStats(new_def, final_idx_2_int, final_int_2_idx, Set{DC}(DC(key.X, key.Y, d) for (key, d) in new_dcs))
 end
 
-function reduce_tensor_stats(op, reduce_indices::Set{IndexExpr}, stats::DCStats)
+function reduce_tensor_stats(op, init, reduce_indices::Set{IndexExpr}, stats::DCStats)
     if length(reduce_indices) == 0
         return copy_stats(stats)
     end
-    new_def = reduce_tensor_def(op, reduce_indices, get_def(stats))
+    new_def = reduce_tensor_def(op, init, reduce_indices, get_def(stats))
     new_dcs = copy(stats.dcs)
     new_idx_2_int = copy(stats.idx_2_int)
     new_int_2_idx = copy(stats.int_2_idx)

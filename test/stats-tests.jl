@@ -132,7 +132,7 @@ end
         idx_2_int = Dict(:i=>1, :j=>2, :k=>3)
         int_2_idx = Dict(1=>:i, 2=>:j, 3=>:k)
         stat = DCStats(def, idx_2_int, int_2_idx, dcs)
-        reduce_stats = reduce_tensor_stats(+, Set([:i,:j,:k]), stat)
+        reduce_stats = reduce_tensor_stats(+, 0, Set([:i,:j,:k]), stat)
         @test estimate_nnz(reduce_stats) == 1
     end
 
@@ -158,7 +158,7 @@ end
         int_2_idx = Dict(1=>:i, 2=>:j, 3=>:k)
         stat = DCStats(def, idx_2_int, int_2_idx, dcs)
         condense_stats!(stat)
-        reduce_stats = reduce_tensor_stats(+, Set([:i, :j]), stat)
+        reduce_stats = reduce_tensor_stats(+, 0, Set([:i, :j]), stat)
         @test estimate_nnz(reduce_stats) == 5
     end
 
@@ -183,7 +183,7 @@ end
         idx_2_int = Dict(:i=>1, :j=>2, :k=>3)
         int_2_idx = Dict(1=>:i, 2=>:j, 3=>:k)
         stat = DCStats(def, idx_2_int, int_2_idx, dcs)
-        reduce_stats = reduce_tensor_stats(+, Set([:i]), stat)
+        reduce_stats = reduce_tensor_stats(+, 0, Set([:i]), stat)
         @test estimate_nnz(reduce_stats) == 5
     end
 

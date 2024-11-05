@@ -7,6 +7,7 @@ mutable struct AnnotatedQuery
     point_expr::PlanNode
     idx_lowest_root::Dict{IndexExpr, Int}
     idx_op::Dict{IndexExpr, Any}
+    idx_init::Dict{IndexExpr, Any}
     id_to_node::Dict{Int, PlanNode}
     parent_idxs::Dict{IndexExpr, Vector{IndexExpr}} # Index orders that must be respected
     original_idx::Dict{IndexExpr, IndexExpr} # When an index is split into many, we track their relationship.
@@ -28,6 +29,7 @@ function copy_aq(aq::AnnotatedQuery)
                           new_point_expr,
                           copy(aq.idx_lowest_root),
                           copy(aq.idx_op),
+                          copy(aq.idx_init),
                           id_to_node,
                           copy(aq.parent_idxs),
                           copy(aq.original_idx),
@@ -138,13 +140,15 @@ function AnnotatedQuery(q::PlanNode, ST)
     idx_top_order = Dict{IndexExpr, Int}()
     top_counter = 1
     idx_op = Dict{IndexExpr, Any}()
+    idx_init = Dict{IndexExpr, Any}()
     point_expr = Rewrite(Postwalk(Chain([
-        (@rule Aggregate(~f::isvalue, ~idxs..., ~a) => begin
+        (@rule Aggregate(~f::isvalue, ~init::isvalue, ~idxs..., ~a) => begin
         for idx in idxs
             idx_starting_root[idx.name] = a.node_id
             idx_top_order[idx.name] = top_counter
             top_counter += 1
             idx_op[idx.name] = f.val
+            idx_init[idx.name] = init.val
         end
         append!(starting_reduce_idxs, [idx.name for idx in idxs])
         a
@@ -243,6 +247,7 @@ function AnnotatedQuery(q::PlanNode, ST)
                             point_expr,
                             idx_lowest_root,
                             idx_op,
+                            idx_init,
                             id_to_node,
                             parent_idxs,
                             original_idx,
@@ -310,8 +315,8 @@ function get_reduce_query(reduce_idx, aq)
     final_idxs_to_be_reduced = Set(Index(aq.original_idx[idx]) for idx in idxs_to_be_reduced)
 
     reduced_idxs = idxs_to_be_reduced
-    query_expr = Aggregate(aq.idx_op[reduce_idx], final_idxs_to_be_reduced..., query_expr)
-    query_expr.stats = reduce_tensor_stats(query_expr.op.val, Set([idx for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
+    query_expr = Aggregate(aq.idx_op[reduce_idx], aq.idx_init[reduce_idx], final_idxs_to_be_reduced..., query_expr)
+    query_expr.stats = reduce_tensor_stats(query_expr.op.val, query_expr.init.val, Set([idx for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(galley_gensym("A")), query_expr)
 #    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
     return query, node_to_replace, nodes_to_remove, reduced_idxs

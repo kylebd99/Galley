@@ -133,6 +133,7 @@ function finch_hl_to_galley(prgm::LogicNode)
         return Mat(idxs..., finch_hl_to_galley(prgm.arg))
     elseif prgm.kind == aggregate
         return Aggregate(finch_hl_to_galley(prgm.op),
+                        finch_hl_to_galley(prgm.init),
                         [finch_hl_to_galley(i) for i in prgm.idxs]...,
                          finch_hl_to_galley(prgm.arg))
     elseif prgm.kind == mapjoin

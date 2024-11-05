@@ -250,5 +250,7 @@ function count_non_default(A)
 end
 
 function count_stored(A)
-    return sum(pattern!(A))
+    Finch.with_scheduler(Finch.default_scheduler()) do
+        return sum(pattern!(A))
+    end
 end

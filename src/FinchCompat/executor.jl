@@ -17,8 +17,8 @@ function Finch.compute_parse(ctx::GalleyExecutor, args::Tuple)
 #    println(normalize_hl(plan(bodies...)))
     galley_prgm = finch_hl_to_galley(normalize_hl(plan(bodies...)))
     if length(galley_prgm) == 1
-        return galley(galley_prgm; verbose=4).value
+        return galley(galley_prgm; verbose=3).value
     else
-        return tuple(galley(galley_prgm; verbose=4).value...)
+        return tuple(galley(galley_prgm; verbose=3).value...)
     end
 end

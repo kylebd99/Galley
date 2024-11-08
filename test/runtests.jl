@@ -1,5 +1,4 @@
 using Test
-using ArgParse
 using Finch
 using SparseArrays
 using DuckDB

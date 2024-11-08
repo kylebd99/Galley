@@ -85,7 +85,7 @@
         b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(b_data, b_matrix)
         b = Input(b_data, :j, :k)
-        q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, :j, MapJoin(*, a, b))))
+        q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, 0, :j, MapJoin(*, a, b))))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
         @test result.value == correct_matrix
@@ -102,7 +102,7 @@
         b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(b_data, b_matrix)
         b = Input(b_data, :j, :k)
-        q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(f, :j, MapJoin(*, a, b))))
+        q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(f, 0, :j, MapJoin(*, a, b))))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
         @test result.value == correct_matrix
@@ -114,10 +114,10 @@
         a_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(a_data, a_matrix)
         a = Input(a_data, :i, :j)
-        q = Query(:out, Materialize(Aggregate(+, :i, :j, a)))
+        q = Query(:out, Materialize(Aggregate(+, 0, :i, :j, a)))
         result = galley(q, verbose=verbose)
         correct_matrix = sum(a_matrix)
-        @test result.value == correct_matrix
+        @test result.value[] == correct_matrix
     end
 
     @testset "100x100 matrices, multi-line, matrix mult" begin
@@ -133,8 +133,8 @@
         c_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(c_data, c_matrix)
         c = Input(c_data, :k, :l)
-        d = Aggregate(+, :j, MapJoin(*, a, b))
-        e = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :l, Aggregate(+, :k, MapJoin(*, d, c))))
+        d = Aggregate(+, 0, :j, MapJoin(*, a, b))
+        e = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :l, Aggregate(+, 0, :k, MapJoin(*, d, c))))
         result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * c_matrix
@@ -150,8 +150,8 @@
         b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(b_data, b_matrix)
         b = Input(b_data, :j, :k)
-        d = Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, :j, MapJoin(*, a, b)))
-        e = Query(:out, Materialize(t_dense, t_dense, :i, :l, Aggregate(+, :k, MapJoin(*, Input(d, :i, :k), Input(d, :k, :l)))))
+        d = Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, 0, :j, MapJoin(*, a, b)))
+        e = Query(:out, Materialize(t_dense, t_dense, :i, :l, Aggregate(+, 0, :k, MapJoin(*, Input(d, :i, :k), Input(d, :k, :l)))))
         result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * d_matrix
@@ -185,13 +185,13 @@
         b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(b_data, b_matrix)
         b = Input(b_data, :i, :i)
-        d = Query(:out, Materialize(Aggregate(+, :i, MapJoin(*, a, b))))
+        d = Query(:out, Materialize(Aggregate(+, 0, :i, MapJoin(*, a, b))))
         result = galley(d, verbose=verbose)
         correct_result = 0
         for i in 1:100
             correct_result += a_matrix[i,i] * b_matrix[i,i]
         end
-        @test result.value == correct_result
+        @test result.value[] == correct_result
     end
 
 
@@ -204,10 +204,10 @@
         b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(b_data, b_matrix)
         b = Input(b_data, :i, :j)
-        d = Query(:out, Materialize(Aggregate(+, :i, :j, MapJoin(+, a, b))))
+        d = Query(:out, Materialize(Aggregate(+, 0, :i, :j, MapJoin(+, a, b))))
         result = galley(d, verbose=verbose)
         correct_result = sum(a_matrix) + sum(b_matrix)
-        @test result.value == correct_result
+        @test result.value[] == correct_result
     end
 
     @testset "100x100 matrices, + on j, then sum all" begin
@@ -219,10 +219,10 @@
         b_data = Tensor(SparseList(SparseList(Element(0), 100), 100))
         copyto!(b_data, b_matrix)
         b = Input(b_data, :j, :k)
-        d = Query(:out, Materialize(Aggregate(+, :i, :j, :k, MapJoin(+, a, b))))
+        d = Query(:out, Materialize(Aggregate(+, 0, :i, :j, :k, MapJoin(+, a, b))))
         result = galley(d, verbose=verbose)
         correct_result = sum(a_matrix)*100 + sum(b_matrix)*100
-        @test result.value == correct_result
+        @test result.value[] == correct_result
     end
 
 end

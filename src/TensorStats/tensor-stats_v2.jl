@@ -673,15 +673,15 @@ function DCStats(tensor::Tensor, indices::Vector{IndexExpr})
     def = TensorDef(tensor, indices)
     idx_2_int = Dict{IndexExpr, Int}()
     int_2_idx = Dict{Int, IndexExpr}()
-    for (i, idx) in enumerate(indices)
+    for (i, idx) in enumerate(Set(indices))
         idx_2_int[idx] = i
         int_2_idx[i] = idx
     end
     if all([f==t_dense for f in get_index_formats(def)])
-        return DCStats(def, idx_2_int, int_2_idx, dense_dcs(def, int_2_idx, [i for i in range(1,length(indices))]))
+        return DCStats(def, idx_2_int, int_2_idx, dense_dcs(def, int_2_idx, [idx_2_int[i] for i in indices]))
     end
     sparsity_structure = pattern!(tensor)
-    dcs = _structure_to_dcs(int_2_idx, [i for i in range(1,length(indices))], sparsity_structure)
+    dcs = _structure_to_dcs(int_2_idx, [idx_2_int[i] for i in indices], sparsity_structure)
     return DCStats(def, idx_2_int, int_2_idx, dcs)
 end
 

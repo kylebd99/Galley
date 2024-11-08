@@ -23,6 +23,14 @@ function SmallBitSet(ints::Vector{Int})
     end
     return s
 end
+
+function SmallBitSet(ints::Set{Int})
+    s = SmallBitSet()
+    for i in ints
+        s = _setint(s, i, true)
+    end
+    return s
+end
 #=
 # Special implementation for BitSet, which lacks a fast `length` method.
 function Base.union(s::SmallBitSet, itr)

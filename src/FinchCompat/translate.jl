@@ -1,53 +1,4 @@
-using Finch: lift_subqueries, isolate_reformats, propagate_copy_queries
-using Finch: propagate_transpose_queries, propagate_map_queries, flatten_plans
-using Finch: push_fields, lift_fields
-
-
-#immediate =  0ID
-#deferred  =  1ID
-#field     =  2ID
-#alias     =  3ID
-#table     =  4ID | IS_TREE
-#mapjoin   =  5ID | IS_TREE
-#aggregate =  6ID | IS_TREE
-#reorder   =  7ID | IS_TREE
-#relabel   =  8ID | IS_TREE
-#reformat  =  9ID | IS_TREE
-#subquery  = 10ID | IS_TREE
-#query     = 11ID | IS_TREE | IS_STATEFUL
-#produces  = 12ID | IS_TREE | IS_STATEFUL
-#plan      = 13ID | IS_TREE | IS_STATEFUL
-
-function apply_relabel(idx, bindings)
-    return get(bindings, idx, idx)
-end
-
-function push_down_relabel(prgm::LogicNode, bindings=Dict())
-    if prgm.kind == relabel
-        if prgm.arg.kind == alias
-            return relabel(prgm.arg, [apply_relabel(idx, bindings) for idx in prgm.idxs]...)
-        end
-        new_bindings = copy(bindings)
-        old_order = FinchLogic.getfields(prgm.arg)
-        new_order = prgm.idxs
-        for i in eachindex(old_order)
-            if haskey(new_bindings, new_order[i])
-                new_bindings[old_order[i]] = new_bindings[new_order[i]]
-                delete!(new_bindings, new_order[i])
-            else
-                new_bindings[old_order[i]] = new_order[i]
-            end
-        end
-        return push_down_relabel(prgm.arg, new_bindings)
-    elseif prgm.kind == field
-        return apply_relabel(prgm, bindings)
-    elseif istree(prgm)
-        prgm.children = LogicNode[push_down_relabel(c, bindings) for c in prgm.children]
-        return prgm
-    else
-        return prgm
-    end
-end
+using Finch: flatten_plans
 
 function push_relabels(prgm)
     prgm = Rewrite(Fixpoint(Prewalk(Chain([
@@ -76,21 +27,6 @@ function push_relabels(prgm)
     ]))))(prgm)
 
     
-end
-
-function push_reorders(prgm::LogicNode)
-    prgm = Rewrite(Fixpoint(Prewalk(Chain([
-        (@rule reorder(mapjoin(~op, ~args...), ~idxs...) =>
-            mapjoin(op, map(arg -> reorder(arg, idxs...), args)...)),
-        (@rule reorder(reorder(~arg, ~idxs...), ~idxs_2...) =>
-            reorder(arg, idxs_2...) where Set(idxs) == Set(idxs_2)),
-    ]))))(prgm)    
-    #= 
-    prgm = Rewrite(Prewalk(Fixpoint(Chain([
-        (@rule reorder(table(~tns, ~idxs1...), ~idxs2...) => table(tns, idxs1...) where length(idxs2) >= length(idxs1)),
-        (@rule reorder(table(~tns, ~idxs1...), ~idxs2...) => aggregate(initwrite(nothing), nothing, table(tns, idxs1...), setdiff(idxs1, idxs2)...) where length(idxs2) < length(idxs1)),
-    ]))))(prgm) =#
-    prgm
 end
 
 function aggs_to_mapjoins(prgm)
@@ -146,30 +82,7 @@ function pull_up_reorders(prgm::LogicNode)
                         end),
                     (@rule mapjoin(~op, ~preargs..., reorder(~arg, ~ro_idxs...), ~postargs...)=>
                         reorder(mapjoin(op, preargs..., arg, postargs...), ro_idxs...))]))))(prgm)
-
     prgm                         
-end
-
-function remove_extraneous_reorders(prgm::LogicNode)
-    #= 
-    useless_idxs = LogicNode[]
-    for q in PreOrderDFS(prgm)
-        if q.kind == reorder
-            existing_fields = Finch.getfields(q.arg)
-            if length(existing_fields) < length(q.idxs)
-                append!(useless_idxs, q.idxs[length(existing_fields)+1:end])
-            end
-        end
-    end
-    println("Useless Idxs: \n",useless_idxs)
-    Rewrite(Fixpoint(Postwalk(Chain([(@rule aggregate(~op, ~init, ~arg, ~agg_idxs...)=> aggregate(op, init, arg, setdiff(agg_idxs, useless_idxs)...)),
-                            (@rule aggregate(~op, ~init, ~arg)=> arg where isnothing(init.val)),
-                            (@rule relabel(~arg, ~idxs...) => relabel(arg, setdiff(idxs, useless_idxs))),
-                            (@rule relabel(~arg) => arg),
-                            (@rule reorder(~arg, ~idxs...) => reorder(arg, setdiff(idxs, useless_idxs))),
-                            (@rule reorder(~arg) => arg)]))))(prgm) 
-    Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs...) => reorder(arg, intersect(idxs, getfields(arg))...)),
-                                     (@rule reorder(~arg, ~idxs...) => arg where idxs==getfields(arg))]))))(prgm)=#
 end
 
 function unwrap_subqueries(prgm::LogicNode)
@@ -184,39 +97,6 @@ function normalize_hl(prgm::LogicNode)
     prgm = pull_up_reorders(prgm)
     prgm = aggs_to_mapjoins(prgm)
     prgm = flatten_plans(prgm)
-    return prgm
-end
-
-function normalize_hl2(prgm::LogicNode)
-    #deduplicate and lift inline subqueries to regular queries
-    prgm = Finch.lift_subqueries(prgm)
-
-
-    #these steps lift reformat, aggregate, and table nodes into separate
-    #queries, using subqueries as temporaries.
-    prgm = Finch.isolate_reformats(prgm)
-    
-    prgm = Finch.isolate_aggregates(prgm)
-    
-    prgm = Finch.isolate_tables(prgm)
-
-    prgm = Finch.lift_subqueries(prgm)
-
-
-    #These steps fuse copy, permutation, and mapjoin statements
-    #into later expressions.
-    #Only reformat statements preserve intermediate breaks in computation
-    prgm = Finch.propagate_copy_queries(prgm)
-    prgm = Finch.propagate_transpose_queries(prgm)
-    prgm = Finch.propagate_map_queries(prgm)
-
-    #These steps assign a global loop order to each statement.
-    prgm = Finch.propagate_fields(prgm)
-    prgm = Finch.push_fields(prgm)
-    prgm = Finch.lift_fields(prgm)
-    prgm = Finch.push_fields(prgm)
-
-    prgm = Finch.flatten_plans(prgm)
     return prgm
 end
 

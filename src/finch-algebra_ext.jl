@@ -15,6 +15,9 @@ end
     max(x, y, D)
 end
 
+Base.isinf(x::Finch.Square) = isinf(x.arg) || isinf(x.scale)
+Base.isinf(x::Finch.Power) = isinf(x.arg) || isinf(x.scale) || isinf(x.exponent)
+
 """
 initmax(z)(a, b)
 initmin(z)(a, b)

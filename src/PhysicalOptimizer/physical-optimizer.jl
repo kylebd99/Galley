@@ -83,6 +83,16 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     agg_op = isnothing(agg_op) ? initwrite(get_default_value(expr.stats)) : agg_op
 
     output_stats = reduce_tensor_stats(agg_op, agg_init, reduce_idxs, expr.stats)
+    if !isnothing(output_order)
+        for idx in output_order
+            if idx ∉ get_index_set(output_stats)
+                dummy_stat = ST(get_default_value(output_stats))
+                add_dummy_idx!(dummy_stat, idx, idx_pos=1)
+                push!(disjunct_and_conjunct_stats.conjuncts, dummy_stat)
+            end
+        end
+    end
+
     loop_order = get_join_loop_order(disjunct_and_conjunct_stats, collect(values(transposable_stats)), output_stats, output_order)
     queries = []
     for (id, stats) in transposable_stats
@@ -97,6 +107,11 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
 
     # Determine the optimal output format & add a further query to reformat if necessary.
     if !isnothing(output_order)
+        for i in eachindex(output_order)
+            if i ∉ get_index_set(output_stats)
+                add_dummy_idx!(output_stats, output_order[i])
+            end
+        end
         first_formats =  select_output_format(output_stats, loop_order, output_order)
         if !isnothing(output_formats) && first_formats != output_formats
             intermediate_query = Query(Alias(galley_gensym("A")), Materialize(first_formats..., output_order..., expr), loop_order...)

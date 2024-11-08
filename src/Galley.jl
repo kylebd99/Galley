@@ -39,7 +39,7 @@ TensorId = String
 # This defines the list of access protocols allowed by the Finch API
 @enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4 t_default = 5
 # A subset of the allowed level formats provided by the Finch API
-@enum LevelFormat t_sparse_list = 1 t_dense = 2 t_hash = 3 t_bytemap = 4 t_undef = 5
+@enum LevelFormat t_sparse_list = 1 t_coo = 2 t_dense = 3 t_hash = 4 t_bytemap = 5 t_undef = 6
 # The set of optimizers implemented by Galley
 @enum FAQ_OPTIMIZERS greedy naive pruned exact
 
@@ -70,8 +70,8 @@ include("FinchCompat/FinchCompat.jl")
 # Galley takes in a series of high level queries which define required outputs.
 # Each query has the form:
 #       Query(name, Materialize(formats..., indices..., expr))
-# The inner expr can be any combination of MapJoin(op, args...) and Aggregate(op, idxs..., arg)
-# with the leaves being Input(tns, idxs...), Alias(name, idxs...), or Value(v) where name refers
+# The inner expr can be any combination of MapJoin(op, args...) and Aggregate(op, init, idxs..., arg)
+# with the leaves being Input(tns, idxs...), Alias(name, init, idxs...), or Value(v) where name refers
 # to the results of a previous query.
 function galley(input_queries::Vector{PlanNode};
                     faq_optimizer::FAQ_OPTIMIZERS=greedy,
@@ -82,6 +82,7 @@ function galley(input_queries::Vector{PlanNode};
                     max_kernel_size=8,
                     output_logical_plan=false,
                     output_physical_plan=false,
+                    output_aliases = nothing,
                     verbose=0)
     counter_start = Galley.name_counter
     overall_start = time()
@@ -95,12 +96,12 @@ function galley(input_queries::Vector{PlanNode};
     end
 
     # First, we perform high level optimization where each query is translated to one or
-    # more queries with a simpler structure: Query(name, Aggregate(op, idxs, point_expr))
+    # more queries with a simpler structure: Query(name, Aggregate(op, init, idxs, point_expr))
     # where point_expr is made up of just MapJoin, Input, and Alias nodes.
     opt_start, faq_opt_start = time(), time()
     logical_queries = []
     alias_stats, alias_hash = Dict{IndexExpr, TensorStats}(),  Dict{IndexExpr, UInt}()
-    output_aliases = [input_query.name for input_query in input_queries]
+    output_aliases = isnothing(output_aliases) ? [input_query.name for input_query in input_queries] : output_aliases
     output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_queries)
     for input_query in input_queries        
         logical_plan = high_level_optimize(faq_optimizer, input_query, ST, alias_stats, alias_hash, verbose)

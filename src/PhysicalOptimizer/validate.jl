@@ -110,7 +110,6 @@ end
 function validate_physical_query(q::PlanNode)
     q = plan_copy(q)
     input_indices = get_input_indices(q.expr)
-    @assert input_indices == Set([idx.name for idx in q.loop_order])
     indices_and_dims = get_input_indices_and_dims(q.expr)
     idx_dim = Dict()
     for (idx,dim) in indices_and_dims
@@ -120,7 +119,7 @@ function validate_physical_query(q::PlanNode)
         @assert idx_dim[idx] == dim "idx:$idx dim:$dim query:$q "
     end
     output_indices = Set([idx.name for idx in q.expr.idx_order])
-    @assert output_indices ⊆ input_indices
+    @assert input_indices ∪ output_indices == Set([idx.name for idx in q.loop_order])
     @assert Set(output_indices) == Set([idx.name for idx in q.expr.idx_order])
     check_sorted_inputs(q.expr, [idx.name for idx in q.loop_order])
     check_protocols(q.expr)

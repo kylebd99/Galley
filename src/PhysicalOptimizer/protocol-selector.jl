@@ -2,6 +2,8 @@
 function select_leader_protocol(format::LevelFormat)
     if format == t_sparse_list
         return t_walk
+    elseif format == t_coo
+        return t_default
     elseif format == t_dense
         return t_default
     elseif format == t_bytemap
@@ -14,6 +16,8 @@ end
 function select_follower_protocol(format::LevelFormat)
     if format == t_sparse_list
         return t_follow
+    elseif format == t_coo
+        return t_default
     elseif format == t_dense
         return t_follow
     elseif format == t_bytemap

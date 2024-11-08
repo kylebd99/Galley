@@ -49,23 +49,127 @@ function push_down_relabel(prgm::LogicNode, bindings=Dict())
     end
 end
 
+function push_relabels(prgm)
+    prgm = Rewrite(Fixpoint(Prewalk(Chain([
+        (@rule relabel(mapjoin(~op, ~args...), ~idxs...) => begin
+            idxs_2 = getfields(mapjoin(op, args...))
+            mapjoin(op, map(arg -> relabel(reorder(arg, idxs_2...), idxs...), args)...)
+            end),
+            (@rule relabel(aggregate(~op, ~init, ~arg, ~idxs1...), ~idxs2...) => begin
+                arg_idxs = Finch.getfields(arg)
+                arg_relabel_idxs = filter((i) -> i ∉ idxs1, arg_idxs)
+                relabel_dict = merge(Dict(i=>i for i in idxs1), Dict(arg_relabel_idxs[i]=>idxs2[i] for i in eachindex(idxs2)))
+                aggregate(op, init, relabel(arg, [relabel_dict[i] for i in arg_idxs]...), idxs1...)
+            end),
+            (@rule relabel(relabel(~arg, ~idxs...), ~idxs_2...) =>
+                relabel(~arg, ~idxs_2...)),
+            (@rule relabel(reorder(~arg, ~idxs_1...), ~idxs_2...) => begin
+                idxs_3 = getfields(arg)
+                reidx = Dict(map(Pair, idxs_1, idxs_2)...)
+                idxs_4 = map(idx -> get(reidx, idx, idx), idxs_3)
+                reorder(relabel(arg, idxs_4...), idxs_2...)
+            end),
+            (@rule relabel(table(~arg, ~idxs_1...), ~idxs_2...) => begin
+                table(arg, idxs_2...)
+            end),
+            (@rule relabel(~arg::isimmediate) => arg),
+    ]))))(prgm)
+
+    
+end
+
+function push_reorders(prgm::LogicNode)
+    prgm = Rewrite(Fixpoint(Prewalk(Chain([
+        (@rule reorder(mapjoin(~op, ~args...), ~idxs...) =>
+            mapjoin(op, map(arg -> reorder(arg, idxs...), args)...)),
+        (@rule reorder(reorder(~arg, ~idxs...), ~idxs_2...) =>
+            reorder(arg, idxs_2...) where Set(idxs) == Set(idxs_2)),
+    ]))))(prgm)    
+    #= 
+    prgm = Rewrite(Prewalk(Fixpoint(Chain([
+        (@rule reorder(table(~tns, ~idxs1...), ~idxs2...) => table(tns, idxs1...) where length(idxs2) >= length(idxs1)),
+        (@rule reorder(table(~tns, ~idxs1...), ~idxs2...) => aggregate(initwrite(nothing), nothing, table(tns, idxs1...), setdiff(idxs1, idxs2)...) where length(idxs2) < length(idxs1)),
+    ]))))(prgm) =#
+    prgm
+end
+
+function aggs_to_mapjoins(prgm)
+    Rewrite(Fixpoint(Prewalk(Chain([
+        (@rule aggregate(~op, ~init, ~arg) => arg where isnothing(init)),
+        (@rule aggregate(~op, ~init, ~arg) => mapjoin(op, init, arg)),
+    ]))))(prgm)
+end
+
+function compatible_order(order1, order2)
+    resulting_order = []
+    cur_lpos = 1
+    cur_rpos = 1
+    while cur_lpos <= length(order1) && cur_rpos <= length(order2)
+        if order1[cur_lpos].val == order2[cur_rpos].val
+            push!(resulting_order, order1[cur_lpos])
+            cur_lpos += 1
+            cur_rpos += 1
+        elseif order1[cur_lpos] ∉ order2
+            push!(resulting_order, order1[cur_lpos])
+            cur_lpos += 1
+        else
+            push!(resulting_order, order2[cur_rpos])
+            cur_rpos += 1
+        end
+    end
+    while cur_lpos <= length(order1) 
+        push!(resulting_order, order1[cur_lpos])
+        cur_lpos += 1
+    end
+    while cur_rpos <= length(order2) 
+        push!(resulting_order, order2[cur_rpos])
+        cur_rpos += 1
+    end
+    return resulting_order
+end
+
 function pull_up_reorders(prgm::LogicNode)
-    Rewrite(Postwalk(Chain([@rule aggregate(~op, ~init, reorder(~arg, ~ro_idxs...), ~agg_idxs...)=>
-                                  reorder(aggregate(op, init, arg, agg_idxs...), setdiff(ro_idxs, agg_idxs)...)])))(prgm)
+    prgm = Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs2...) => 
+                        reorder(aggregate(nothing, nothing, arg, setdiff(getfields(arg), idxs2)...), idxs2...) where length(idxs2) < length(getfields(arg)))]))))(prgm)
+
+    prgm = Rewrite(Fixpoint(Postwalk(Chain([
+                    (@rule reorder(reorder(~arg, ~idxs1...), ~idxs2...)=>
+                        begin
+                            idxs3 = compatible_order(idxs1, idxs2)
+                            reorder(arg, idxs3...)
+                        end),
+                    (@rule aggregate(~op, ~init, reorder(~arg, ~ro_idxs...), ~agg_idxs...)=>
+                        begin
+                            bc_idxs = setdiff(ro_idxs, getfields(arg))
+                            eliminated_idxs = intersect(bc_idxs, agg_idxs)
+                            reorder(aggregate(op, init, arg, setdiff(agg_idxs, bc_idxs)...), setdiff(ro_idxs, agg_idxs)...)
+                        end),
+                    (@rule mapjoin(~op, ~preargs..., reorder(~arg, ~ro_idxs...), ~postargs...)=>
+                        reorder(mapjoin(op, preargs..., arg, postargs...), ro_idxs...))]))))(prgm)
+
+    prgm                         
 end
 
 function remove_extraneous_reorders(prgm::LogicNode)
-    new_children = LogicNode[]
-    for q in prgm.children
-        if q.rhs.kind == reorder 
-            q.children[2] = reorder(Rewrite(Postwalk(Chain([@rule reorder(~arg, ~ro_idxs...) => arg where arg.kind != table])))(q.rhs.arg), q.rhs.idxs...)
-        else
-            q.children[2] = Rewrite(Postwalk(Chain([@rule reorder(~arg, ~ro_idxs...) => arg where arg.kind != table])))(q.rhs)
+    #= 
+    useless_idxs = LogicNode[]
+    for q in PreOrderDFS(prgm)
+        if q.kind == reorder
+            existing_fields = Finch.getfields(q.arg)
+            if length(existing_fields) < length(q.idxs)
+                append!(useless_idxs, q.idxs[length(existing_fields)+1:end])
+            end
         end
-        push!(new_children, q)
     end
-    prgm.children = new_children
-    prgm
+    println("Useless Idxs: \n",useless_idxs)
+    Rewrite(Fixpoint(Postwalk(Chain([(@rule aggregate(~op, ~init, ~arg, ~agg_idxs...)=> aggregate(op, init, arg, setdiff(agg_idxs, useless_idxs)...)),
+                            (@rule aggregate(~op, ~init, ~arg)=> arg where isnothing(init.val)),
+                            (@rule relabel(~arg, ~idxs...) => relabel(arg, setdiff(idxs, useless_idxs))),
+                            (@rule relabel(~arg) => arg),
+                            (@rule reorder(~arg, ~idxs...) => reorder(arg, setdiff(idxs, useless_idxs))),
+                            (@rule reorder(~arg) => arg)]))))(prgm) 
+    Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs...) => reorder(arg, intersect(idxs, getfields(arg))...)),
+                                     (@rule reorder(~arg, ~idxs...) => arg where idxs==getfields(arg))]))))(prgm)=#
 end
 
 function unwrap_subqueries(prgm::LogicNode)
@@ -76,18 +180,43 @@ function normalize_hl(prgm::LogicNode)
     #deduplicate and lift inline subqueries to regular queries
     prgm = unwrap_subqueries(prgm)
     prgm = flatten_plans(prgm)
-    prgm = propagate_fields(prgm)
-    prgm = push_down_relabel(prgm)
+    prgm = push_relabels(prgm)
     prgm = pull_up_reorders(prgm)
-    prmg = remove_extraneous_reorders(prgm)
-#    prgm = push_fields(prgm)
-#    prgm = lift_fields(prgm)
-#    prgm = push_fields(prgm)
-
-#    prgm = propagate_copy_queries(prgm)
-#    prgm = propagate_transpose_queries(prgm)
-#    prgm = propagate_map_queries(prgm)
+    prgm = aggs_to_mapjoins(prgm)
     prgm = flatten_plans(prgm)
+    return prgm
+end
+
+function normalize_hl2(prgm::LogicNode)
+    #deduplicate and lift inline subqueries to regular queries
+    prgm = Finch.lift_subqueries(prgm)
+
+
+    #these steps lift reformat, aggregate, and table nodes into separate
+    #queries, using subqueries as temporaries.
+    prgm = Finch.isolate_reformats(prgm)
+    
+    prgm = Finch.isolate_aggregates(prgm)
+    
+    prgm = Finch.isolate_tables(prgm)
+
+    prgm = Finch.lift_subqueries(prgm)
+
+
+    #These steps fuse copy, permutation, and mapjoin statements
+    #into later expressions.
+    #Only reformat statements preserve intermediate breaks in computation
+    prgm = Finch.propagate_copy_queries(prgm)
+    prgm = Finch.propagate_transpose_queries(prgm)
+    prgm = Finch.propagate_map_queries(prgm)
+
+    #These steps assign a global loop order to each statement.
+    prgm = Finch.propagate_fields(prgm)
+    prgm = Finch.push_fields(prgm)
+    prgm = Finch.lift_fields(prgm)
+    prgm = Finch.push_fields(prgm)
+
+    prgm = Finch.flatten_plans(prgm)
     return prgm
 end
 
@@ -121,14 +250,6 @@ function finch_hl_to_galley(prgm::LogicNode)
         idxs = [IndexExpr(i.val) for i in reorder_arg.idxs]
         return Mat(formats..., idxs..., finch_hl_to_galley(reorder_arg.arg))
     elseif prgm.kind == reorder
-        if prgm.arg.kind == relabel || prgm.arg.kind == table
-            if prgm.idxs ⊇ prgm.arg.idxs && prgm.idxs[1:length(prgm.arg.idxs)] == prgm.arg.idxs
-                return finch_hl_to_galley(prgm.arg)
-            end
-            println(prgm.idxs)
-            println(prgm.arg.idxs)
-            throw(error("Removing dim 1 indices w/broadcast is not yet implemented in Galley!"))
-        end
         idxs = [IndexExpr(i.val) for i in prgm.idxs]
         return Mat(idxs..., finch_hl_to_galley(prgm.arg))
     elseif prgm.kind == aggregate
@@ -140,8 +261,11 @@ function finch_hl_to_galley(prgm::LogicNode)
         return MapJoin(finch_hl_to_galley(prgm.op),
                         [finch_hl_to_galley(arg) for arg in prgm.args]...)
     elseif prgm.kind == table
-        return Input(finch_hl_to_galley(prgm.tns),
-                    [finch_hl_to_galley(i) for i in prgm.idxs]...)
+        if prgm.tns.val isa Tensor
+            return Input(prgm.tns.val, [finch_hl_to_galley(i) for i in prgm.idxs]...)
+        else
+            return Input(Tensor(prgm.tns.val), [finch_hl_to_galley(i) for i in prgm.idxs]...)
+        end
     elseif prgm.kind == relabel
         @assert prgm.arg.kind == alias
         return Alias(prgm.arg.val, [finch_hl_to_galley(i) for i in prgm.idxs]...)

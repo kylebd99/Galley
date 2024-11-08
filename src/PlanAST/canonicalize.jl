@@ -61,6 +61,11 @@ function _insert_statistics!(ST, expr::PlanNode; bindings = Dict{IndexExpr, Tens
         def = get_def(expr.stats)
         def.level_formats = [f.val for f in expr.formats]
         def.index_order = [idx.name for idx in expr.idx_order]
+        for idx in def.index_order
+            if idx ∉ get_index_set(expr.expr.stats)
+                add_dummy_idx!(expr.stats, idx)
+            end
+        end
     elseif expr.kind === Alias
         if haskey(bindings, expr.name)
             expr.stats = bindings[expr.name]
@@ -78,11 +83,8 @@ function _insert_statistics!(ST, expr::PlanNode; bindings = Dict{IndexExpr, Tens
             expr.stats = ST(expr.tns.val, IndexExpr[idx.val for idx in expr.idxs])
         end
     elseif expr.kind === Value
-        if expr.val isa Number
-            expr.stats = ST(expr.val)
-        end
+        expr.stats = ST(expr.val)
     end
-
 end
 
 # Often, we will only have changed a small part of the expression, e.g. by performing a

@@ -147,8 +147,13 @@ function AnnotatedQuery(q::PlanNode, ST)
             idx_starting_root[idx.name] = a.node_id
             idx_top_order[idx.name] = top_counter
             top_counter += 1
-            idx_op[idx.name] = f.val
-            idx_init[idx.name] = init.val
+            if isnothing(f.val)
+                idx_op[idx.name] = initwrite(get_default_value(a.stats))
+                idx_init[idx.name] = get_default_value(a.stats)
+            else
+                idx_op[idx.name] = f.val
+                idx_init[idx.name] = init.val
+            end
         end
         append!(starting_reduce_idxs, [idx.name for idx in idxs])
         a
@@ -199,6 +204,7 @@ function AnnotatedQuery(q::PlanNode, ST)
                 end
                 new_idx = new_idxs[i]
                 idx_op[new_idx] = agg_op
+                idx_init[new_idx] = idx_init[idx]
                 idx_lowest_root[new_idx] = lowest_roots[i]
                 #TODO: This forces us to push down aggressively which is an assumption
                 # about what plans will be most efficiently. It also makes things more efficient.
@@ -313,9 +319,8 @@ function get_reduce_query(reduce_idx, aq)
         end
     end
     final_idxs_to_be_reduced = Set(Index(aq.original_idx[idx]) for idx in idxs_to_be_reduced)
-
     reduced_idxs = idxs_to_be_reduced
-    query_expr = Aggregate(aq.idx_op[reduce_idx], aq.idx_init[reduce_idx], final_idxs_to_be_reduced..., query_expr)
+    query_expr = Aggregate(aq.idx_op[aq.original_idx[reduce_idx]], aq.idx_init[aq.original_idx[reduce_idx]], final_idxs_to_be_reduced..., query_expr)
     query_expr.stats = reduce_tensor_stats(query_expr.op.val, query_expr.init.val, Set([idx for idx in final_idxs_to_be_reduced]), query_expr.arg.stats)
     query = Query(Alias(galley_gensym("A")), query_expr)
 #    @assert length(∩([idx.name for idx in query_expr.idxs], get_index_set(query_expr.stats))) == 0
@@ -428,6 +433,7 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
     new_reduce_idxs = filter((x) -> !(x in reduced_idxs), aq.reduce_idxs)
     new_idx_lowest_root = Dict{IndexExpr, Int}()
     new_idx_op = Dict{IndexExpr, Any}()
+    new_idx_init = Dict{IndexExpr, Any}()
     new_parent_idxs = Dict{IndexExpr, Vector{IndexExpr}}()
     new_connected_idxs = Dict{IndexExpr, Set{IndexExpr}}()
     for idx in keys(aq.idx_lowest_root)
@@ -440,6 +446,9 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
         end
         new_idx_lowest_root[idx] = root
         new_idx_op[idx] = aq.idx_op[idx]
+        new_idx_init[idx] = aq.idx_init[idx]
+        new_idx_op[aq.original_idx[idx]] = aq.idx_op[idx]
+        new_idx_init[aq.original_idx[idx]] = aq.idx_init[idx]
         new_parent_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.parent_idxs[idx])
         new_connected_idxs[idx] = filter((x)->!(x in reduced_idxs), aq.connected_idxs[idx])
     end
@@ -476,6 +485,7 @@ function reduce_idx!(reduce_idx, aq; do_condense=false)
     aq.point_expr = new_point_expr
     aq.idx_lowest_root = new_idx_lowest_root
     aq.idx_op = new_idx_op
+    aq.idx_init = new_idx_init
     aq.id_to_node = new_id_to_node
     aq.parent_idxs = new_parent_idxs
     aq.connected_idxs = new_connected_idxs

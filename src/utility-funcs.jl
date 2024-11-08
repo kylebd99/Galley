@@ -43,7 +43,7 @@ get_tensor_symbol(tns_num) = Symbol("t_$(tns_num)")
 
 # This file performs the actual execution of physical query plan.
 function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, index_sym_dict; read=true)
-    if tensor isa Number
+    if isbits(tensor)
         return literal_instance(tensor)
     end
 
@@ -85,42 +85,18 @@ function get_dim_type(dim_size)
     end
 end
 
-function resize_sparse_list!(stats, tns)
-    isnothing(stats) && return
-    num_idxs = length(Finch.level_size(tns))
-    idxs = get_index_order(stats)[1:num_idxs]
-    nnz = ceil(Int, estimate_nnz(stats; indices = idxs))
-    resize!(tns.idx, nnz)
-    resize!(tns.ptr, nnz)
-end
-
-function resize_sparse_dict!(stats, tns)
-    isnothing(stats) && return
-    num_idxs = length(Finch.level_size(tns))
-    idxs = get_index_order(stats)[1:num_idxs]
-    nnz = ceil(Int, estimate_nnz(stats; indices = idxs))
-    resize!(tns.idx, nnz)
-    resize!(tns.ptr, nnz)
-    resize!(tns.val, nnz)
-end
-
 function initialize_tensor(formats, dims, default_value; copy_data = nothing, stats=nothing)
-    if length(dims) == 0
-        return Finch.Scalar(default_value)
-    end
     B = Element(default_value)
     for i in range(1, length(dims))
         DT = get_dim_type(dims[i])
         if formats[i] == t_sparse_list
             B = SparseList(B, DT(dims[i]))
-            resize_sparse_list!(stats, B)
         elseif formats[i] == t_dense
             B = Dense(B, DT(dims[i]))
         elseif formats[i] == t_bytemap
             B = SparseByteMap(B, DT(dims[i]))
         elseif formats[i] == t_hash
             B = SparseDict(B, DT(dims[i]))
-            resize_sparse_dict!(stats, B)
         else
             println("Error: Attempted to initialize invalid level format type.")
         end

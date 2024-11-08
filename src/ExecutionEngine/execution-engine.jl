@@ -24,9 +24,7 @@ function translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs::PlanNode
         tensor_counter[1] += 1
         return initialize_access(t_name, rhs.tns.val, idxs, protocols, index_sym_dict, read=true)
     elseif rhs.kind == Value
-        if rhs.val isa Number
-            return literal_instance(rhs.val)
-        end
+        return literal_instance(rhs.val)
     elseif rhs.kind === MapJoin
         if iscommutative(rhs.op.val)
             rhs.args = sort_mapjoin_args(rhs.args)
@@ -59,7 +57,7 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     output_idx_order = [idx.name for idx in mat_expr.idx_order]
     agg_expr = mat_expr.expr
     output_default = get_default_value(agg_expr.stats)
-    output_dimensions = [get_dim_size(agg_expr.stats, idx) for idx in output_idx_order]
+    output_dimensions = [get_dim_size(mat_expr.stats, idx) for idx in output_idx_order]
     agg_op = agg_expr.op.val
     agg_idxs = [idx.name for idx in agg_expr.idxs]
     rhs_expr = agg_expr.arg
@@ -97,7 +95,7 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
     if output_tensor isa Finch.Scalar
         verbose >= 2 && println("Output Size: 1")
-        alias_dict[name] = output_tensor[]
+        alias_dict[name] = output_tensor
     else
         # There are cases where default entries will be stored explicitly, so we avoid that
         # by re-copying the data. We also check to see if the format should be changed

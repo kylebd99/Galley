@@ -10,7 +10,7 @@
     index_order::Union{Nothing, Vector{IndexExpr}}
     index_protocols::Union{Nothing, Vector{AccessProtocol}}
 end
-TensorDef(x::Number) = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, UInt128}(), x, nothing, nothing, nothing)
+TensorDef(x) = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, UInt128}(), x, IndexExpr[], IndexExpr[], IndexExpr[])
 
 copy_def(def::TensorDef) = TensorDef(Set{IndexExpr}(x for x in def.index_set),
                                         Dict{IndexExpr, UInt128}(x for x in def.dim_sizes),
@@ -19,15 +19,17 @@ copy_def(def::TensorDef) = TensorDef(Set{IndexExpr}(x for x in def.index_set),
                                 isnothing(def.index_order) ? nothing : [x for x in def.index_order],
                                 isnothing(def.index_protocols) ? nothing : [x for x in def.index_protocols])
 
-function level_to_enum(lvl)
+function level_to_enums(lvl)
     if typeof(lvl) <: SparseListLevel
-        return t_sparse_list
+        return [t_sparse_list]
     elseif typeof(lvl) <: SparseDictLevel
-        return t_hash
+        return [t_hash]
+    elseif typeof(lvl) <: SparseCOOLevel
+        return [t_coo for _ in lvl.shape]
     elseif typeof(lvl) <: SparseByteMap
-        return t_bytemap
+        return [t_bytemap]
     elseif typeof(lvl) <: DenseLevel
-        return t_dense
+        return [t_dense]
     else
         throw(Base.error("Level Not Recognized"))
     end
@@ -36,8 +38,8 @@ end
 function get_tensor_formats(tensor::Tensor)
     level_formats = LevelFormat[]
     current_lvl = tensor.lvl
-    for i in 1:length(size(tensor))
-        push!(level_formats, level_to_enum(current_lvl))
+    while length(level_formats) < length(size(tensor))
+        append!(level_formats, level_to_enums(current_lvl))
         current_lvl = current_lvl.lvl
     end
     # Because levels are built outside-in, we need to reverse this.
@@ -85,6 +87,15 @@ function relabel_index!(def::TensorDef, i::IndexExpr, j::IndexExpr)
                 def.index_order[k] = j
             end
         end
+    end
+end
+
+function add_dummy_idx!(def::TensorDef, i::IndexExpr; idx_pos = -1)
+    def.dim_sizes[i] = 1
+    push!(def.index_set, i)
+    if idx_pos > -1
+        insert!(def.index_order, idx_pos, i)
+        insert!(def.level_formats, idx_pos, t_dense)
     end
 end
 
@@ -150,7 +161,7 @@ function NaiveStats(tensor::Tensor, indices::Vector{IndexExpr})
     return NaiveStats(def, cardinality)
 end
 
-function NaiveStats(x::Number)
+function NaiveStats(x)
     def = TensorDef(Set{IndexExpr}(), Dict{IndexExpr, Int}(), x, nothing, nothing, nothing)
     return NaiveStats(def, 1)
 end
@@ -163,6 +174,9 @@ function relabel_index!(stats::NaiveStats, i::IndexExpr, j::IndexExpr)
     relabel_index!(stats.def, i, j)
 end
 
+function add_dummy_idx!(stats::NaiveStats, i::IndexExpr; idx_pos = -1)
+    add_dummy_idx!(stats.def, i, idx_pos=idx_pos)
+end
 
 #################  DSStats Definition ######################################################
 
@@ -229,9 +243,23 @@ end
 
 
 copy_stats(stat::DCStats) = DCStats(copy_def(stat.def), copy(stat.idx_2_int), copy(stat.int_2_idx),  Set{DC}(dc for dc in stat.dcs))
-DCStats(x::Number) = DCStats(TensorDef(x::Number), Dict{IndexExpr, Int}(), Dict{Int, IndexExpr}(), Set{DC}())
+DCStats(x) = DCStats(TensorDef(x), Dict{IndexExpr, Int}(), Dict{Int, IndexExpr}(), Set{DC}())
 get_def(stat::DCStats) = stat.def
 get_index_bitset(stat::DCStats) = SmallBitSet(Int[stat.idx_2_int[x] for x in get_index_set(stat)])
+
+idxs_to_bitset(stat::DCStats, indices) = idxs_to_bitset(stat.idx_2_int, indices)
+idxs_to_bitset(idx_2_int::Dict{IndexExpr, Int}, indices) = SmallBitSet(Int[idx_2_int[idx] for idx in indices])
+bitset_to_idxs(stat::DCStats, bitset) = bitset_to_idxs(stat.int_2_idx, bitset)
+bitset_to_idxs(int_2_idx::Dict{Int, IndexExpr}, bitset) = Set{IndexExpr}(int_2_idx[idx] for idx in bitset)
+
+function add_dummy_idx!(stats::DCStats, i::IndexExpr; idx_pos = -1)
+    add_dummy_idx!(stats.def, i, idx_pos=idx_pos)
+    new_idx_int = maximum(values(stats.idx_2_int); init = 0) + 1
+    stats.idx_2_int[i] = new_idx_int
+    stats.int_2_idx[new_idx_int] = i
+    Y = idxs_to_bitset(stats, Set([i]))
+    push!(stats.dcs, DC(SmallBitSet(), Y, 1))
+end
 
 function fix_cardinality!(stat::DCStats, card)
     had_dc = false
@@ -350,11 +378,6 @@ function condense_stats!(stat::DCStats; timeout=100000, cheap=false)
     stat.dcs = end_dcs
     return nothing
 end
-
-idxs_to_bitset(stat::DCStats, indices) = idxs_to_bitset(stat.idx_2_int, indices)
-idxs_to_bitset(idx_2_int::Dict{IndexExpr, Int}, indices) = SmallBitSet(Int[idx_2_int[idx] for idx in indices])
-bitset_to_idxs(stat::DCStats, bitset) = bitset_to_idxs(stat.int_2_idx, bitset)
-bitset_to_idxs(int_2_idx::Dict{Int, IndexExpr}, bitset) = Set{IndexExpr}(int_2_idx[idx] for idx in bitset)
 
 function estimate_nnz(stat::DCStats; indices = get_index_set(stat), conditional_indices=Set{IndexExpr}())
     if length(indices) == 0

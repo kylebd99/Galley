@@ -59,7 +59,6 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     output_default = get_default_value(agg_expr.stats)
     output_dimensions = [get_dim_size(mat_expr.stats, idx) for idx in output_idx_order]
     agg_op = agg_expr.op.val
-    agg_idxs = [idx.name for idx in agg_expr.idxs]
     rhs_expr = agg_expr.arg
     rhs_instance = translate_rhs(alias_dict, tensor_counter, index_sym_dict, rhs_expr)
 
@@ -83,7 +82,6 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     end
     prgm_instance = block_instance(dec_instance, prgm_instance)
 
-    start_time = time()
     verbose >= 4 && display(prgm_instance)
     verbose >= 5 &&  println(Finch.execute_code(:ex, typeof(prgm_instance), mode=:fast)
                                                                 |> Finch.pretty
@@ -91,34 +89,10 @@ function execute_query(alias_dict, q::PlanNode, verbose)
                                                                 |>  Finch.dataflow
                                                                 |>  Finch.unquote_literals)
     verbose >= 2 && println("Expected Output Size: $(estimate_nnz(agg_expr.stats))")
+    start_time = time()
     Finch.execute(prgm_instance, mode=:fast)
     verbose >= 2 && println("Kernel Execution Took: ", time() - start_time)
-    if output_tensor isa Finch.Scalar
-        verbose >= 2 && println("Output Size: 1")
-        alias_dict[name] = output_tensor
-    else
-        # There are cases where default entries will be stored explicitly, so we avoid that
-        # by re-copying the data. We also check to see if the format should be changed
-        # based on the true cardinality.
-        touch_up_start = time()
-        non_default = count_non_default(output_tensor)
-        stored = count_stored(output_tensor)
-        estimated_size = estimate_nnz(mat_expr.stats)
-        verbose >= 2 && println("Stored Entries: ", stored)
-        verbose >= 2 && println("Non Default Entries: ", non_default)
-        if (stored > (1.2 * non_default)) || (non_default > 5 * estimated_size) ||(non_default < estimated_size / 5)
-            fix_cardinality!(mat_expr.stats, non_default)
-            best_formats = select_output_format(mat_expr.stats, reverse(get_index_order(mat_expr.stats)), get_index_order(mat_expr.stats))
-            if output_formats != best_formats
-                output_tensor = initialize_tensor(best_formats,
-                                            output_dimensions,
-                                            output_default,
-                                            copy_data = output_tensor)
-                q.expr.formats = [Value(f) for f in best_formats]
-                get_def(q.expr.stats).level_formats = best_formats
-            end
-        end
-        verbose >= 2 && println("Touch Up Time: ", time()-touch_up_start)
-        alias_dict[name] = output_tensor
-    end
+    verbose >= 2 && println("Stored Entries: ", count_stored(output_tensor))
+    verbose >= 2 && println("Non Default Entries: ", count_non_default(output_tensor))
+    alias_dict[name] = output_tensor
 end

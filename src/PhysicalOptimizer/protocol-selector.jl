@@ -27,6 +27,19 @@ function select_follower_protocol(format::LevelFormat)
     end
 end
 
+function modify_plan_protocols!(plan::PlanNode, ST, alias_stats)
+    for query in plan.queries
+        # Propagate the index order and format info from the last step.
+        insert_node_ids!(query)
+        insert_statistics!(ST, query, bindings=alias_stats)
+        # Choose access protocols
+        modify_protocols!(query.expr)
+        alias_stats[query.name.name] = query.expr.stats
+        @assert !isnothing(get_index_order(alias_stats[query.name.name])) "$(query.name.name)"
+    end
+    return plan
+end
+
 function modify_protocols!(expr)
     inputs = get_conjunctive_and_disjunctive_inputs(expr)
     conjuncts = [input.stats for input in inputs.conjuncts]

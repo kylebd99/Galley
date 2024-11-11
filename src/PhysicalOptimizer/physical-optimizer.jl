@@ -26,6 +26,22 @@ function reorder_input(input, expr, loop_order::Vector{IndexExpr})
     return [reorder_query], expr
 end
 
+function split_plan_to_physical_plan(split_plan::PlanNode, ST, alias_to_loop_order, alias_stats::Dict{IndexExpr, TensorStats}; only_add_loop_order=true, transpose_aliases=false, verbose = 0)
+    physical_queries = []
+    for s_query in split_plan.queries
+        p_queries = logical_query_to_physical_queries(s_query, ST, alias_stats; only_add_loop_order=false, transpose_aliases=false)
+        for p_query in p_queries
+            alias_stats[p_query.name.name] = p_query.expr.stats
+            for n in PostOrderDFS(p_query.expr)
+                if n.kind == Alias
+                    alias_to_loop_order[n.name] = IndexExpr[idx.name for idx in p_query.loop_order]
+                end
+            end
+        end
+        append!(physical_queries, p_queries)
+    end
+    return Plan(physical_queries...)
+end
 
 # This function takes in a query and outputs one or more queries
 # The input query should take the form:
@@ -34,9 +50,11 @@ end
 #       Query(name, Aggregate(op, init, idxs..., map_expr))
 #       or
 #       Query(name, map_expr)
-# The output queries should all be of the form:
+# The output queries should be of the form:
 #       Query(name, Materialize(formats..., output_order..., expr), loop_order...)
-# where formats can't be t_undef.
+#       or
+#       Query(name, Aggregate(op, init, idxs..., map_expr), loop_order...)
+# The former are either transposition queries or outputs which have a user-specified format. 
 # `alias_stats` is a dictionary which holds stats objects for the results of any previous
 # queries. This is needed to get the stats for `Alias` inputs.
 function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dict{IndexExpr, TensorStats}; only_add_loop_order=true, transpose_aliases=false, verbose = 0)
@@ -105,7 +123,6 @@ function logical_query_to_physical_queries(query::PlanNode, ST, alias_stats::Dic
     expr = Aggregate(agg_op, agg_init, reduce_idxs..., expr)
     expr.stats = output_stats
 
-    # Determine the optimal output format & add a further query to reformat if necessary.
     if !isnothing(output_order)
         for i in eachindex(output_order)
             if i ∉ get_index_set(output_stats)

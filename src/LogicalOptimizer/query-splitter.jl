@@ -37,6 +37,21 @@ function get_connected_subsets(nodes, max_kernel_size)
     return ss
 end
 
+
+# This function takes in queries of the form:
+#   Query(name, Aggregate(agg_op, idxs..., map_expr))
+#   Query(name, Materialize(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))
+# It outputs a set of queries where the final one binds `name` and each
+# query has less than `MAX_INDEX_OCCURENCES` index occurences.
+function split_plan_to_kernel_limit(logical_plan::PlanNode, ST, max_kernel_size, alias_stats, verbose)
+    split_queries = PlanNode[]
+    for l_query in logical_plan.queries
+        s_queries = split_query(l_query, ST, max_kernel_size, alias_stats, verbose)
+        append!(split_queries, s_queries)
+    end
+    return Plan(split_queries...)
+end
+
 # This function takes in queries of the form:
 #   Query(name, Aggregate(agg_op, idxs..., map_expr))
 #   Query(name, Materialize(formats.., idxs..., Aggregate(agg_op, idxs..., map_expr)))

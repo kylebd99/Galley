@@ -12,7 +12,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :j, MapJoin(*, a, b)))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix .* b_matrix
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "2x2 matrices, element-wise add" begin
@@ -27,7 +27,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :j, MapJoin(+, a, b)))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix .+ b_matrix
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "2x2 matrices, element-wise custom" begin
@@ -43,7 +43,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :j, MapJoin(f, a, b)))
         result = galley(q, verbose=verbose)
         correct_matrix = [0 0; 0 0]
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "2x2 matrices, element-wise mult, reverse input" begin
@@ -58,7 +58,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :j, MapJoin(*, a, b)))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix .* (b_matrix')
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "100x100 matrices, element-wise mult, reverse output" begin
@@ -73,7 +73,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :j, :i, MapJoin(*, a, b)))
         result = galley(q, verbose=verbose)
         correct_matrix = (a_matrix.*b_matrix)'
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "100x100 matrices, matrix mult" begin
@@ -88,7 +88,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(+, 0, :j, MapJoin(*, a, b))))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
 
@@ -105,7 +105,7 @@
         q = Query(:out, Materialize(t_sparse_list, t_sparse_list, :i, :k, Aggregate(f, 0, :j, MapJoin(*, a, b))))
         result = galley(q, verbose=verbose)
         correct_matrix = a_matrix * b_matrix
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
 
@@ -117,7 +117,7 @@
         q = Query(:out, Materialize(Aggregate(+, 0, :i, :j, a)))
         result = galley(q, verbose=verbose)
         correct_matrix = sum(a_matrix)
-        @test result.value[] == correct_matrix
+        @test result.value[1][] == correct_matrix
     end
 
     @testset "100x100 matrices, multi-line, matrix mult" begin
@@ -138,7 +138,7 @@
         result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * c_matrix
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "100x100 matrices, multi-line, matrix mult, reuse" begin
@@ -155,7 +155,7 @@
         result = galley(e, verbose=verbose)
         d_matrix = a_matrix * b_matrix
         correct_matrix = d_matrix * d_matrix
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "100x100 matrices, diagonal mult" begin
@@ -173,7 +173,7 @@
         for i in 1:100
             correct_matrix[i] = a_matrix[i,i] * b_matrix[i,i]
         end
-        @test result.value == correct_matrix
+        @test result.value[1] == correct_matrix
     end
 
     @testset "100x100 matrices, diagonal mult, then sum" begin
@@ -191,7 +191,7 @@
         for i in 1:100
             correct_result += a_matrix[i,i] * b_matrix[i,i]
         end
-        @test result.value[] == correct_result
+        @test result.value[1][] == correct_result
     end
 
 
@@ -207,7 +207,7 @@
         d = Query(:out, Materialize(Aggregate(+, 0, :i, :j, MapJoin(+, a, b))))
         result = galley(d, verbose=verbose)
         correct_result = sum(a_matrix) + sum(b_matrix)
-        @test result.value[] == correct_result
+        @test result.value[1][] == correct_result
     end
 
     @testset "100x100 matrices, + on j, then sum all" begin
@@ -222,7 +222,7 @@
         d = Query(:out, Materialize(Aggregate(+, 0, :i, :j, :k, MapJoin(+, a, b))))
         result = galley(d, verbose=verbose)
         correct_result = sum(a_matrix)*100 + sum(b_matrix)*100
-        @test result.value[] == correct_result
+        @test result.value[1][] == correct_result
     end
 
 end

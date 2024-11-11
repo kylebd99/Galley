@@ -90,13 +90,20 @@ function unwrap_subqueries(prgm::LogicNode)
 end
 
 function normalize_hl(prgm::LogicNode)
-    #deduplicate and lift inline subqueries to regular queries
+    # Currently, we just remove sub-query wrapping. This may introduce
+    # common sub expressions.
+    # TODO: If a sub-query is also produced, we shouldn't unwrap it. We should just refer to it. 
+    # However, the way query results are currently gensymed will mean that this never happens.
     prgm = unwrap_subqueries(prgm)
     prgm = flatten_plans(prgm)
+    # We push all relabels down to the inputs
     prgm = push_relabels(prgm)
+    # We pull up reorders to the root of each query expr. This requires careful treatement of broadcast semantics.
+    # In particular, whenever a broadcast removes a size-1 dim, we introduce an aggregate. Whenever a
+    # broadcast introduces a size-1 dim then aggregates it out later, we drop that dim from both.
     prgm = pull_up_reorders(prgm)
+    # If an aggregate doesn't contain any idxs, we turn it into a mapjoin with this init value.
     prgm = aggs_to_mapjoins(prgm)
-    prgm = flatten_plans(prgm)
     return prgm
 end
 
@@ -104,7 +111,7 @@ end
 # pgrm := plan
 # plan := query..., produces
 # produces := symbols...
-# query := reformat
+# query := reorder | reformat
 # reformat := format..., reorder
 # reorder := field..., expr
 # expr := aggregate | mapjoin | alias | table

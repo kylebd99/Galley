@@ -1,4 +1,27 @@
 
+
+function modify_plan_formats!(plan::PlanNode, alias_to_loop_order, alias_stats)
+    for query in plan.queries
+        if query.expr.kind === Aggregate
+            loop_order_when_used = alias_to_loop_order[query.name.name]
+            output_stats = query.expr.stats
+            output_order = relative_sort(get_index_set(output_stats), loop_order_when_used, rev=true)
+            loop_order_when_built = IndexExpr[idx.name for idx in query.loop_order]
+            # Determine the optimal output format & add a further query to reformat if necessary.
+            output_formats = select_output_format(output_stats, loop_order_when_built, output_order)
+            query.expr = Materialize(output_formats..., output_order..., query.expr)
+            reorder_stats = copy_stats(output_stats)
+            reorder_def = get_def(reorder_stats)
+            reorder_def.index_order = output_order
+            reorder_def.level_formats = output_formats
+            query.expr.stats = reorder_stats
+            alias_stats[query.name.name] = query.expr.stats
+            @assert !isnothing(get_index_order(alias_stats[query.name.name])) "$(query.name.name)"
+        end
+    end
+    return plan
+end
+
 function select_output_format(output_stats::TensorStats,
                                 loop_order::Vector{IndexExpr},
                                 output_indices::Vector{IndexExpr})

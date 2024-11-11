@@ -165,8 +165,7 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
     elseif node.kind === Query && sym === :expr node.children[2]
     elseif node.kind === Query && sym === :loop_order begin length(node.children) > 2 ? node.children[3:end] : [] end
     elseif node.kind === Outputs && sym === :names node.children
-    elseif node.kind === Plan && sym === :queries @view node.children[1:end-1]
-    elseif node.kind === Plan && sym === :outputs @view node.children[end]
+    elseif node.kind === Plan && sym === :queries @view node.children[1:end]
     else
         error("type PlanNode($(node.kind), ...) has no property $sym")
     end
@@ -193,8 +192,7 @@ function Base.setproperty!(node::PlanNode, sym::Symbol, v)
     elseif node.kind === Query && sym === :expr node.children[2] = v
     elseif node.kind === Query && sym === :loop_order begin node.children = [node.name, node.expr, v...] end
     elseif node.kind === Outputs && sym === :names node.children = v
-    elseif node.kind === Plan && sym === :queries begin node.children = [v..., node.outputs] end
-    elseif node.kind === Plan && sym === :outputs node.children[end] = v
+    elseif node.kind === Plan && sym === :queries begin println([v...]); node.children = [v...] end
     else
         error("type PlanNode($(node.kind), ...) has no property $sym")
     end

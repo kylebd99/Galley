@@ -101,8 +101,10 @@ function galley(input_plan::PlanNode;
     alias_stats, alias_hash = Dict{IndexExpr, TensorStats}(),  Dict{IndexExpr, UInt}()
     output_aliases = isnothing(output_aliases) ? [input_query.name for input_query in input_plan.queries] : output_aliases
     output_orders = Dict(input_query.name => input_query.expr.idx_order for input_query in input_plan.queries)
+    opt_start = time()
 
-    opt_start, faq_opt_start = time(), time()
+    # Optimize Aggregation & Materialization
+    faq_opt_start = time()
     logical_plan = high_level_optimize(faq_optimizer, input_plan, ST, alias_stats, alias_hash, verbose)
     faq_opt_time = time() - faq_opt_start
 
@@ -128,6 +130,7 @@ function galley(input_plan::PlanNode;
                                             verbose)
     end
 
+    # Split-Up Large Queries
     split_start = time()
     split_plan = split_plan_to_kernel_limit(logical_plan, ST, max_kernel_size, alias_stats, verbose)
     total_split_time = split_start
@@ -144,21 +147,15 @@ function galley(input_plan::PlanNode;
     physical_plan = modify_plan_protocols!(physical_plan, ST, alias_stats)
     total_phys_opt_time = time() - phys_opt_start 
 
-
     # Duplicate Query Elmination
     cse_plan = naive_cse!(physical_plan)
     total_opt_time = time() - opt_start
 
     # Execute Queries
     exec_start = time()
-    alias_result = Dict{IndexExpr, Any}()
-    for query in cse_plan.queries
-        verbose > 2 && println("--------------- Computing: $(query.name) ---------------")
-        verbose > 2 && println(query)
-        verbose > 3 && validate_physical_query(query)
-        execute_query(alias_result, query, verbose)
-    end
+    alias_result = execute_plan(cse_plan::PlanNode, verbose)
     total_exec_time = time() - exec_start
+
     total_overall_time = time()-overall_start
     verbose >= 2 && println("Time to FAQ Opt: ", faq_opt_time)
     verbose >= 2 && println("Time to Split Opt: ", total_split_time)

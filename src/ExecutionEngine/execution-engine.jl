@@ -96,3 +96,14 @@ function execute_query(alias_dict, q::PlanNode, verbose)
     verbose >= 2 && println("Non Default Entries: ", count_non_default(output_tensor))
     alias_dict[name] = output_tensor
 end
+
+function execute_plan(cse_plan::PlanNode, verbose)
+    alias_result = Dict{IndexExpr, Any}()
+    for query in cse_plan.queries
+        verbose > 2 && println("--------------- Computing: $(query.name) ---------------")
+        verbose > 2 && println(query)
+        verbose > 3 && validate_physical_query(query)
+        execute_query(alias_result, query, verbose)
+    end
+    return alias_result
+end

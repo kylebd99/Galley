@@ -1,5 +1,6 @@
 using Finch: set_options
-using Finch: compute_parse, isimmediate, finch_unparse_program
+using Finch: compute_parse, isimmediate
+using Finch.FinchNotation: finch_unparse_program
 
 mutable struct GalleyOptimizer
     verbose

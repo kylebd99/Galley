@@ -9,11 +9,12 @@ end
 GalleyOptimizer(; verbose = false) = GalleyOptimizer(verbose)
 
 function (ctx::GalleyOptimizer)(prgm)
+    finch_mode = ctx.verbose ? :safe : :fast
     produce_node = prgm.bodies[end]
     output_vars = [Alias(a.name) for a in produce_node.args]
     galley_prgm = Plan(finch_hl_to_galley(normalize_hl(prgm))...)
     tns_inits, instance_prgm = galley(galley_prgm, output_aliases=output_vars, verbose=0, output_program_instance=true)
-    julia_prgm = :(@finch begin $(finch_unparse_program(ctx, instance_prgm)) end)
+    julia_prgm = :(@finch mode=$(QuoteNode(finch_mode)) begin $(finch_unparse_program(ctx, instance_prgm)) end)
     for init in tns_inits
         julia_prgm = :($init; $julia_prgm)
     end

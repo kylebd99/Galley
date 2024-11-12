@@ -43,5 +43,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 Documenter = "1.7.0"
+Finch = "0.6.32"
 REPL = "1.11.0"
 StatsBase = "0.34.3"

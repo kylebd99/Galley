@@ -5,6 +5,10 @@ struct DuckDBTensor
     columns::Vector{String}
 end
 
+function Base.size(x::DuckDBTensor)
+    return length(x.columns)
+end
+
 function load_to_duckdb(dbconn::DBInterface.Connection, q::PlanNode)
     input_nodes = get_inputs(q)
     for input in input_nodes

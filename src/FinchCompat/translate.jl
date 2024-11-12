@@ -26,7 +26,7 @@ function push_relabels(prgm)
             (@rule relabel(~arg::isimmediate) => arg),
     ]))))(prgm)
 
-    
+
 end
 
 function aggs_to_mapjoins(prgm)
@@ -53,11 +53,11 @@ function compatible_order(order1, order2)
             cur_rpos += 1
         end
     end
-    while cur_lpos <= length(order1) 
+    while cur_lpos <= length(order1)
         push!(resulting_order, order1[cur_lpos])
         cur_lpos += 1
     end
-    while cur_rpos <= length(order2) 
+    while cur_rpos <= length(order2)
         push!(resulting_order, order2[cur_rpos])
         cur_rpos += 1
     end
@@ -65,7 +65,7 @@ function compatible_order(order1, order2)
 end
 
 function pull_up_reorders(prgm::LogicNode)
-    prgm = Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs2...) => 
+    prgm = Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs2...) =>
                         reorder(aggregate(nothing, nothing, arg, setdiff(getfields(arg), idxs2)...), idxs2...) where length(idxs2) < length(getfields(arg)))]))))(prgm)
 
     prgm = Rewrite(Fixpoint(Postwalk(Chain([
@@ -82,7 +82,7 @@ function pull_up_reorders(prgm::LogicNode)
                         end),
                     (@rule mapjoin(~op, ~preargs..., reorder(~arg, ~ro_idxs...), ~postargs...)=>
                         reorder(mapjoin(op, preargs..., arg, postargs...), ro_idxs...))]))))(prgm)
-    prgm                         
+    prgm
 end
 
 function unwrap_subqueries(prgm::LogicNode)
@@ -92,7 +92,7 @@ end
 function normalize_hl(prgm::LogicNode)
     # Currently, we just remove sub-query wrapping. This may introduce
     # common sub expressions.
-    # TODO: If a sub-query is also produced, we shouldn't unwrap it. We should just refer to it. 
+    # TODO: If a sub-query is also produced, we shouldn't unwrap it. We should just refer to it.
     # However, the way query results are currently gensymed will mean that this never happens.
     prgm = unwrap_subqueries(prgm)
     prgm = flatten_plans(prgm)
@@ -125,7 +125,7 @@ function finch_hl_to_galley(prgm::LogicNode)
         return # TODO: Change Galley to accept a produces list
     elseif prgm.kind == query
         rhs = finch_hl_to_galley(prgm.rhs)
-        if rhs.kind != Materialize 
+        if rhs.kind != Materialize
             rhs = Mat([IndexExpr(i.val) for i in FinchLogic.getfields(prgm.rhs)]..., rhs)
         end
         lhs = finch_hl_to_galley(prgm.lhs)
@@ -148,10 +148,18 @@ function finch_hl_to_galley(prgm::LogicNode)
         return MapJoin(finch_hl_to_galley(prgm.op),
                         [finch_hl_to_galley(arg) for arg in prgm.args]...)
     elseif prgm.kind == table
-        if prgm.tns.val isa Tensor
-            return Input(prgm.tns.val, [finch_hl_to_galley(i) for i in prgm.idxs]...)
+        if prgm.tns.kind == deferred
+            if prgm.tns.imm isa Tensor
+                return Input(prgm.tns.imm, [finch_hl_to_galley(i) for i in prgm.idxs]..., string(prgm.tns.ex))
+            else
+                return Input(Tensor(prgm.tns.imm), [finch_hl_to_galley(i) for i in prgm.idxs]..., string(prgm.tns.ex))
+            end
         else
-            return Input(Tensor(prgm.tns.val), [finch_hl_to_galley(i) for i in prgm.idxs]...)
+            if prgm.tns.val isa Tensor
+                return Input(prgm.tns.val, [finch_hl_to_galley(i) for i in prgm.idxs]...)
+            else
+                return Input(Tensor(prgm.tns.val), [finch_hl_to_galley(i) for i in prgm.idxs]...)
+            end
         end
     elseif prgm.kind == relabel
         @assert prgm.arg.kind == alias

@@ -35,7 +35,7 @@ export load_to_duckdb, DuckDBTensor, fill_table
 export GalleyExecutor
 
 IndexExpr = Symbol
-TensorId = String
+TensorId = Symbol
 # This defines the list of access protocols allowed by the Finch API
 @enum AccessProtocol t_walk = 1 t_lead = 2 t_follow = 3 t_gallop = 4 t_default = 5
 # A subset of the allowed level formats provided by the Finch API
@@ -108,9 +108,6 @@ function galley(input_plan::PlanNode;
     logical_plan = high_level_optimize(faq_optimizer, input_plan, ST, alias_stats, alias_hash, verbose)
     faq_opt_time = time() - faq_opt_start
 
-    if output_logical_plan
-        return logical_plan
-    end
     if verbose >= 1
         println("FAQ Opt Time: $faq_opt_time")
         println("--------------- Logical Plan ---------------")
@@ -134,22 +131,36 @@ function galley(input_plan::PlanNode;
     split_start = time()
     split_plan = split_plan_to_kernel_limit(logical_plan, ST, max_kernel_size, alias_stats, verbose)
     total_split_time = split_start
-    
+
     # Loop Order Selection
     phys_opt_start = time()
     alias_to_loop_order = Dict{IndexExpr, Vector{IndexExpr}}()
     physical_plan = split_plan_to_physical_plan(split_plan, ST, alias_to_loop_order, alias_stats)
-    
+
     # Tensor Format Selection
     physical_plan = modify_plan_formats!(physical_plan, alias_to_loop_order, alias_stats)
 
     # Access Protocol Selection
     physical_plan = modify_plan_protocols!(physical_plan, ST, alias_stats)
-    total_phys_opt_time = time() - phys_opt_start 
+    total_phys_opt_time = time() - phys_opt_start
 
     # Duplicate Query Elmination
     cse_plan = naive_cse!(physical_plan)
     total_opt_time = time() - opt_start
+
+
+    if verbose >= 1
+        println("Physical Opt Time: $faq_opt_time")
+        println("--------------- Physical Plan ---------------")
+        for query in cse_plan.queries
+            println(query)
+        end
+        println("--------------------------------------------")
+    end
+
+    if output_program_instance
+        return get_execute_code(cse_plan, verbose)
+    end
 
     # Execute Queries
     exec_start = time()

@@ -41,40 +41,6 @@ end
 get_index_symbol(idx_num) = Symbol("v_$(idx_num)")
 get_tensor_symbol(tns_num) = Symbol("t_$(tns_num)")
 
-# This file performs the actual execution of physical query plan.
-function initialize_access(tensor_id::Symbol, tensor, index_ids, protocols, index_sym_dict; read=true)
-    if isbits(tensor)
-        return literal_instance(tensor)
-    end
-
-    mode = read ? Reader() : Updater()
-    mode = literal_instance(mode)
-    index_expressions = []
-    for i in range(1, length(index_ids))
-        if !haskey(index_sym_dict, index_ids[i])
-            idx_num = length(index_sym_dict)
-            index_sym_dict[index_ids[i]] = get_index_symbol(idx_num)
-        end
-        index = index_instance(index_sym_dict[index_ids[i]])
-        if read == true
-            if protocols[i] == t_walk
-                index = call_instance(literal_instance(walk), index)
-            elseif protocols[i] == t_gallop
-                index = call_instance(literal_instance(gallop), index)
-            elseif protocols[i] == t_lead
-                index = call_instance(literal_instance(lead), index)
-            elseif protocols[i] == t_follow
-                index = call_instance(literal_instance(follow), index)
-            end
-        end
-        push!(index_expressions, index)
-    end
-    tensor_var = variable_instance(tensor_id)
-    tensor_tag = tag_instance(tensor_var, tensor)
-    tensor_access = access_instance(tensor_tag, mode, index_expressions...)
-    return tensor_access
-end
-
 function get_dim_type(dim_size)
     if dim_size*4 <= typemax(Int32)
         return Int32

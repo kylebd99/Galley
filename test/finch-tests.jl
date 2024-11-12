@@ -3,7 +3,7 @@ using LinearAlgebra
 
 @testset "interface" begin
 
-    Finch.set_scheduler!(GalleyExecutor())
+    Finch.set_scheduler!(Finch.LogicExecutor(GalleyOptimizer()))
 
     @info "Testing Finch Interface"
 
@@ -58,7 +58,7 @@ using LinearAlgebra
         @test eltype(Finch.tensordot(a, b, 0)) == UInt8
     end
 
-    for scheduler in [GalleyExecutor()]
+    for scheduler in [Finch.LogicExecutor(GalleyOptimizer())]
         Finch.with_scheduler(scheduler) do
             @info "Testing $scheduler"
 
@@ -368,7 +368,7 @@ using LinearAlgebra
                 A_ref = [0.0 0.0 4.4; 1.1 0.0 0.0; 2.2 0.0 5.5; 3.3 0.0 0.0]
                 A_ref = A_ref * floatmax()/sum(A_ref)
                 A = Tensor(Dense(SparseList(Element(0.0))), A_ref)
-                
+
                 @test sum(A) == sum(A_ref)
                 @test minimum(A) == minimum(A_ref)
                 @test maximum(A) == maximum(A_ref)

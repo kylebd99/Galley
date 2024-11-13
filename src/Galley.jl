@@ -70,7 +70,6 @@ include("FinchCompat/FinchCompat.jl")
 function galley(input_plan::PlanNode;
                     faq_optimizer::FAQ_OPTIMIZERS=greedy,
                     ST=DCStats,
-                    dbconn::Union{DuckDB.DB, Nothing}=nothing,
                     update_cards=true,
                     simple_cse=true,
                     max_kernel_size=8,
@@ -115,16 +114,6 @@ function galley(input_plan::PlanNode;
             println(query)
         end
         println("--------------------------------------------")
-    end
-
-    # If we've been given a valid DBConn handle, we hand it off to DuckDB.
-    if !isnothing(dbconn)
-        return duckdb_execute_logical_plan(logical_plan.queries,
-                                            dbconn,
-                                            only(output_aliases),
-                                            output_orders[only(output_aliases)],
-                                            time() - opt_start,
-                                            verbose)
     end
 
     # Split-Up Large Queries

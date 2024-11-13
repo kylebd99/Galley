@@ -1,5 +1,3 @@
-using Finch: AsArray
-using LinearAlgebra
 
 @testset "interface" begin
 

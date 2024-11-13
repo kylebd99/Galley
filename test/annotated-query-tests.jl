@@ -1,8 +1,4 @@
 
-using Test
-using Galley
-using Galley: canonicalize, insert_statistics!, get_reduce_query, AnnotatedQuery, reduce_idx!, cost_of_reduce, greedy_query_to_plan
-using Finch
 
 @testset verbose = true "Annotated Queries" begin
     A = Tensor(Dense(Sparse(Element(0.0))), fsprand(5, 5, .2))

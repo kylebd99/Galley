@@ -1,4 +1,5 @@
 # This file is a part of Julia. License is MIT: https://julialang.org/license
+# This is a rework of the SmallBitSet Class from Julia Base.
 using Base: union!, union, setdiff!, setdiff, intersect!, intersect, eltype, empty
 using Base: emptymutable, copy, copymutable,push!, delete!, empty!, isempty,in,issubset
 using Base: ⊊,==,iterate, length, hash

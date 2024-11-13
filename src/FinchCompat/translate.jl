@@ -1,5 +1,3 @@
-using Finch: flatten_plans
-
 function push_relabels(prgm)
     prgm = Rewrite(Fixpoint(Prewalk(Chain([
         (@rule relabel(mapjoin(~op, ~args...), ~idxs...) => begin

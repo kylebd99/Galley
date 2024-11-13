@@ -40,14 +40,14 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
     else
         args = vcat(args...)
         if (kind === Input && length(args) >= 1)
-            if args[1] isa Tensor || args[1] isa DuckDBTensor
+            if args[1] isa Tensor
                 if length(args) - 1 > length(size(args[1]))
                     return PlanNode(kind, args[1:end-1], Symbol(args[end]), nothing)
                 else
                     PlanNode(kind, args, Symbol(hash(args)), nothing)
                 end
             elseif args[1].kind === Value
-                if args[1].val isa Tensor || args[1].val isa DuckDBTensor
+                if args[1].val isa Tensor
                     if length(args) - 1 > length(size(args[1].val))
                         return PlanNode(kind, args[1:end-1], Symbol(args[end]), nothing)
                     else

@@ -25,8 +25,6 @@ function push_relabels(prgm)
             end),
             (@rule relabel(~arg::isimmediate) => arg),
     ]))))(prgm)
-
-
 end
 
 function aggs_to_mapjoins(prgm)
@@ -64,24 +62,36 @@ function compatible_order(order1, order2)
     return resulting_order
 end
 
-function pull_up_reorders(prgm::LogicNode)
-    prgm = Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs2...) =>
-                        reorder(aggregate(nothing, nothing, arg, setdiff(getfields(arg), idxs2)...), idxs2...) where length(idxs2) < length(getfields(arg)))]))))(prgm)
-
-    prgm = Rewrite(Fixpoint(Postwalk(Chain([
-                    (@rule reorder(reorder(~arg, ~idxs1...), ~idxs2...)=>
-                        begin
-                            idxs3 = compatible_order(idxs1, idxs2)
-                            reorder(arg, idxs3...)
-                        end),
-                    (@rule aggregate(~op, ~init, reorder(~arg, ~ro_idxs...), ~agg_idxs...)=>
-                        begin
-                            bc_idxs = setdiff(ro_idxs, getfields(arg))
-                            eliminated_idxs = intersect(bc_idxs, agg_idxs)
-                            reorder(aggregate(op, init, arg, setdiff(agg_idxs, bc_idxs)...), setdiff(ro_idxs, agg_idxs)...)
-                        end),
-                    (@rule mapjoin(~op, ~preargs..., reorder(~arg, ~ro_idxs...), ~postargs...)=>
-                        reorder(mapjoin(op, preargs..., arg, postargs...), ro_idxs...))]))))(prgm)
+function remove_reorders(prgm::LogicNode)
+    queries = collect(prgm.bodies[1:end-1])
+    new_queries = []
+    for q in queries
+        expr = q.rhs
+        format = nothing
+        if operation(expr) == Finch.reformat
+            format = expr.tns
+            expr = expr.arg
+        end
+        output_idx_order = Finch.getfields(expr)
+        expr = Rewrite(Fixpoint(Postwalk(Chain([(@rule reorder(~arg, ~idxs2...) =>
+                            reorder(aggregate(nothing, nothing, arg, setdiff(getfields(arg), idxs2)...), idxs2...) where length(idxs2) < length(getfields(arg)))]))))(expr)
+        bc_idxs = Set()
+        for n in PostOrderDFS(expr)
+            if n.kind == reorder
+                bc_idxs = bc_idxs ∪ setdiff(n.idxs, getfields(n.arg))
+            end
+        end
+        expr = Rewrite(Fixpoint(Postwalk(Chain([
+                        (@rule reorder(~arg, ~idxs1...)=> arg),
+                        (@rule aggregate(~op, ~init, ~arg, ~agg_idxs...)=>
+                                aggregate(op, init, arg, setdiff(agg_idxs, bc_idxs)...))]))))(expr)
+        expr = reorder(expr, output_idx_order...)
+        if !isnothing(format)
+            expr = reformat(format, expr)
+        end
+        push!(new_queries, query(q.lhs, expr))
+    end
+    prgm = plan(new_queries..., prgm.bodies[end])
     prgm
 end
 
@@ -98,10 +108,10 @@ function normalize_hl(prgm::LogicNode)
     prgm = flatten_plans(prgm)
     # We push all relabels down to the inputs
     prgm = push_relabels(prgm)
-    # We pull up reorders to the root of each query expr. This requires careful treatement of broadcast semantics.
+    # We remove any interior reorder statements and wrap the expression in one exterior reorder.
     # In particular, whenever a broadcast removes a size-1 dim, we introduce an aggregate. Whenever a
     # broadcast introduces a size-1 dim then aggregates it out later, we drop that dim from both.
-    prgm = pull_up_reorders(prgm)
+    prgm = remove_reorders(prgm)
     # If an aggregate doesn't contain any idxs, we turn it into a mapjoin with this init value.
     prgm = aggs_to_mapjoins(prgm)
     return prgm

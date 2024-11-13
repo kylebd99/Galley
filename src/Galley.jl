@@ -21,17 +21,13 @@ using Finch.FinchNotation: index_instance, variable_instance, tag_instance, lite
                         thaw_instance,
                         Updater, Reader, Dimensionless
 using Finch.FinchLogic
-using DuckDB
 using PrettyPrinting
 
 export galley
 export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Query, Outputs, Plan, IndexExpr
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, Σ, Mat, Agg
-export Factor, FAQInstance, Bag, HyperTreeDecomposition, decomposition_to_logical_plan
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
-export naive, hypertree_width, greedy, pruned, exact
-export expr_to_kernel, execute_tensor_kernel
-export load_to_duckdb, DuckDBTensor, fill_table
+export naive, greedy, pruned, exact
 export GalleyOptimizer
 
 IndexExpr = Symbol

@@ -10,17 +10,32 @@ Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Finch = "9177782c-1635-4eb9-9bfb-d9dfa25e6bce"
 IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
-LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
-Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 RewriteTools = "5969e224-3634-4c61-9f66-721b69e98b8a"
-SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 SyntaxInterface = "b33eeca9-aacb-4496-a840-e75f1646a4fb"
 TermInterface = "8ea1fca8-c5ef-4a55-8b96-4e9afe9c9a3c"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+AbstractTrees = "0.4"
+AutoHashEquals = "2.2"
+Combinatorics = "1.0"
+DataStructures = "0.18"
 Finch = "0.6.32"
-LinearAlgebra = "1.11.0"
-Revise = "3.6.2"
+IterTools = "1.10.0"
+PrecompileTools = "0.1"
+RewriteTools = "0.2"
+Statistics = "1.11"
+SyntaxInterface = "0.2"
+TermInterface = "2.0"
+LinearAlgebra = "1.11"
+julia = "1"
+
+[extras]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test", "LinearAlgebra", "SparseArrays"]

@@ -32,8 +32,7 @@ function Finch.set_options(ctx::GalleyOptimizer; estimator=DCStats)
     return ctx
 end
 
-
-get_galley_opt(; verbose = false, estimator=DCStats) = Finch.LogicExecutor(GalleyOptimizer(verbose=verbose, estimator=estimator); verbose=verbose)
+galley_scheduler(; verbose = false, estimator=DCStats) = Finch.LogicExecutor(GalleyOptimizer(verbose=verbose, estimator=estimator); verbose=verbose)
 
 # Roadmap:
 #   - Register Galley as a julia package (juliaregistrator, tagbot) @Kyle

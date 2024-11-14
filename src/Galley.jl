@@ -3,7 +3,6 @@ module Galley
 
 using AutoHashEquals
 using Base: hash, copy, convert, getproperty, getfield, setfield!, getindex, ==, show
-using Combinatorics
 using DataStructures
 using IterTools: subsets
 using RewriteTools
@@ -26,7 +25,7 @@ export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Qu
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, Σ, Mat, Agg
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, greedy, pruned, exact
-export GalleyOptimizer, get_galley_opt
+export GalleyOptimizer, galley_scheduler
 
 IndexExpr = Symbol
 TensorId = Symbol

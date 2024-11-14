@@ -3,14 +3,15 @@ mutable struct GalleyOptimizer
     verbose
 end
 
-GalleyOptimizer(; verbose = false, estimator=DCStats) = GalleyOptimizer(verbose, estimator)
+GalleyOptimizer(; verbose = false, estimator=DCStats) = GalleyOptimizer(estimator, verbose)
 
 function (ctx::GalleyOptimizer)(prgm)
     finch_mode = ctx.verbose ? :safe : :fast
+    verbosity = ctx.verbose ? 3 : 0
     produce_node = prgm.bodies[end]
     output_vars = [Alias(a.name) for a in produce_node.args]
     galley_prgm = Plan(finch_hl_to_galley(normalize_hl(prgm))...)
-    tns_inits, instance_prgm = galley(galley_prgm, ST=ctx.estimator, output_aliases=output_vars, verbose=0, output_program_instance=true)
+    tns_inits, instance_prgm = galley(galley_prgm, ST=ctx.estimator, output_aliases=output_vars, verbose=verbosity, output_program_instance=true)
     julia_prgm = :()
     if operation(instance_prgm) == Finch.block
         for body in instance_prgm.bodies
@@ -26,11 +27,13 @@ function (ctx::GalleyOptimizer)(prgm)
     julia_prgm
 end
 
-function Finch.set_options(ctx::GalleyOptimizer; verbose=false, estimator=DCStats)
-    ctx.verbose=verbose
+function Finch.set_options(ctx::GalleyOptimizer; estimator=DCStats)
     ctx.estimator=estimator
     return ctx
 end
+
+
+get_galley_opt(; verbose = false, estimator=DCStats) = Finch.LogicExecutor(GalleyOptimizer(verbose=verbose, estimator=estimator); verbose=verbose)
 
 # Roadmap:
 #   - Register Galley as a julia package (juliaregistrator, tagbot) @Kyle

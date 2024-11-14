@@ -79,6 +79,13 @@ function remove_reorders(prgm::LogicNode)
                 bc_idxs = bc_idxs ∪ setdiff(n.idxs, getfields(n.arg))
             end
         end
+        table_idxs = Set()
+        for n in PostOrderDFS(expr)
+            if n.kind == table
+                table_idxs = table_idxs ∪ n.idxs
+            end
+        end
+        bc_idxs = setdiff(bc_idxs, table_idxs)
         expr = Rewrite(Fixpoint(Postwalk(Chain([
                         (@rule reorder(~arg, ~idxs1...)=> arg),
                         (@rule aggregate(~op, ~init, ~arg, ~agg_idxs...)=>

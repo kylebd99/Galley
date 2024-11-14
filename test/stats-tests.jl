@@ -1,6 +1,4 @@
 
-using Galley: estimate_nnz, reduce_tensor_stats, condense_stats!, merge_tensor_stats
-
 @testset "NaiveStats" begin
 
 

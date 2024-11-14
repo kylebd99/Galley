@@ -26,7 +26,7 @@ export PlanNode, Value, Index, Alias, Input, MapJoin, Aggregate, Materialize, Qu
 export Scalar, OutTensor, RenameIndices, declare_binary_operator, Σ, Mat, Agg
 export DCStats, NaiveStats, TensorDef, DC, insert_statistics
 export naive, greedy, pruned, exact
-export GalleyOptimizer
+export GalleyOptimizer, get_galley_opt
 
 IndexExpr = Symbol
 TensorId = Symbol

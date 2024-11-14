@@ -105,7 +105,7 @@ matrix = "SNAP/roadNet-CA"
 matrix = "SNAP/com-LiveJournal"
 matrix = "SNAP/soc-Epinions1"
 matrix = "SNAP/com-Orkut"
-matrices = ["SNAP/roadNet-CA",]
+matrices = ["SNAP/com-LiveJournal",]
 run_exps(matrices)
 
 #=

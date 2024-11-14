@@ -2,6 +2,8 @@
 function select_leader_protocol(format::LevelFormat)
     if format == t_sparse_list
         return t_walk
+    elseif format == t_coo
+        return t_default
     elseif format == t_dense
         return t_default
     elseif format == t_bytemap
@@ -14,6 +16,8 @@ end
 function select_follower_protocol(format::LevelFormat)
     if format == t_sparse_list
         return t_follow
+    elseif format == t_coo
+        return t_default
     elseif format == t_dense
         return t_follow
     elseif format == t_bytemap
@@ -21,6 +25,19 @@ function select_follower_protocol(format::LevelFormat)
     elseif format == t_hash
         return t_follow
     end
+end
+
+function modify_plan_protocols!(plan::PlanNode, ST, alias_stats)
+    for query in plan.queries
+        # Propagate the index order and format info from the last step.
+        insert_node_ids!(query)
+        insert_statistics!(ST, query, bindings=alias_stats)
+        # Choose access protocols
+        modify_protocols!(query.expr)
+        alias_stats[query.name.name] = query.expr.stats
+        @assert !isnothing(get_index_order(alias_stats[query.name.name])) "$(query.name.name)"
+    end
+    return plan
 end
 
 function modify_protocols!(expr)
@@ -68,10 +85,11 @@ function modify_protocols!(expr)
                 end
                 # The choice of `min` below is arbitrary because the actual agg_op doesn't affect
                 # the nnz (barring things like prod reductions which might be a TODO).
+                # TODO: Replace this with conditional estimates
                 if length(indices_before_var) > 0
-                    size_before_var = estimate_nnz(reduce_tensor_stats(min, setdiff(get_index_set(input), indices_before_var),  input))
+                    size_before_var = estimate_nnz(reduce_tensor_stats(min, typemax(get_default_value(input)), setdiff(get_index_set(input), indices_before_var),  input))
                 end
-                size_after_var = estimate_nnz(reduce_tensor_stats(min, setdiff(get_index_set(input), [indices_before_var..., var]),  input))
+                size_after_var = estimate_nnz(reduce_tensor_stats(min, typemax(get_default_value(input)), setdiff(get_index_set(input), [indices_before_var..., var]),  input))
                 push!(costs, max(1, size_after_var/size_before_var))
             end
             min_cost = minimum(costs)

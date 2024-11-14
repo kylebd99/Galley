@@ -146,7 +146,7 @@ h_3_galley = MapJoin(max, 0,
                                 Input(h_2_galley, :k2, :n2),
                                 Input(W, :k2, :k3))))
 two_hop_gnn_query = Query(:h_4, Materialize(t_dense, t_dense, :k3, :n3, h_3_galley))
-h_3_galley = galley(deepcopy(two_hop_gnn_query), ST=DCStats, verbose=0)
+h_3_galley = galley(deepcopy(two_hop_gnn_query), ST=DCStats, verbose=3)
 h_3_galley = galley(deepcopy(two_hop_gnn_query), ST=DCStats, verbose=0)
 println("Finch == Galley: ", h_3 == h_3_galley.value)
 println("Galley Opt & Execute: ", h_3_galley.opt_time, "   ", h_3_galley.execute_time)

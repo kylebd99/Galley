@@ -33,18 +33,21 @@ function level_to_enum(lvl)
     end
 end
 
-function TensorDef(tensor::Tensor, indices::Vector{IndexExpr})
-    shape_tuple = size(tensor)
-    dim_size = Dict()
+function get_tensor_formats(tensor::Tensor)
     level_formats = LevelFormat[]
     current_lvl = tensor.lvl
-    for i in 1:length(indices)
-        dim_size[indices[i]] = shape_tuple[i]
+    for i in 1:length(size(tensor))
         push!(level_formats, level_to_enum(current_lvl))
         current_lvl = current_lvl.lvl
     end
     # Because levels are built outside-in, we need to reverse this.
     level_formats = reverse(level_formats)
+end
+
+function TensorDef(tensor::Tensor, indices::Vector{IndexExpr})
+    shape_tuple = size(tensor)
+    level_formats = get_tensor_formats(tensor::Tensor)
+    dim_size = Dict(indices[i]=>shape_tuple[i] for i in 1:length(size(tensor)))
     default_value = Finch.default(tensor)
     return TensorDef(Set{IndexExpr}(indices), dim_size, default_value, level_formats, indices, nothing)
 end

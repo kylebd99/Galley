@@ -40,18 +40,18 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
     else
         args = vcat(args...)
         if (kind === Input && length(args) >= 1)
-            if args[1] isa Tensor || args[1] isa DuckDBTensor
-                if args[end] isa String
-                    return PlanNode(kind, args[1:end-1], args[end], nothing)
+            if args[1] isa Tensor
+                if length(args) - 1 > length(size(args[1]))
+                    return PlanNode(kind, args[1:end-1], Symbol(args[end]), nothing)
                 else
-                    PlanNode(kind, args, string(hash(args)), nothing)
+                    PlanNode(kind, args, Symbol(hash(args)), nothing)
                 end
             elseif args[1].kind === Value
-                if args[1].val isa Tensor || args[1].val isa DuckDBTensor
-                    if args[end] isa String
-                        return PlanNode(kind, args[1:end-1], args[end], nothing)
+                if args[1].val isa Tensor
+                    if length(args) - 1 > length(size(args[1].val))
+                        return PlanNode(kind, args[1:end-1], Symbol(args[end]), nothing)
                     else
-                        PlanNode(kind, args, string(hash(args)), nothing)
+                        PlanNode(kind, args, Symbol(hash(args)), nothing)
                     end
                 else
                     return PlanNode(kind, args, nothing, nothing)
@@ -94,7 +94,7 @@ function PlanNode(kind::PlanNodeKind, args::Vector)
                 error("wrong number of arguments to $kind(...)")
             end
         elseif (kind === MapJoin && length(args) >= 2) ||
-            (kind === Aggregate && length(args) >= 2) ||
+            (kind === Aggregate && length(args) >= 3) ||
             (kind === Outputs) ||
             (kind === Plan)
             return PlanNode(kind, args, nothing, nothing)
@@ -155,7 +155,8 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
     elseif node.kind === MapJoin && sym === :op node.children[1]
     elseif node.kind === MapJoin && sym === :args @view node.children[2:end]
     elseif node.kind === Aggregate && sym === :op node.children[1]
-    elseif node.kind === Aggregate && sym === :idxs begin length(node.children) > 2 ? node.children[2:end-1] : [] end
+    elseif node.kind === Aggregate && sym === :init node.children[2]
+    elseif node.kind === Aggregate && sym === :idxs begin length(node.children) > 3 ? node.children[3:end-1] : [] end
     elseif node.kind === Aggregate && sym === :arg node.children[end]
     elseif node.kind === Materialize && sym === :formats begin length(node.children) > 1 ? node.children[1:Int((length(node.children)-1)/2)] : [] end
     elseif node.kind === Materialize && sym === :idx_order begin length(node.children) > 1 ? node.children[Int((length(node.children)-1)/2)+1:length(node.children)-1] : [] end
@@ -164,8 +165,7 @@ function Base.getproperty(node::PlanNode, sym::Symbol)
     elseif node.kind === Query && sym === :expr node.children[2]
     elseif node.kind === Query && sym === :loop_order begin length(node.children) > 2 ? node.children[3:end] : [] end
     elseif node.kind === Outputs && sym === :names node.children
-    elseif node.kind === Plan && sym === :queries @view node.children[1:end-1]
-    elseif node.kind === Plan && sym === :outputs @view node.children[end]
+    elseif node.kind === Plan && sym === :queries @view node.children[1:end]
     else
         error("type PlanNode($(node.kind), ...) has no property $sym")
     end
@@ -181,8 +181,9 @@ function Base.setproperty!(node::PlanNode, sym::Symbol, v)
     elseif node.kind === Input && sym === :idxs begin node.children = [node.children[1], v...] end
     elseif node.kind === MapJoin && sym === :op node.children[1] = v
     elseif node.kind === MapJoin && sym === :args begin node.children = [node.children[1], v...] end
-    elseif node.kind === Aggregate && sym === :op node.children[1]
-    elseif node.kind === Aggregate && sym === :idxs begin node.children = [node.children[1], v..., node.children[end]] end
+    elseif node.kind === Aggregate && sym === :op node.children[1] = v
+    elseif node.kind === Aggregate && sym === :init node.children[2] = v
+    elseif node.kind === Aggregate && sym === :idxs begin node.children = [node.children[1], node.children[2], v..., node.children[end]] end
     elseif node.kind === Aggregate && sym === :arg node.children[end] = v
     elseif node.kind === Materialize && sym === :formats begin node.children = [v..., node.idx_order..., node.expr] end
     elseif node.kind === Materialize && sym === :idx_order begin node.children = [node.formats..., v..., node.expr] end
@@ -191,8 +192,7 @@ function Base.setproperty!(node::PlanNode, sym::Symbol, v)
     elseif node.kind === Query && sym === :expr node.children[2] = v
     elseif node.kind === Query && sym === :loop_order begin node.children = [node.name, node.expr, v...] end
     elseif node.kind === Outputs && sym === :names node.children = v
-    elseif node.kind === Plan && sym === :queries begin node.children = [v..., node.outputs] end
-    elseif node.kind === Plan && sym === :outputs node.children[end] = v
+    elseif node.kind === Plan && sym === :queries begin println([v...]); node.children = [v...] end
     else
         error("type PlanNode($(node.kind), ...) has no property $sym")
     end
@@ -230,7 +230,7 @@ function Base.:(==)(a::PlanNode, b::PlanNode)
     elseif a.kind === Index
         return b.kind === Index && a.name == b.name
     elseif a.kind == Aggregate
-        return b.kind === Aggregate && a.arg == b.arg && Set(a.idxs) == Set(b.idxs)
+        return b.kind === Aggregate && a.op == b.op && a.init == b.init && Set(a.idxs) == Set(b.idxs) && a.arg == b.arg
     elseif istree(a)
         return a.kind === b.kind && a.children == b.children
     else
@@ -282,17 +282,13 @@ function planToString(n::PlanNode, depth::Int64)
     output = ""
     if n.kind == Alias
         output *= "Alias($(n.name)"
-        if isnothing(n.stats)
-            output *= ")"
-            return output
-        end
-        idxs = get_index_order(n.stats)
         if length(n.idxs) > 0
             prefix = ","
             for idx in n.idxs
                 output *= prefix * string(idx)
             end
-        elseif !isnothing(idxs)
+        elseif !isnothing(n.stats) && !isnothing(get_index_order(n.stats))
+            idxs = get_index_order(n.stats)
             protocols = get_index_protocols(n.stats)
             prefix = ","
             if !isnothing(get_index_protocols(n.stats))
@@ -372,7 +368,6 @@ function Base.show(io::IO, input::PlanNode)
     print(io, planToString(input, 0))
 end
 
-
 # The goal of this is to emulate deepcopy except for the actual data
 function plan_copy(n::PlanNode; copy_statistics= true)
     if n.kind === Input
@@ -451,9 +446,8 @@ function get_aliases(q::PlanNode)
     return alias_nodes
 end
 
-
 function Σ(args...)
     @assert length(args) >= 2
     indices = args[1:end-1]
-    return Aggregate(+, indices..., args[end])
+    return Aggregate(+, 0, indices..., args[end])
 end

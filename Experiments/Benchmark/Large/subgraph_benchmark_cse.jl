@@ -1,14 +1,12 @@
 include("../../Experiments.jl")
 
-
 #datasets = instances(WORKLOAD)
-data = yeast_lite
+data = dblp_lite
 
 experiments = ExperimentParams[]
 
-push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, simple_cse=true, description="Ours (CSE)", timeout=400))
-push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, simple_cse=false, description="Ours (No CSE)", timeout=400))
-
+push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, simple_cse=true, description="Galley", timeout=400))
+push!(experiments, ExperimentParams(workload=data, faq_optimizer=greedy; stats_type=DCStats, warm_start=true, simple_cse=false, description="Galley (No CSE)", timeout=400))
 
 run_experiments(experiments)
 

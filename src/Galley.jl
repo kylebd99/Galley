@@ -72,6 +72,9 @@ function galley(input_plan::PlanNode;
                     output_program_instance = false,
                     verbose=0)
 
+    if input_plan.kind == Materialize
+        input_plan = Query(:out, input_plan)
+    end
     if input_plan.kind == Query
         input_plan = Plan(input_plan)
     end

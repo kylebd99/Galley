@@ -36,9 +36,6 @@ galley_scheduler(; verbose = false, estimator=DCStats) = Finch.LogicExecutor(Gal
 
 # Roadmap:
 #   - Register Galley as a julia package (juliaregistrator, tagbot) @Kyle
-#   - Merge the Finch PR @Kyle
-#       - Add finch_unparse_program tests @Kyle
-#       - Add downstream Galley tests to CI.yml (Refer to Galley/main) @Kyle
 #   - Add Documentation in Finch (need simple shortcuts Compute(...,ctx=Galley())) @Willow
 #   - Add PythonPR to add compute() param for optimizers @Kyle
 #       - Discussion of adding Galley to python deps

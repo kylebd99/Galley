@@ -3,6 +3,6 @@
 #include("tensor-stats.jl")
 #include("propagate-stats.jl")
 include("StaticBitset.jl")
-include("tensor-stats_v2.jl")
-include("propagate-stats_v2.jl")
+include("tensor-stats.jl")
+include("propagate-stats.jl")
 include("cost-estimates.jl")

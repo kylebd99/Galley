@@ -70,7 +70,7 @@ end
 PLAN_CLASS = Tuple{Set{IndexExpr}, OUTPUT_COMPAT, Set{Int}}
 PLAN = Tuple{Vector{IndexExpr}, Float64}
 
-function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size)
+function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size, num_flops)
     output_compat = pc[2]
     rf_set = pc[3]
     pc_cost = 0
@@ -81,7 +81,7 @@ function cost_of_plan_class(pc::PLAN_CLASS, reformat_costs, output_size)
     else
         # Theoretically, this should be num_flops * RandomWriteCost, but we've seen that
         # lead to aggressive transposing of inputs.
-        pc_cost += output_size * RandomWriteCost
+        pc_cost += output_size * SeqWriteCost
     end
     for i in rf_set
         pc_cost += reformat_costs[i]
@@ -115,10 +115,10 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
     all_vars = union([get_index_set(stat) for stat in all_stats]...)
     output_size = estimate_nnz(output_stats)
     output_vars = get_index_set(output_stats)
-
     if !isnothing(output_order)
         output_vars = relative_sort(output_vars, output_order)
     end
+    num_flops = get_loop_lookups(all_vars, conjunct_stats, disjunct_stats)
 
     # At all times, we keep track of the best plans for each level of output compatability.
     # This will let us consider the cost of random writes and transposes at the end.
@@ -132,7 +132,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
         rf_set = get_reformat_set(transposable_stats, prefix)
         output_compat = get_output_compat(output_vars, prefix)
         class = (v_set, output_compat, rf_set)
-        cost = get_prefix_cost(var, v_set, conjunct_stats, disjunct_stats)
+        cost = get_prefix_cost(var, v_set, output_vars, conjunct_stats, disjunct_stats)
         optimal_plans[class] = (prefix, cost)
     end
 
@@ -163,7 +163,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
                 rf_set = get_reformat_set(transposable_stats, new_prefix)
                 output_compat = get_output_compat(output_vars, new_prefix)
                 new_plan_class = (new_prefix_set, output_compat, rf_set)
-                new_cost = get_prefix_cost(new_var, new_prefix_set, conjunct_stats, disjunct_stats) + cost
+                new_cost = get_prefix_cost(new_var, new_prefix_set, output_vars, conjunct_stats, disjunct_stats) + cost
                 new_plan = (new_prefix, new_cost)
 
                 alt_cost = Inf
@@ -191,7 +191,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
             cost_1 = plan_1[2]
             output_compat_1 = plan_class_1[2]
             reformat_set_1 = plan_class_1[3]
-            if cost_1 + cost_of_plan_class(plan_class_1, reformat_costs, output_size) > cost_bound
+            if cost_1 + cost_of_plan_class(plan_class_1, reformat_costs, output_size, num_flops) > cost_bound
                 continue
             end
             is_dominated = false
@@ -210,7 +210,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
         end
 
         if !isinf(top_k) && length(undominated_plans) > top_k
-            plan_and_cost = [(p[2] + cost_of_plan_class(pc, reformat_costs, output_size), pc=>p) for (pc, p) in undominated_plans]
+            plan_and_cost = [(p[2] + cost_of_plan_class(pc, reformat_costs, output_size, num_flops), pc=>p) for (pc, p) in undominated_plans]
             sort!(plan_and_cost, by=(x)->x[1])
             undominated_plans = Dict(x[2] for x in plan_and_cost[1:top_k])
         end
@@ -220,7 +220,7 @@ function get_join_loop_order_bounded(disjunct_and_conjunct_stats,
     best_prefix = nothing
     best_plan_class = nothing
     for (plan_class, plan) in optimal_plans
-        cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size)
+        cur_cost = plan[2] + cost_of_plan_class(plan_class, reformat_costs, output_size, num_flops)
         if cur_cost <= min_cost
             min_cost = cur_cost
             best_prefix = plan[1]

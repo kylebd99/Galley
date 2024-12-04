@@ -2,9 +2,9 @@
 # We start by defining some basic cost parameters. These will need to be adjusted somewhat
 # through testing.
 const SeqReadCost = 1
-const SeqWriteCost = 5
-const RandomReadCost = 5
-const RandomWriteCost = 10
+const SeqWriteCost = 1
+const RandomReadCost = 1
+const RandomWriteCost = 2
 
 const ComputeCost = 1
 const AllocateCost = 10
@@ -35,7 +35,7 @@ end
 
 # The prefix cost is equal to the number of valid iterations times the number of tensors
 # which we need to access to handle that final iteration.
-function get_prefix_cost(new_var, vars::Set{IndexExpr},  conjunct_stats, disjunct_stats)
+function get_prefix_cost(new_var, vars::Set{IndexExpr},  output_vars, conjunct_stats, disjunct_stats)
     rel_conjuncts = [stat for stat in conjunct_stats if !isempty(get_index_set(stat) ∩ vars)]
     rel_disjuncts = [stat for stat in disjunct_stats if !isempty(get_index_set(stat) ∩ vars)]
     lookups = get_loop_lookups(vars, rel_conjuncts, rel_disjuncts)
@@ -59,6 +59,19 @@ function get_prefix_cost(new_var, vars::Set{IndexExpr},  conjunct_stats, disjunc
         else
             lookup_factor += SeqReadCost
         end
+    end
+
+    if output_vars isa Vector && new_var ∈ output_vars
+        new_var_idx = only(indexin([new_var], output_vars))
+        min_var_idx = minimum([x for x in indexin(vars, output_vars) if !isnothing(x)])
+        is_rand_write = new_var_idx != min_var_idx
+        if is_rand_write
+            lookup_factor += RandomWriteCost
+        else
+            lookup_factor += SeqReadCost
+        end
+    else
+        lookup_factor += SeqReadCost
     end
     return lookups * lookup_factor
 end

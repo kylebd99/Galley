@@ -122,7 +122,6 @@ function SyntaxInterface.similarterm(x::PlanNode, op::PlanNodeKind, args)
     @assert Int(op) & IS_TREE != 0
     PlanNode(op, args, nothing, copy_stats(x.stats), x.node_id)
 end
-Base.copy(x::Nothing) = nothing
 
 logic_leaf(arg) = Value(arg)
 logic_leaf(arg::Type) = Value(arg)

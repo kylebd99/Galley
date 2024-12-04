@@ -15,7 +15,7 @@ function select_follower_protocol(format::LevelFormat)
     if format == t_sparse_list
         return t_follow
     elseif format == t_dense
-        return t_follow
+        return t_default
     elseif format == t_bytemap
         return t_follow
     elseif format == t_hash
@@ -84,7 +84,7 @@ function modify_protocols!(expr)
                 input_def = get_def(input)
                 format = get_index_format(input, var)
                 var_index = findall(x->x==var, get_index_order(input))
-                is_leader = costs[i] == min_cost
+                is_leader = costs[i] == min_cost && format != t_dense
                 if is_leader && needs_leader
                     input_def.index_protocols[var_index] .= select_leader_protocol(format)
                     needs_leader = false

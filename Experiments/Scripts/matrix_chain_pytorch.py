@@ -2,7 +2,7 @@ import time
 import numpy as np
 import csv
 import torch
-num_cores = 20
+num_cores = 14
 torch.set_num_threads(num_cores)
 
 def mat_chain(A, B, C):

@@ -74,7 +74,6 @@ function main()
     println(elementwise_times)
     data = []
     for i in eachindex(densities)
-
         push!(data, (Method="Galley", Algorithm="ABC", Sparsity=densities[i], Runtime=forward_times[i]))
         push!(data, (Method="Galley", Algorithm="CBA", Sparsity=densities[i], Runtime=backward_times[i]))
         push!(data, (Method="Galley", Algorithm="SUM(ABC)", Sparsity=densities[i], Runtime=sum_times[i]))
@@ -96,35 +95,35 @@ data = DataFrame(CSV.File("Experiments/Results/mat_exps_galley.csv"))
 append!(data, DataFrame(CSV.File("Experiments/Results/mat_exps_pytorch_serial.csv")), promote=true)
 append!(data, DataFrame(CSV.File("Experiments/Results/mat_exps_pytorch_parallel.csv")), promote=true)
 
-abc_plt = @df data[data.Algorithm .=="ABC", :] bar([i%6 + floor(i/6)/3 for i in 0:17], :Runtime, group=:Method,
-                                        xticks=([.33, 1.33, 2.33, 3.33, 4.33, 5.33], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
-                                        yscale=:log10, fillrange = 10^(-2.5), ylims=[10^(-2.5), 100],
+abc_plt = @df data[data.Algorithm .=="ABC", :] bar([i%6 + floor(i/6)/4 for i in 0:17], :Runtime, group=:Method,
+                                        xticks=([.25, 1.25, 2.25, 3.25, 4.25, 5.25], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
+                                        yscale=:log10, fillrange = 10^(-3), ylims=[10^(-3), 100],
                                         xflip=false, lw=2, xtickfontsize=12,  bar_width=.25,
                                         ytickfontsize=12, legendfontsize=12, legend=:topright,
                                         xlabel="Density of C", ylabel="Runtime", title="Matrix Chain Multiplication (ABC)")
 savefig(abc_plt, "Experiments/Figures/mat_chain_abc.png")
 
 
-cba_plt = @df data[data.Algorithm .=="CBA", :] bar([i%6 + floor(i/6)/3 for i in 0:17], :Runtime, group=:Method,
-                                        xticks=([.33, 1.33, 2.33, 3.33, 4.33, 5.33], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
-                                        yscale=:log10, fillrange = 10^(-2.5), ylims=[10^(-2.5), 100],
+cba_plt = @df data[data.Algorithm .=="CBA", :] bar([i%6 + floor(i/6)/4 for i in 0:17], :Runtime, group=:Method,
+                                        xticks=([.25, 1.25, 2.25, 3.25, 4.25, 5.25], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
+                                        yscale=:log10, fillrange = 10^(-3), ylims=[10^(-3), 100],
                                         xflip=false, lw=2, xtickfontsize=12,  bar_width=.25,
                                         ytickfontsize=12, legendfontsize=12, legend=:topright,
                                         xlabel="Density of C", ylabel="Runtime", title="Matrix Chain Multiplication (CBA)")
 savefig(cba_plt, "Experiments/Figures/mat_chain_cba.png")
 
-sum_plt = @df data[data.Algorithm .=="SUM(ABC)", :] bar([i%6 + floor(i/6)/3 for i in 0:17], :Runtime, group=:Method,
-                                        xticks=([.33, 1.33, 2.33, 3.33, 4.33, 5.33], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
-                                        yscale=:log10, fillrange = 10^(-2.5), ylims=[10^(-2.5), 100],
+sum_plt = @df data[data.Algorithm .=="SUM(ABC)", :] bar([i%6 + floor(i/6)/4 for i in 0:17], :Runtime, group=:Method,
+                                        xticks=([.25, 1.25, 2.25, 3.25, 4.25, 5.25], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
+                                        yscale=:log10, fillrange = 10^(-3), ylims=[10^(-3), 100],
                                         xflip=false, lw=2, xtickfontsize=12,  bar_width=.25,
                                         ytickfontsize=12, legendfontsize=12, legend=:topright,
-                                        xlabel="Density of C", ylabel="Runtime", title="Matrix Chain Multiplication (SUM(ABC))")
+                                        xlabel="Density of C", ylabel="Runtime", title="Sum of Matrix Chain (SUM(ABC))")
 savefig(sum_plt, "Experiments/Figures/mat_chain_sum.png")
 
-sum_plt = @df data[data.Algorithm .=="A*B*C", :] bar([i%6 + floor(i/6)/3 for i in 0:17], :Runtime, group=:Method,
-                                        xticks=([.33, 1.33, 2.33, 3.33, 4.33, 5.33], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
-                                        yscale=:log10, fillrange = 10^(-2.5), ylims=[10^(-2.5), 100],
+sum_plt = @df data[data.Algorithm .=="A*B*C", :] bar([i%6 + floor(i/6)/4 for i in 0:17], :Runtime, group=:Method,
+                                        xticks=([.25, 1.25, 2.25, 3.25, 4.25, 5.25], [".1", ".01", ".001", ".0001", ".00001", ".000001"]),
+                                        yscale=:log10, fillrange = 10^(-3), ylims=[10^(-3), 10],
                                         xflip=false, lw=2, xtickfontsize=12,  bar_width=.25,
                                         ytickfontsize=12, legendfontsize=12, legend=:topright,
-                                        xlabel="Density of C", ylabel="Runtime", title="Matrix Chain Multiplication (A*B*C)")
+                                        xlabel="Density of C", ylabel="Runtime", title="Elementwise Matrix Multiplication (A*B*C)")
 savefig(sum_plt, "Experiments/Figures/mat_chain_elementwise.png")

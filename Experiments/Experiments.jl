@@ -16,6 +16,7 @@ using Galley: FAQ_OPTIMIZERS, relabel_input, reindex_stats, fill_table
 include("experiment_params.jl")
 include("subgraph_workload.jl")
 include("load_workload.jl")
+include("subgraph_sql.jl")
 include("run_experiments_worker.jl")
 include("run_experiments.jl")
 include("graph_results.jl")

@@ -9,9 +9,10 @@ using Plots
 using DuckDB
 using Galley
 using Galley: FAQ_OPTIMIZERS, relabel_input, reindex_stats, fill_table
-include("/local1/kdeeds/Galley/Experiments/experiment_params.jl")
-include("/local1/kdeeds/Galley/Experiments/subgraph_workload.jl")
-include("/local1/kdeeds/Galley/Experiments/load_workload.jl")
+include("/local1/kdeeds/Galley.jl/Experiments/experiment_params.jl")
+include("/local1/kdeeds/Galley.jl/Experiments/subgraph_workload.jl")
+include("/local1/kdeeds/Galley.jl/Experiments/load_workload.jl")
+include("/local1/kdeeds/Galley.jl/Experiments/subgraph_sql.jl")
 
 
 function clear_channel(c)
@@ -31,10 +32,26 @@ function attempt_experiment(experiment::ExperimentParams, starting_query, result
     end
     put!(status_channel, (num_attempted, num_completed, num_correct, num_with_values, false))
     for query in queries[starting_query:end]
+        if false && !occursin("sparse_8_120", query.query_path)
+            continue
+        end
         println("Query Path: ", query.query_path)
         num_attempted +=1
         try
-            if experiment.use_duckdb
+            if experiment.use_umbra
+                if experiment.warm_start
+                    result, execute_time = execute_galley_query_umbra(query.query[1])
+                    result, execute_time = execute_galley_query_umbra(query.query[1])
+                    put!(results_channel, (string(experiment.workload), query.query_type, query.query_path, string(execute_time), "0.0", "0.0", string(result[1]), string(false)))
+                    if !isnothing(query.expected_result)
+                        if result[1] == query.expected_result
+                            num_correct += 1
+                        end
+                        num_with_values += 1
+                    end
+                    num_completed += 1
+                end
+            elseif experiment.use_duckdb
                 result = galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0)
                 result = galley(query.query, ST=experiment.stats_type; faq_optimizer = experiment.faq_optimizer, dbconn=dbconn, verbose=0)
                 if result == "failed"
